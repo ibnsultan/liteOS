@@ -1,0 +1,281 @@
+/* Shared top bar extras (menus, icon buttons) and the sign-in / lock greeter. */
+
+/* ------------------------------------------------------------ top bar */
+.topbar { color: var(--text); }
+.topbar .brand { color: var(--text); text-decoration: none; }
+span.brand { cursor: default; }
+span.brand:hover { background: none !important; }
+.topbar .menus { display: flex; align-items: center; gap: 2px; margin-left: -6px; min-width: 0; overflow: hidden; }
+.topbar .mbtn { height: 26px; padding: 0 9px; border: none; background: transparent; border-radius: 6px; cursor: default; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.topbar .mbtn:hover, .topbar .mbtn.open { background: var(--hover); color: var(--text); }
+.topbar .tb-icon { width: 30px; height: 26px; border: none; background: transparent; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; padding: 0; flex-shrink: 0; }
+.topbar .tb-icon:hover { background: var(--hover); }
+.topbar .status { white-space: nowrap; }
+.topbar .status.static { cursor: default; padding: 0 6px; }
+.topbar .status.static:hover { background: none; }
+.topbar .spacer { min-width: 8px; }
+.lock .topbar { z-index: 2; }
+@media (max-width: 760px) { .topbar .menus { display: none; } }
+
+/* ------------------------------------------------------------ the desktop never scrolls */
+html, body, .os-root, .lock, .oobe { overflow: clip; }
+.os-root.pop-open .dock-tip { display: none; }
+
+/* ------------------------------------------------------------ app icon artwork */
+img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user-select: none; }
+.dock-btn img.tile { border-radius: 0; box-shadow: none; filter: drop-shadow(0 4px 6px rgba(10,30,70,.22)); }
+.tb-btn img.tile { width: 30px; height: 30px; border-radius: 0; filter: drop-shadow(0 2px 3px rgba(10,30,70,.2)); }
+.ls-app img.appicon { width: 50px; height: 50px; filter: drop-shadow(0 4px 8px rgba(10,30,70,.2)); }
+.win-bar img.appicon { width: 22px; height: 22px; }
+
+/* menus: keyboard hint + disabled */
+.menu-item .key { margin-left: auto; padding-left: 18px; font-size: 11px; color: var(--faint); }
+.menu-item:disabled { opacity: .45; cursor: default; background: transparent !important; color: var(--text) !important; }
+
+/* ------------------------------------------------------------ volume */
+.volpop { width: 260px; padding: 14px 16px; border-radius: 14px; display: flex; flex-direction: column; gap: 8px; }
+.vol-hint { font-size: 11px; color: var(--faint); }
+.qvol { display: flex; align-items: center; gap: 10px; }
+.qvol .ibtn { width: 32px; height: 32px; flex-shrink: 0; }
+.qpct { width: 36px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qrange { -webkit-appearance: none; appearance: none; flex: 1; height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--accent) 0 var(--v, 50%), var(--surface-3) var(--v, 50%) 100%); }
+.qrange::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 9px; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.qrange::-moz-range-thumb { width: 18px; height: 18px; border-radius: 9px; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.qrange:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
+
+/* ------------------------------------------------------------ greeter */
+.lock { transition: opacity .22s ease; }
+.lock.leaving { opacity: 0; }
+.greeter { position: absolute; inset: 0 0 64px; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 44px; padding: 24px; color: #fff; }
+.g-clock { text-align: center; text-shadow: 0 2px 18px rgba(10,30,70,.3); }
+.g-clock .t { font-size: 96px; font-weight: 600; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.g-clock .d { font-size: 19px; font-weight: 500; margin-top: 10px; opacity: .95; }
+.g-form { width: 340px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; animation: gIn .25s ease-out; }
+@keyframes gIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.g-avatar {
+  width: 96px; height: 96px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff;
+  font-size: 36px; font-weight: 700; box-shadow: 0 0 0 4px rgba(255,255,255,.4), 0 14px 34px rgba(10,30,70,.32); margin-bottom: 10px;
+}
+.g-avatar.anon { background: rgba(255,255,255,.22); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.g-avatar .ico { width: 44px; height: 44px; }
+.g-name { font-size: 22px; font-weight: 600; text-shadow: 0 1px 8px rgba(10,30,70,.35); }
+.g-sub { font-size: 13px; opacity: .9; text-shadow: 0 1px 6px rgba(10,30,70,.35); display: inline-flex; align-items: center; gap: 5px; margin-bottom: 12px; }
+.g-sub .ico { width: 12px; height: 12px; }
+.g-field { position: relative; width: 100%; }
+.g-input {
+  width: 100%; height: 46px; border-radius: 23px; border: 1px solid rgba(255,255,255,.7); background: rgba(255,255,255,.9);
+  padding: 0 54px 0 20px; font-size: 15px; color: #16171A; outline: none; box-shadow: 0 8px 24px rgba(10,30,70,.2);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+.g-input::placeholder { color: #6B717C; }
+.g-input:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.55), 0 8px 24px rgba(10,30,70,.2); }
+.g-go {
+  position: absolute; right: 5px; top: 5px; width: 36px; height: 36px; border-radius: 18px; border: none; background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.g-go:hover { filter: brightness(1.08); }
+.g-go:disabled { cursor: default; }
+.g-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; animation: gSpin .7s linear infinite; }
+@keyframes gSpin { to { transform: rotate(360deg); } }
+/* the sign-in error: red text straight on the wallpaper, with a soft light halo so it reads on any picture */
+.g-err { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; color: #C8102E; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 0 2px rgba(255,255,255,.9), 0 0 8px rgba(255,255,255,.75); }
+.g-err .ico { width: 14px; height: 14px; flex-shrink: 0; filter: drop-shadow(0 0 2px rgba(255,255,255,.9)); }
+.g-link { margin-top: 12px; border: none; background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: 8px; text-shadow: 0 1px 6px rgba(10,30,70,.4); opacity: .92; }
+.g-link:hover { background: rgba(255,255,255,.14); opacity: 1; }
+.shake { animation: gShake .36s ease; }
+@keyframes gShake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+
+/* ------------------------------------------------------------ auth screen actions (bottom left) */
+.auth-actions { position: absolute; right: 24px; bottom: 22px; z-index: 3; display: flex; gap: 8px; }
+/* dark frosted glass with a light edge: readable over light and dark wallpapers alike */
+.aa-btn {
+  height: 40px; min-width: 40px; padding: 0 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,.24);
+  background: rgba(16,22,34,.44); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 4px 14px rgba(8,14,28,.22);
+  color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  transition: background-color .15s;
+}
+.aa-btn:hover { background: rgba(16,22,34,.62); }
+.aa-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* accessibility options on the auth screens */
+.lock.a11y-large .g-form, .lock.a11y-large .g-clock, .oobe.a11y-large .oobe-panel { zoom: 1.18; }
+.lock.a11y-contrast::before { background: rgba(5, 12, 28, .62); }
+.lock.a11y-contrast .g-input { background: #fff; border: 2px solid #16171A; }
+.lock.a11y-contrast .g-link, .lock.a11y-contrast .g-sub { opacity: 1; text-decoration: underline; }
+.oobe.a11y-contrast::before { background: rgba(5, 12, 28, .62); }
+.oobe.a11y-contrast .oobe-body .lead, .oobe.a11y-contrast .hint { color: var(--text-2); }
+
+@media (max-width: 720px) {
+  .greeter { gap: 28px; justify-content: flex-start; padding-top: 10vh; }
+  .g-clock .t { font-size: 64px; }
+}
+@media (max-height: 640px) {
+  .greeter { gap: 20px; }
+  .g-clock .t { font-size: 56px; }
+}
+
+/* ------------------------------------------------------------ popover slide animations */
+/* Launcher (and anything opened from the dock/taskbar) slides up out of it and back down. */
+.pop { animation: popSlideUp .26s cubic-bezier(.2, .9, .25, 1) both; transform-origin: 50% 100%; }
+.pop.closing { animation: popSlideUpOut .18s cubic-bezier(.4, 0, .9, .5) both; pointer-events: none; }
+@keyframes popSlideUp { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes popSlideUpOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(28px) scale(.985); } }
+/* Quick settings and volume hang from the top bar: they slide down and back up. */
+.pop.from-top { transform-origin: 50% 0; animation-name: popSlideDown; }
+.pop.from-top.closing { animation-name: popSlideDownOut; }
+@keyframes popSlideDown { from { opacity: 0; transform: translateY(-16px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes popSlideDownOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-16px) scale(.985); } }
+@media (prefers-reduced-motion: reduce) { .pop, .pop.closing { animation-duration: .01s; } }
+/* redrawn in place (os.js renderPop, e.g. a quick-settings toggle): no second slide-in */
+.pop.still, .pop.from-top.still { animation: none; }
+
+/* classic taskbar: icon-only launcher button */
+.taskbar .start { padding: 0 5px; margin-right: 6px; }
+
+/* ------------------------------------------------------------ menus: headers, notes, icons (jump lists) */
+.menu-head { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; color: var(--faint); letter-spacing: .02em; }
+.menu-head:first-child { padding-top: 4px; }
+.menu-note { padding: 4px 10px 8px; font-size: 12px; color: var(--muted); max-width: 260px; line-height: 1.4; }
+.menu .mi-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.menu .mi-img { width: 18px; height: 18px; flex-shrink: 0; }
+.menu .mi-ico { display: inline-flex; flex-shrink: 0; }
+.menu.jump { width: 270px; max-height: calc(100vh - 80px); overflow-y: auto; animation: popSlideUp .2s cubic-bezier(.2, .9, .25, 1) both; transform-origin: 50% 100%; }
+.menu.jump .menu-item { height: 34px; }
+
+/* classic taskbar: every button the same size, icons evenly spaced */
+.taskbar { gap: 0; padding-left: 4px; }
+.taskbar .apps { gap: 2px; margin-left: 2px; }
+.taskbar .start { width: 44px; height: 42px; padding: 0; margin: 0; justify-content: center; gap: 0; }
+.taskbar .start .tile { width: 28px; height: 28px; }
+.taskbar .start img { width: 17px; height: 17px; }
+.tb-btn { width: 44px; height: 42px; gap: 3px; }
+.tb-btn img.tile { width: 28px; height: 28px; }
+
+/* classic taskbar: centre each icon; the running bar sits on the bottom edge outside the layout */
+.tb-btn { justify-content: center; gap: 0; }
+.tb-btn .bar { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); }
+
+/* ------------------------------------------------------------ desktop icons */
+.desk-icons { position: absolute; left: 10px; z-index: 50; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; gap: 6px; pointer-events: none; }
+.desk-icon {
+  pointer-events: auto; width: 86px; padding: 8px 4px 6px; border-radius: 10px; border: 1px solid transparent; background: transparent;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: default; color: #fff;
+}
+.desk-icon img { width: 48px; height: 48px; filter: drop-shadow(0 3px 6px rgba(10,30,70,.35)); }
+/* a file or folder from the Desktop folder: its file-type tile, the same size as an app icon */
+.desk-file .tile { display: grid; place-items: center; margin: 2px; color: #fff; box-shadow: 0 3px 8px rgba(10,30,70,.3); }
+.desk-icon span { font-size: 12px; font-weight: 500; line-height: 1.25; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,.65), 0 0 1px rgba(0,0,0,.5); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-icon:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.22); }
+.desk-icon.sel { background: rgba(255,255,255,.26); border-color: rgba(255,255,255,.45); }
+.desk-icon:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+/* sizes from the desktop menu > View */
+.desk-icons[data-size="small"] .desk-icon { width: 72px; gap: 4px; padding: 6px 4px 5px; }
+.desk-icons[data-size="small"] .desk-icon img { width: 34px; height: 34px; }
+.desk-icons[data-size="large"] .desk-icon { width: 104px; }
+.desk-icons[data-size="large"] .desk-icon img { width: 64px; height: 64px; }
+
+/* ------------------------------------------------------------ quick settings toggles */
+.qs .tiles { gap: 10px; }
+.qs .qtile { height: auto; padding: 14px 6px 10px; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font-weight: 600; transition: background .15s, border-color .15s; }
+.qs .qtile:hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface) 92%, var(--text)); }
+.qs .qtile.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
+.qs .qi { width: 40px; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-2); transition: background .15s, color .15s; }
+.qs .qi .ico { width: 20px; height: 20px; stroke-width: 2.2; }
+.qs .qtile.on .qi { background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
+.qs .ql { font-size: 12px; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qs .qs-state { font-size: 11px; font-weight: 500; color: var(--muted); margin-top: -4px; }
+.qs .qtile.on .qs-state { color: var(--accent-ink); }
+
+/* ------------------------------------------------------------ virtual brightness */
+.screen-dim { position: absolute; inset: 0; background: #000; pointer-events: none; z-index: 9990; transition: opacity .12s linear; }
+
+/* ------------------------------------------------------------ quick settings (Windows 11 arrangement) */
+.qs.w11 { width: 364px; padding: 0; gap: 0; }
+.qs.w11 .qgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px; padding: 18px 18px 14px; }
+.qs.w11 .qt { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; }
+.qs.w11 .qtile {
+  width: 100%; height: 48px; padding: 0; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface);
+  display: flex; flex-direction: row; align-items: stretch; justify-content: center; color: var(--text); cursor: pointer; overflow: hidden; gap: 0;
+}
+.qs.w11 .qtile:hover { background: color-mix(in srgb, var(--surface) 90%, var(--text)); }
+.qs.w11 .qtile.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.qs.w11 .qtile.on:hover { background: var(--accent-ink); }
+.qs.w11 .qmain { flex: 1; display: inline-flex; align-items: center; justify-content: center; }
+.qs.w11 .qmain .ico { width: 18px; height: 18px; stroke-width: 2; }
+.qs.w11 .qchev { width: 34px; display: inline-flex; align-items: center; justify-content: center; border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
+.qs.w11 .qchev:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.qs.w11 .ql { font-size: 12px; font-weight: 500; color: var(--text-2); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qs.w11 .qsliders { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px 16px; border-top: 1px solid var(--line); }
+.qs.w11 .qico { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
+.qs.w11 .qfoot { display: flex; align-items: center; gap: 8px; padding: 12px 14px 12px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.qs.w11 .qfoot .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.qs.w11 .qfoot .meta b { font-size: 12px; }
+.qs.w11 .qfoot .meta small { font-size: 11px; color: var(--muted); }
+.qs.w11 .qfoot .meter { height: 4px; max-width: 120px; }
+.qs.w11 .qfoot .ibtn { width: 32px; height: 32px; border: none; background: transparent; }
+.qs.w11 .qfoot .ibtn:hover { background: var(--hover); }
+
+/* ------------------------------------------------------------ notifications */
+.toasts { right: 14px; bottom: 96px; gap: 10px; }
+.os-root.classic .toasts { bottom: 60px; }
+.toast {
+  width: 360px; max-width: calc(100vw - 28px); display: block; padding: 0; border-radius: 12px; overflow: hidden;
+  background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(10,30,70,.22);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); animation: ntIn .26s cubic-bezier(.2, .9, .25, 1) both;
+}
+.toast.out { animation: ntOut .2s ease-in both; }
+@keyframes ntIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes ntOut { to { opacity: 0; transform: translateX(24px); } }
+.nt-head { display: flex; align-items: center; gap: 8px; padding: 8px 6px 0 16px; font-size: 12px; color: var(--text-2); }
+.nt-head img { width: 16px; height: 16px; }
+.nt-head span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nt-x { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.nt-more { opacity: 0; transition: opacity .12s; }
+.toast:hover .nt-more, .nt-more:focus-visible { opacity: 1; }
+.nt-x:hover { background: var(--hover); color: var(--text); }
+.nt-body { display: flex; gap: 14px; padding: 10px 18px 16px 16px; align-items: flex-start; }
+.nt-img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--surface-3); }
+.nt-img.round { border-radius: 50%; }
+.nt-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.nt-text b { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.nt-text p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); word-break: break-word; }
+.nt-actions { display: flex; gap: 8px; padding: 0 16px 16px; margin-top: -4px; }
+.nt-actions .btn { flex: 1; min-width: 0; height: 32px; justify-content: center; }
+
+/* ------------------------------------------------------------ windows with a custom title bar (app draws it; shell keeps the controls) */
+.win-custom .win-bar { position: absolute; top: 0; right: 0; left: auto; z-index: 3; height: 40px; padding: 0 6px; gap: 2px; background: transparent; border: none; pointer-events: none; }
+.win-custom .win-bar > :not(.ctl) { display: none; }
+.win-custom .win-bar .ctl { pointer-events: auto; color: var(--text-2); }
+.win-custom.max .win-bar { height: 38px; }
+
+/* ------------------------------------------------------------ immersive maximised windows */
+.os-root .topbar { transition: transform .22s ease; }
+.os-root.immersive .topbar { transform: translateY(-105%); }
+.os-root.immersive .dock-wrap { transform: translateY(130px); }
+.os-root.immersive.peek-top .topbar, .os-root.immersive.pop-open .topbar { transform: none; }
+.os-root.immersive.peek-bottom .dock-wrap, .os-root.immersive.pop-open .dock-wrap { transform: none; }
+.edge-zone { position: absolute; left: 0; right: 0; height: 3px; z-index: 650; display: none; }
+.edge-zone.top { top: 0; }
+.edge-zone.bottom { bottom: 0; }
+.os-root.immersive .edge-zone { display: block; }
+.os-root.immersive.peek-top .edge-zone.top, .os-root.immersive.peek-bottom .edge-zone.bottom { display: none; }
+
+/* ------------------------------------------------------------ app switcher */
+.switcher { position: absolute; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(8,14,28,.18); animation: swIn .12s ease-out; }
+@keyframes swIn { from { opacity: 0; } to { opacity: 1; } }
+.sw-card { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: min(860px, calc(100vw - 48px)); padding: 14px; border-radius: 16px; background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(10,30,70,.28); }
+.sw-item { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 10px 12px; border: 2px solid transparent; border-radius: 12px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.sw-item:hover { background: var(--hover); }
+.sw-item.on { border-color: var(--accent); background: var(--accent-soft); }
+.sw-item img { width: 48px; height: 48px; }
+.sw-item.min img { opacity: .6; }
+.sw-item b { max-width: 100%; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sw-item small { max-width: 100%; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .os-root .topbar, .switcher { transition: none; animation: none; } }
+
+/* a short message on the setup, sign-in and lock pages (public/assets/js/auth.js), e.g. "Restart isn't available" */
+.auth-note { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px; background: rgba(16, 18, 23, .82); color: #fff; font-size: 13px; animation: fadeIn .16s; }
+a.g-link { text-decoration: none; }
+body.embedded { background: transparent; }

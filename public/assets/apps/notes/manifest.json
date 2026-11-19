@@ -1,0 +1,31 @@
+{
+  "id": "notes",
+  "name": "Notes",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Quick text notes, saved as files in your Notes folder.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "note",
+  "colors": [
+    "#F2C94C",
+    "#C98F05"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      860,
+      580
+    ],
+    "chrome": "standard",
+    "single": true
+  },
+  "permissions": [
+    "files.folder"
+  ],
+  "folders": [
+    "/Notes"
+  ]
+}

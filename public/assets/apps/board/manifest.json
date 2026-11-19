@@ -1,0 +1,28 @@
+{
+  "id": "board",
+  "name": "Whiteboard",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Sketch, mark up pictures and save your drawing as a PNG.",
+  "author": "LiteOS",
+  "category": "Creativity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "pen",
+  "colors": [
+    "#9A7FEA",
+    "#6B4CCB"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      1040,
+      680
+    ],
+    "chrome": "standard",
+    "single": false
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

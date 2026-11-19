@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><filter id="ds" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.4" stdDeviation="1.2" flood-color="#0A1E46" flood-opacity=".22"/></filter><linearGradient id="gear" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A3AAB5"/><stop offset="1" stop-color="#5A606B"/></linearGradient></defs><g transform="translate(32 32) scale(1.14) translate(-32 -32)">
+<g filter="url(#ds)">
+<circle cx="32" cy="32" r="19" fill="none" stroke="url(#gear)" stroke-width="8.5" stroke-dasharray="7.46 7.46"/>
+<circle cx="32" cy="32" r="16" fill="url(#gear)"/>
+</g>
+<circle cx="32" cy="32" r="12" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.3"/>
+<circle cx="32" cy="32" r="7.5" fill="#E9ECF1"/>
+<circle cx="32" cy="32" r="7.5" fill="none" stroke="#4E545E" stroke-opacity=".5" stroke-width="1.2"/></g></svg>

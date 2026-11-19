@@ -1,0 +1,178 @@
+/* LiteOS Browser */
+
+/* ------------------------------------------------------------ tabs */
+.br-tabs {
+  height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; gap: 2px; padding: 0 8px;
+  background: var(--surface-2); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none;
+}
+.br-tabs::-webkit-scrollbar { display: none; }
+.br-tab {
+  height: 33px; min-width: 70px; max-width: 230px; flex: 0 1 220px; display: flex; align-items: center; gap: 8px;
+  padding: 0 6px 0 12px; border-radius: 9px 9px 0 0; border: none; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 12px; font-weight: 500; position: relative;
+}
+.br-tab:hover { background: var(--hover); }
+.br-tab.active { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+.br-tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--surface); }
+.br-tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.br-fav { width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; object-fit: contain; }
+.br-fav.letter { background: var(--surface-3); color: var(--text-2); font-size: 10px; font-weight: 700; }
+.br-tab .br-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: brSpin .7s linear infinite; flex-shrink: 0; }
+@keyframes brSpin { to { transform: rotate(360deg); } }
+.br-tab-x { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--faint); flex-shrink: 0; }
+.br-tab-x:hover { background: var(--hover); color: var(--text); }
+.br-tab-x .ico { width: 12px; height: 12px; }
+.br-newtab { width: 30px; height: 30px; margin: 0 0 2px 2px; }
+
+/* ------------------------------------------------------------ toolbar */
+.br-toolbar { gap: 2px; height: 46px; }
+.br-address { flex: 1 1 auto; min-width: 140px; position: relative; display: flex; align-items: center; margin: 0 6px; }
+.br-address .input { width: 100%; height: 34px; padding: 0 38px 0 36px; border-radius: 17px; background: var(--surface-2); border-color: transparent; }
+.br-address .input:focus { background: var(--surface); border-color: var(--accent); }
+.br-addr-ico { position: absolute; left: 12px; display: inline-flex; color: var(--muted); pointer-events: none; }
+.br-addr-ico .ico { width: 14px; height: 14px; }
+.br-star { position: absolute; right: 5px; width: 28px; height: 26px; border: none; background: transparent; border-radius: 13px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.br-star:hover { background: var(--hover); color: var(--text); }
+.br-star.on { color: var(--accent); }
+.br-star[hidden] { display: none; }
+#downloads.busy { color: var(--accent); }
+
+/* ------------------------------------------------------------ loading bar */
+.br-progress { height: 3px; flex-shrink: 0; background: var(--accent-soft); position: relative; overflow: hidden; margin-top: -3px; z-index: 2; }
+.br-progress::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--accent); border-radius: 2px; animation: brLoad 1s ease-in-out infinite; }
+@keyframes brLoad { from { left: -30%; } to { left: 100%; } }
+
+/* ------------------------------------------------------------ content */
+.br-content { position: relative; background: var(--surface); }
+.br-pane { position: absolute; inset: 0; overflow: auto; }
+.br-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+
+/* ------------------------------------------------------------ new tab page */
+.nt { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 11vh 24px 40px; gap: 30px; background: var(--surface); }
+.nt-brand { display: flex; align-items: center; gap: 14px; font-size: 44px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+.nt-brand img { width: 52px; height: 52px; }
+.nt-search { width: 100%; max-width: 680px; position: relative; display: flex; align-items: center; }
+.nt-search .ico { position: absolute; left: 20px; width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+.nt-search .input { width: 100%; height: 50px; border-radius: 25px; padding: 0 22px 0 52px; font-size: 15px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 2px 8px rgba(16, 32, 64, .08); }
+.nt-search .input:focus { box-shadow: 0 0 0 3px var(--accent-ring), 0 2px 8px rgba(16, 32, 64, .08); }
+.nt-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 760px; }
+.nt-tile { width: 104px; padding: 12px 6px 10px; border-radius: 12px; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; color: var(--text); position: relative; }
+.nt-tile:hover { background: var(--hover); }
+.nt-ring { width: 52px; height: 52px; border-radius: 50%; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; }
+.nt-ring img { width: 26px; height: 26px; object-fit: contain; }
+.nt-ring .letter { width: 30px; height: 30px; border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+.nt-tile span.nm { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-more { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 6px; display: none; align-items: center; justify-content: center; color: var(--muted); }
+.nt-tile:hover .nt-more { display: inline-flex; }
+.nt-more:hover { background: var(--hover); color: var(--text); }
+.nt-more .ico { width: 13px; height: 13px; }
+
+/* ------------------------------------------------------------ internal pages (history, downloads, settings) */
+.bp { max-width: 820px; margin: 0 auto; padding: 28px 28px 48px; display: flex; flex-direction: column; gap: 18px; }
+.bp-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bp-head h1 { margin: 0; font-size: 22px; font-weight: 700; flex: 1; }
+.bp-day { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 10px 0 4px; }
+.bp-list { display: flex; flex-direction: column; }
+.bp-item { display: flex; align-items: center; gap: 12px; padding: 0 8px; min-height: 44px; border-radius: var(--radius-s, 6px); }
+.bp-item:hover { background: var(--hover); }
+.bp-item .time { width: 64px; font-size: 12px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.bp-item .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; padding: 6px 0; border: none; background: none; text-align: left; color: var(--text); }
+.bp-item .main b { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-item .main small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-item .actions { display: flex; gap: 2px; opacity: 0; }
+.bp-item:hover .actions, .bp-item:focus-within .actions { opacity: 1; }
+.bp-empty { padding: 36px 8px; text-align: center; color: var(--muted); }
+.bp-dl-form { display: flex; gap: 8px; }
+.bp-dl-form .input { flex: 1; height: 38px; }
+.bp-dl-ico { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-2); }
+.bp-dl-ico.ok { color: var(--success); }
+.bp-dl-ico.err { color: var(--danger); }
+.bp-dl-ico .br-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: brSpin .7s linear infinite; }
+.bp-dl-item .actions { opacity: 1; }
+.bp-section { display: flex; flex-direction: column; gap: 8px; }
+.bp-section h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.bp-row { display: flex; align-items: center; gap: 16px; padding: 10px 8px; }
+.bp-row .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bp-row .txt b { font-size: 14px; font-weight: 500; }
+.bp-row .txt small { font-size: 12px; color: var(--muted); }
+.bp-engines { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.bp-engine { border: 2px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.bp-engine.on { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-ring); }
+.bp-engine img { width: 24px; height: 24px; }
+
+@media (max-width: 720px) {
+  #home { display: none; }
+  .bp-engines { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nt-brand { font-size: 32px; }
+}
+
+/* ------------------------------------------------------------ tabs in the window title bar */
+body.in-shell .br-tabs { height: 40px; padding-top: 6px; cursor: default; user-select: none; }
+
+/* ------------------------------------------------------------ new tab page: dotted pattern fading behind the search */
+.nt { position: relative; isolation: isolate; }
+.nt::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--text) 22%, transparent) 1px, transparent 1.4px);
+  background-size: 16px 16px;
+  -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 38%, transparent 0%, rgba(0,0,0,.25) 45%, #000 85%);
+  mask-image: radial-gradient(ellipse 60% 55% at 50% 38%, transparent 0%, rgba(0,0,0,.25) 45%, #000 85%);
+}
+
+/* ------------------------------------------------------------ smoother page loads */
+.br-frame.pending { visibility: hidden; }
+.br-blank { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--surface); }
+.br-spin.big { width: 28px; height: 28px; border-width: 3px; border-radius: 50%; border-style: solid; border-color: var(--line-strong); border-top-color: var(--accent); animation: brSpin .8s linear infinite; }
+
+/* ------------------------------------------------------------ tab animations and reordering */
+.br-tab.enter { animation: tabIn .18s cubic-bezier(.2, .9, .3, 1) both; }
+.br-tab.leave { animation: tabOut .17s ease-in both; pointer-events: none; }
+@keyframes tabIn { from { max-width: 0; min-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } to { max-width: 230px; opacity: 1; } }
+@keyframes tabOut { from { max-width: 230px; opacity: 1; } to { max-width: 0; min-width: 0; opacity: 0; padding-left: 0; padding-right: 0; } }
+.br-tab.dragging { opacity: .45; }
+.br-tab { transition: background .12s; }
+
+/* ------------------------------------------------------------ sites that refuse to load in a frame */
+.br-blocked { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 32px 16px; background: var(--surface); }
+.br-blocked-card { max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.br-blocked-card > .br-blocked-ico, .br-blocked-card > .letter { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; }
+.br-blocked-card > .letter { display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; font-weight: 700; }
+.br-blocked-card h1 { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.br-blocked-card p { margin: 0; color: var(--muted); font-size: 14px; }
+.br-blocked-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.br-blocked-actions .btn { display: inline-flex; align-items: center; gap: 8px; }
+.br-blocked-tip { margin-top: 10px !important; font-size: 12px !important; color: var(--faint) !important; }
+
+/* a file opened in a tab (video, picture, PDF, download link): preview and Save buttons, never the computer's viewer */
+.br-file { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px 16px; background: var(--surface); text-align: center; }
+.br-file-preview { max-width: min(880px, 100%); display: flex; justify-content: center; }
+.br-file-media { display: block; max-width: 100%; max-height: calc(100vh - 280px); border-radius: var(--radius); background: #000; }
+img.br-file-media { background: transparent; }
+.br-file-audio { width: min(420px, 100%); }
+.br-file-ico { width: 72px; height: 72px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-2); }
+.br-file-info h1 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.br-file-info p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.br-file-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+/* Downloads: separate quiet rows (a filled surface, no borders), the name opens the file, icon actions at the right */
+.bp.dl { gap: 0; }
+.dl .bp-head { margin-bottom: 6px; }
+.dl .bp-head h1 { flex: 0 1 auto; }
+.dl-search { flex: 1; max-width: 360px; margin: 0 auto; }
+.dl .bp-day { margin: 14px 0 6px; }
+.dl-item { display: flex; align-items: center; gap: 16px; padding: 14px 10px 14px 18px; margin-bottom: 8px; border-radius: var(--radius); background: var(--surface-2); }
+.dl-file { display: inline-flex; flex-shrink: 0; }
+.dl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.dl-name { max-width: 100%; padding: 0; border: none; background: none; font: inherit; font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+button.dl-name { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.dl-name.failed { text-decoration: line-through; color: var(--muted); }
+.dl-main small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.dl-main .btn-sm { margin-top: 4px; }
+.dl-bar { position: relative; width: 100%; max-width: 320px; height: 3px; margin-top: 4px; border-radius: 2px; overflow: hidden; background: var(--line); }
+.dl-bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: 2px; background: var(--accent); animation: dlBar 1.2s ease-in-out infinite; }
+@keyframes dlBar { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+.dl-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.dl-bar.known::after { width: var(--p, 0%); animation: none; transition: width .2s linear; }
+@media (prefers-reduced-motion: reduce) { .dl-bar:not(.known)::after { animation: none; width: 100%; opacity: .5; } }
+.dl-file .ico { width: 28px; height: 28px; }
+.br-file-ico .ico { width: 40px; height: 40px; }

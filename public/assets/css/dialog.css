@@ -1,0 +1,39 @@
+/* LiteOS system dialog — the one dialog look for the shell and every app. Standard: docs/ui-dialogs.md.
+   Markup: <dialog class="dlg"> <h2 class="dlg-title"> <div|p class="dlg-body"> <div class="dlg-actions"> buttons </div> */
+.dlg {
+  width: 400px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px);
+  padding: 0; margin: auto; border: 1px solid var(--dlg-line); border-radius: var(--radius);
+  background: var(--dlg-bg); color: var(--text); box-shadow: var(--dlg-shadow);
+  font: 13px/1.45 var(--font); flex-direction: column; overflow: hidden;
+  animation: dlgIn .12s ease-out;
+}
+.dlg[open] { display: flex; }
+.dlg > form { display: contents; }
+.dlg::backdrop { background: var(--dlg-backdrop); }
+@keyframes dlgIn { from { opacity: 0; transform: scale(.98); } }
+
+.dlg-title { margin: 0; padding: 20px 24px 0; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+.dlg-body { margin: 0; padding: 8px 24px 0; display: flex; flex-direction: column; gap: 12px; color: var(--text-2); overflow: auto; overflow-wrap: anywhere; }
+p.dlg-body { display: block; white-space: pre-line; }
+.dlg-body:empty { display: none; }
+
+/* Action row: right-aligned, no band of its own; secondary buttons first, the default one last. */
+.dlg-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 20px 24px 20px; }
+.dlg-actions .btn:not(.is-default):not(.btn-danger) { background: var(--dlg-btn); }
+.dlg-actions .btn:not(.is-default):not(.btn-danger):not(.btn-danger-text):hover { background: color-mix(in srgb, var(--dlg-btn), var(--text) 6%); }
+.dlg-actions .btn { min-width: 88px; height: 32px; padding: 0 14px; border-radius: var(--radius-s); font-weight: 500; }
+
+/* Default button: the one Enter presses. Accent fill with its own text colour. */
+.btn.is-default { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.is-default:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+.btn.is-default:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Destructive action when Cancel is the default: a normal button with danger text. */
+.btn.btn-danger-text { color: var(--danger-ink); }
+.dlg-actions .btn.btn-danger-text:hover, .btn.btn-danger-text:hover { background: var(--danger-soft); border-color: var(--danger-line); }
+/* Solid danger (only when the destructive action itself is the default): solid fill, its own text colour, solid on hover. */
+.btn.btn-danger, .btn.btn-danger:hover { color: var(--on-danger); font-weight: 600; }
+.btn.btn-danger { background: var(--danger); border-color: var(--danger); }
+.btn.btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+
+:root[data-contrast="dark"] .btn.is-default { color: #000; }
+.dlg-wide { width: 480px; }

@@ -1,0 +1,51 @@
+{
+  "id": "code",
+  "name": "Code",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Edit code and text files with a live preview.",
+  "author": "LiteOS",
+  "category": "Developer",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "code",
+  "colors": [
+    "#4A4F59",
+    "#22252B"
+  ],
+  "opens": [
+    "txt",
+    "md",
+    "html",
+    "htm",
+    "css",
+    "js",
+    "mjs",
+    "json",
+    "php",
+    "py",
+    "xml",
+    "ini",
+    "log",
+    "sh",
+    "ts",
+    "yml",
+    "yaml",
+    "sql",
+    "c",
+    "cpp",
+    "h",
+    "java"
+  ],
+  "window": {
+    "size": [
+      1100,
+      700
+    ],
+    "chrome": "standard",
+    "single": false
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

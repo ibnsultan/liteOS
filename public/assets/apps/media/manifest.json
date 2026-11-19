@@ -1,0 +1,51 @@
+{
+  "id": "media",
+  "name": "Media",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Photos, music, videos and live TV.",
+  "author": "LiteOS",
+  "category": "Media",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "media",
+  "colors": [
+    "#F0679A",
+    "#C9306B"
+  ],
+  "opens": [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "bmp",
+    "svg",
+    "mp4",
+    "webm",
+    "ogv",
+    "mov",
+    "m4v",
+    "mp3",
+    "wav",
+    "ogg",
+    "oga",
+    "m4a",
+    "flac",
+    "aac",
+    "m3u",
+    "m3u8"
+  ],
+  "window": {
+    "size": [
+      1040,
+      660
+    ],
+    "chrome": "custom",
+    "single": false
+  },
+  "permissions": [
+    "files.drive",
+    "media.stream"
+  ]
+}

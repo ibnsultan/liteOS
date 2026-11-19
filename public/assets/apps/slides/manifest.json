@@ -1,0 +1,30 @@
+{
+  "id": "slides",
+  "name": "Slides",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Build and present slide decks.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "slides",
+  "colors": [
+    "#F79443",
+    "#DD630A"
+  ],
+  "opens": [
+    "lslides"
+  ],
+  "window": {
+    "size": [
+      1100,
+      700
+    ],
+    "chrome": "standard",
+    "single": false
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

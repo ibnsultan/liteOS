@@ -1,0 +1,60 @@
+/* LiteOS accessibility modes — driven by data attributes on <html>, set by the shell and the app SDK. */
+
+/* ------------------------------------------------------------ contrast themes */
+:root[data-contrast="dark"] {
+  --bg: #000; --surface: #000; --surface-2: #000; --surface-3: #1A1A1A; --hover: rgba(255, 230, 0, 0.18);
+  --line: #FFFFFF; --line-strong: #FFFFFF; --text: #FFFFFF; --text-2: #FFFFFF; --muted: #F0F0F0; --faint: #E0E0E0; --disabled: #A0A0A0;
+  --accent-ink: #FFE600; --accent-soft: rgba(255, 230, 0, 0.22); --accent-ring: rgba(255, 230, 0, 0.45);
+  --success: #5BFF9B; --danger: #FF6B6B; --danger-ink: #FF8A8A; --warning: #FFD34D;
+  --glass: #000; --glass-strong: #000; --glass-border: #FFFFFF;
+  --shadow-1: none; --shadow-2: none; --shadow-3: none;
+  color-scheme: dark;
+}
+:root[data-contrast="light"] {
+  --bg: #FFF; --surface: #FFF; --surface-2: #FFF; --surface-3: #EDEDED; --hover: rgba(0, 0, 200, 0.12);
+  --line: #000; --line-strong: #000; --text: #000; --text-2: #000; --muted: #1A1A1A; --faint: #2A2A2A; --disabled: #5A5A5A;
+  --accent-ink: #00009C; --accent-soft: rgba(0, 0, 200, 0.12); --accent-ring: rgba(0, 0, 200, 0.4);
+  --success: #006B2E; --danger: #B00000; --danger-ink: #B00000; --warning: #7A4A00;
+  --glass: #FFF; --glass-strong: #FFF; --glass-border: #000;
+  --shadow-1: none; --shadow-2: none; --shadow-3: none;
+  color-scheme: light;
+}
+/* Yellow accent in dark contrast: text sitting on the accent must be black. */
+:root[data-contrast="dark"] .btn-primary, :root[data-contrast="dark"] .qtile.on, :root[data-contrast="dark"] .g-go,
+:root[data-contrast="dark"] .nav-item.active, :root[data-contrast="dark"] .menu-item:hover { color: #000 !important; }
+:root[data-contrast="dark"] .nav-item.active { background: #FFE600 !important; }
+:root[data-contrast]:not([data-contrast="off"]) :is(.btn, .input, .select, .card, .box, .menu, .pop, .win, .toast) { border-color: var(--line) !important; }
+:root[data-contrast]:not([data-contrast="off"]) a { text-decoration: underline; }
+:root[data-contrast]:not([data-contrast="off"]) :is(.glass, .pop, .menu, .toast) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+
+/* ------------------------------------------------------------ reduce motion */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0.001s !important; animation-iteration-count: 1 !important; animation-delay: 0s !important;
+  transition-duration: 0.001s !important; scroll-behavior: auto !important;
+}
+
+/* ------------------------------------------------------------ stronger keyboard focus */
+:root[data-focus="strong"] :focus-visible {
+  outline: 3px solid var(--accent) !important; outline-offset: 3px !important;
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 30%, transparent) !important;
+}
+
+/* ------------------------------------------------------------ text cursor colour */
+:root[data-caret] :is(input, textarea, [contenteditable], [contenteditable] *) { caret-color: var(--caret); }
+
+/* ------------------------------------------------------------ larger mouse pointer */
+:root[data-cursor="large"], :root[data-cursor="large"] * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 24 24'><path d='M4 2.5l14 9.2-6.4 1.4L8.8 19z' fill='black' stroke='white' stroke-width='1.6' stroke-linejoin='round'/></svg>") 6 4, auto !important;
+}
+:root[data-cursor="larger"], :root[data-cursor="larger"] * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 24 24'><path d='M4 2.5l14 9.2-6.4 1.4L8.8 19z' fill='black' stroke='white' stroke-width='1.6' stroke-linejoin='round'/></svg>") 9 5, auto !important;
+}
+:root[data-cursor="large"] :is(input, textarea, [contenteditable]), :root[data-cursor="larger"] :is(input, textarea, [contenteditable]) { cursor: text !important; }
+
+/* ------------------------------------------------------------ caption size (videos) */
+:root[data-captions="small"] video::cue { font-size: 80%; }
+:root[data-captions="large"] video::cue { font-size: 150%; background: rgba(0, 0, 0, 0.85); }
+
+/* ------------------------------------------------------------ notification screen flash */
+.a11y-flash { position: fixed; inset: 0; background: #fff; pointer-events: none; z-index: 100000; animation: a11yFlash .5s ease-out forwards; }
+@keyframes a11yFlash { from { opacity: .55; } to { opacity: 0; } }

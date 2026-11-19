@@ -1,0 +1,35 @@
+{
+  "id": "sheets",
+  "name": "Sheets",
+  "version": "2.0.0",
+  "sdk": "^1.0",
+  "summary": "Spreadsheets with formulas; opens and saves Excel workbooks and CSV files.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "sheet",
+  "colors": [
+    "#3DBB7E",
+    "#1A8A54"
+  ],
+  "opens": [
+    "lsheet",
+    "xlsx",
+    "xlsm",
+    "ods",
+    "csv",
+    "tsv"
+  ],
+  "window": {
+    "size": [
+      1080,
+      700
+    ],
+    "chrome": "custom",
+    "single": false
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "documents",
+  "name": "Documents",
+  "version": "0.1.0",
+  "sdk": "^1.0",
+  "summary": "Write documents with real pages.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "doc",
+  "colors": ["#5B93EA", "#2F6FD6"],
+  "opens": ["ldoc", "docx"],
+  "window": { "size": [1040, 720], "chrome": "custom", "single": false },
+  "permissions": ["files.pick"]
+}

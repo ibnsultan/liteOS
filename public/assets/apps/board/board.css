@@ -1,0 +1,67 @@
+/* Whiteboard app */
+:root {
+  /* The board itself stays white in both themes (it is "paper"). */
+  --wb-paper: #FFFFFF;
+  --wb-grid: #C9D0DA;
+  --wb-rule: #DCE3EC;
+  --wb-margin: #F2B8BE;
+}
+
+.wb-toolbar { gap: 6px; }
+.wb-stage { position: relative; overflow: hidden; background: var(--wb-paper); touch-action: none; }
+.wb-stage canvas { position: absolute; left: 0; top: 0; display: block; }
+#liveCanvas { cursor: crosshair; touch-action: none; }
+.wb-stage.tool-text #liveCanvas { cursor: text; }
+.wb-stage.tool-eraser #liveCanvas { cursor: none; }
+
+.wb-cursor {
+  position: absolute; pointer-events: none; border-radius: 50%; border: 1.5px solid var(--text-2);
+  box-shadow: 0 0 0 1px var(--surface); transform: translate(-50%, -50%); z-index: 4;
+}
+
+/* Floating panels */
+.wb-float {
+  position: absolute; z-index: 5; background: var(--glass-strong); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l); box-shadow: var(--shadow-2);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+.wb-palette { left: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.wb-palette .icon-btn { width: 36px; height: 36px; border-radius: var(--radius); }
+.wb-hsep { height: 1px; background: var(--line-strong); margin: 4px 4px; }
+.wb-props {
+  left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px 10px;
+  max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none;
+}
+.wb-props::-webkit-scrollbar { display: none; }
+.wb-swatches { display: flex; gap: 4px; }
+.wb-swatch {
+  width: 24px; height: 24px; border-radius: 12px; border: 2px solid var(--surface); cursor: pointer; padding: 0; flex-shrink: 0;
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.wb-swatch.active { box-shadow: 0 0 0 2px var(--accent); }
+.wb-custom {
+  width: 26px; height: 26px; border-radius: 13px; overflow: hidden; position: relative; flex-shrink: 0; cursor: pointer;
+  box-shadow: 0 0 0 1px var(--line-strong);
+  background: conic-gradient(from 0deg, #F05252, #F2C94C, #3DBB7E, #3FB3D1, #5B6CF0, #C34FD6, #F05252);
+}
+.wb-custom.active { box-shadow: 0 0 0 2px var(--accent); }
+.wb-custom input { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.wb-sizes { display: flex; gap: 2px; }
+.wb-size { width: 30px; height: 30px; border-radius: var(--radius-s); border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
+.wb-size:hover { background: var(--hover); }
+.wb-size.active { background: var(--accent-soft); color: var(--accent-ink); }
+.wb-size i { display: block; border-radius: 50%; background: currentColor; }
+.wb-fill[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.wb-props .sep { margin: 0 4px; }
+
+/* Text entry */
+.wb-text {
+  position: absolute; z-index: 6; min-width: 40px; padding: 0 2px; margin: 0; border: 1px dashed var(--accent);
+  background: transparent; outline: none; font-family: var(--font); line-height: 1.2; border-radius: 2px;
+}
+
+@media (max-width: 700px) {
+  .wb-hide-narrow { display: none; }
+  .wb-palette { top: 12px; transform: none; }
+  .wb-palette .icon-btn { width: 32px; height: 32px; }
+}

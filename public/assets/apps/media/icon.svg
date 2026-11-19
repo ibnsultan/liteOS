@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><filter id="ds" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="1.4" stdDeviation="1.2" flood-color="#0A1E46" flood-opacity=".22"/></filter><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8FD0FF"/><stop offset="1" stop-color="#E4F4FF"/></linearGradient></defs><g transform="translate(1.25 -4.25) translate(32 32) scale(1.14) translate(-32 -32)">
+<g transform="rotate(-9 28 33)" filter="url(#ds)"><rect x="7" y="15" width="38" height="31" rx="3.5" fill="#FCE7EF" stroke="#E07FA5" stroke-width="1.6"/></g>
+<g filter="url(#ds)"><rect x="15" y="13" width="41" height="34" rx="3.5" fill="#fff" stroke="#A9B4C5" stroke-width="1.8"/></g>
+<rect x="18.5" y="16.5" width="34" height="24" rx="2" fill="url(#sky)"/>
+<circle cx="45" cy="23" r="3.6" fill="#FFC94A"/>
+<path d="M18.5 38l10-10.5 8 8 4.5-4.5 11.5 8v1.5a2 2 0 0 1-2 2H20.5a2 2 0 0 1-2-2z" fill="#3FA56A"/>
+<circle cx="46" cy="48" r="10" fill="#C9306B" stroke="#fff" stroke-width="2.4"/>
+<path d="M43.3 43.8v8.4l6.7-4.2z" fill="#fff"/></g></svg>

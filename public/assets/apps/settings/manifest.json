@@ -1,0 +1,27 @@
+{
+  "id": "settings",
+  "name": "Settings",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Personalise LiteOS and manage accounts.",
+  "author": "LiteOS",
+  "category": "System",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "settings",
+  "colors": [
+    "#8C929C",
+    "#5A606B"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      1000,
+      680
+    ],
+    "chrome": "standard",
+    "single": true
+  },
+  "permissions": [],
+  "system": true
+}

@@ -1,0 +1,17 @@
+/* Popup menus (public/assets/js/menu.js): the parts the desktop and the apps share. Base look: os.css and app.css. */
+.menu { min-width: 220px; }
+.menu-sub { position: fixed; z-index: 9501; }
+.menu-item { white-space: nowrap; }
+.menu-item:disabled { opacity: .45; cursor: default; }
+.menu-item:disabled:hover { background: transparent; color: var(--text); }
+.menu-item:focus-visible { outline: none; background: var(--accent-soft); color: var(--accent-ink); }
+.menu-item.open { background: var(--hover, rgba(127,127,127,.12)); }
+.menu-item .mi-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-item .key { margin-left: 24px; font-size: 11px; color: var(--faint); }
+.menu-item .mi-blank { width: 15px; flex-shrink: 0; }
+.menu-item .mi-more { margin-left: 16px; display: flex; color: var(--muted); }
+.menu-item .mi-mark { width: 8px; flex-shrink: 0; display: flex; justify-content: center; margin-right: -2px; }
+.menu-item .mi-mark i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+/* system icons from the icon set are pictures: they dim with a disabled item instead of taking its colour */
+.menu-item img.sysico { width: 16px; height: 16px; object-fit: contain; }
+.menu-item:disabled img.sysico, .menu-item:disabled .mi-img { opacity: .45; }

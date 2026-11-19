@@ -1,0 +1,32 @@
+{
+  "id": "browser",
+  "name": "Browser",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Browse the web in tabs.",
+  "author": "LiteOS",
+  "category": "Internet",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "globe",
+  "colors": [
+    "#3FB3D1",
+    "#0E7FA0"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      1100,
+      720
+    ],
+    "chrome": "custom",
+    "single": false
+  },
+  "permissions": [
+    "net.fetch",
+    "files.folder"
+  ],
+  "folders": [
+    "/Downloads"
+  ]
+}

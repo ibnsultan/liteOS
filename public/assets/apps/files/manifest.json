@@ -1,0 +1,29 @@
+{
+  "id": "files",
+  "name": "Files",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Browse, organise and share everything on your drive.",
+  "author": "LiteOS",
+  "category": "System",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "folder",
+  "colors": [
+    "#F6BE55",
+    "#DC8B16"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      980,
+      620
+    ],
+    "chrome": "standard",
+    "single": false
+  },
+  "permissions": [
+    "files.drive"
+  ],
+  "system": true
+}
