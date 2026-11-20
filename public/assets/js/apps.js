@@ -55,6 +55,22 @@
     return window.LOS_APPS.find((a) => a.exts.includes(ext)) || null;
   };
 
+  /**
+   * Whether a folder or file gets an "Open with Code" item in Files and on the desktop: every folder, and text or code
+   * files that open in another app by default (a file Code already opens needs no second item next to Open).
+   */
+  window.LOS_opensWithCode = function (name, isDir) {
+    const code = window.LOS_app('code');
+    if (!code) return false;
+    if (isDir) return true;
+    const n = String(name);
+    if (!n.includes('.')) return false;
+    const ext = n.split('.').pop().toLowerCase();
+    const textual = code.exts.concat((window.LOS_KINDS && window.LOS_KINDS.text) || [], ['svg', 'csv', 'tsv']);
+    const def = window.LOS_appForFile(n);
+    return textual.includes(ext) && !(def && def.id === 'code');
+  };
+
   /** A file entry's icon from the system icon set: a folder, or the file type by extension. */
   // the drive's own top-level folders have their own pictures, as in Explorer
   const SPECIAL_DIRS = { '/Desktop': 'place.desktop', '/Documents': 'place.documents', '/Downloads': 'place.downloads', '/Pictures': 'place.pictures', '/Music': 'place.music', '/Videos': 'place.videos' };

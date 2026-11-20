@@ -777,6 +777,7 @@
     const path = btn.dataset.file;
     showMenu([
       { label: 'Open', icon: 'forward', action: () => openDeskIcon(btn) },
+      ...(window.LOS_opensWithCode(path, btn.dataset.type === 'dir') ? [{ label: 'Open with Code', icon: 'code', action: () => openApp('code', btn.dataset.type === 'dir' ? { folder: path } : { path }) }] : []),
       { label: 'Show in Files', icon: 'folder', action: () => openApp('files', { path: '/Desktop', select: path }) },
       'sep',
       { label: 'Rename', icon: 'rename', action: async () => {

@@ -479,6 +479,7 @@ LiteOS.ready((OS) => {
     if (e.type === 'file' && !multi) items.push({ label: 'Open with…', icon: 'apps', action: () => openWithMenu(e, at) });
     if (e.pin) { folderMenu(e.path, at); return; }
     if (e.type === 'dir' && !multi) items.push({ label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) }, pinItem(e.path));
+    if (!multi && window.LOS_opensWithCode(e.name, e.type === 'dir')) items.push({ label: 'Open with Code', icon: 'code', action: () => OS.open('code', e.type === 'dir' ? { folder: e.path } : { path: e.path }) });
     if (mode() !== 'folder') items.push({ label: 'Show in folder', icon: 'folder', action: async () => { await load(util.dirname(e.path)); select([e.path]); } });
     items.push('sep',
       { label: 'Cut', icon: 'cut', key: 'Ctrl+X', action: () => { clip.set({ mode: 'cut', paths: [...st.sel] }); render(); } },
@@ -543,7 +544,7 @@ LiteOS.ready((OS) => {
       'sep',
       { label: 'New', icon: 'plus', items: newItems() },
       { label: 'Upload files', icon: 'upload', action: () => $('#upload').click() },
-    ], at);
+    ].concat(window.LOS_opensWithCode(st.path, true) ? ['sep', { label: 'Open with Code', icon: 'code', action: () => OS.open('code', { folder: st.path }) }] : []), at);
   }
 
   // View and Sort by, as submenus (the background menu) and on their own (toolbar buttons)
