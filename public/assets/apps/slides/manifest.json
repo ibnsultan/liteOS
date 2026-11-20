@@ -1,30 +1,16 @@
 {
   "id": "slides",
   "name": "Slides",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "sdk": "^1.0",
-  "summary": "Build and present slide decks.",
+  "summary": "Build and present slide decks; opens PowerPoint, PowerPoint 97–2003 and OpenDocument presentations, and saves PowerPoint.",
   "author": "LiteOS",
   "category": "Productivity",
   "entry": "index.html",
   "icon": "icon.svg",
   "glyph": "slides",
-  "colors": [
-    "#F79443",
-    "#DD630A"
-  ],
-  "opens": [
-    "lslides"
-  ],
-  "window": {
-    "size": [
-      1100,
-      700
-    ],
-    "chrome": "standard",
-    "single": false
-  },
-  "permissions": [
-    "files.pick"
-  ]
+  "colors": ["#F79443", "#DD630A"],
+  "opens": ["pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "ppt", "pps", "pot", "odp", "otp", "lslides"],
+  "window": { "size": [1100, 720], "chrome": "custom", "single": false, "reportsReady": true },
+  "permissions": ["files.pick"]
 }
