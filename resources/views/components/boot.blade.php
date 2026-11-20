@@ -43,3 +43,6 @@
   </svg>
   <div class="boot-msg"></div>
 </div>
+{{-- the motion is picked before the first paint: after the first page of a visit (sign-in -> desktop) the kite waits in
+     its shimmer motion instead of starting to draw and then jumping to the shimmer when the scripts catch up --}}
+<script>try { if (sessionStorage.getItem('los_booted') === '1') document.getElementById('boot').classList.add('shimmer'); } catch (e) {}</script>

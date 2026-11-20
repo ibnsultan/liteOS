@@ -5,7 +5,7 @@
 .boot.gone { display: none; }
 .boot-kite { width: 150px; height: 150px; overflow: visible; }
 .boot-msg { min-height: 20px; font: 500 14px/1.4 "Inter", "Segoe UI", system-ui, sans-serif; color: rgba(242, 245, 250, .85); letter-spacing: .01em; opacity: 0; transition: opacity .6s ease; }
-.boot.shimmer .boot-msg { opacity: .9; }
+.boot.shimmer .boot-msg, .boot.busy .boot-msg { opacity: .9; }
 
 /* Stroke reveal (pathLength = 1). Timeline compressed from 5.2 s to 2.6 s. */
 .boot .s { fill: none; stroke: #fff; stroke-width: 48; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: bootDraw var(--d) cubic-bezier(.55, .05, .25, 1) var(--t) both; }

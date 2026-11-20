@@ -130,8 +130,42 @@
     // setup and signing in are pages of their own (resources/views/auth); this page is only served signed in
     if (!S.user) { location.assign(window.LOS_BASE + (S.setupNeeded ? 'setup' : 'login')); return; }
     applyTheme();
-    startDesktop(!!window.LOS_CONFIG.welcome);
+    prepareDesktop(!!window.LOS_CONFIG.welcome);
+  }
+
+  // The boot screen is also the waiting room: the desktop is built behind it with the user's data already in hand
+  // (what's on the desktop, recent files, storage), then it waits for the wallpaper, the icons and the fonts, so
+  // nothing pops in or moves once it fades. Each wait has a cap, so a slow request never keeps the user out.
+  const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+  const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // loaded, not decode(): a page in the background never finishes decode(), and loading is the slow part anyway
+  const loaded = (img) => (img.complete ? null : new Promise((r) => { img.addEventListener('load', r, { once: true }); img.addEventListener('error', r, { once: true }); }));
+  const imagesReady = (scope) => Promise.all($$('img', scope).map(loaded));
+  function wallpaperReady() {
+    const m = /url\(["']?([^"')]+)["']?\)/.exec(wallpaperCss());
+    if (!m) return null;
+    const img = new Image();
+    img.src = m[1];
+    return loaded(img);
+  }
+  async function prepareDesktop(firstRun) {
+    const b = document.getElementById('boot');
+    const say = (m) => { const el = b && b.querySelector('.boot-msg'); if (el) el.textContent = m; };
+    if (b) b.classList.add('busy');
+    // (whether the kite draws or shimmers is decided in the page itself, before the first paint: components/boot)
+    say('Welcome, ' + (S.user.name || S.user.username).split(' ')[0]);
+    const wall = wallpaperReady();
+    await capped(Promise.allSettled([
+      readDeskFiles().then((l) => { deskFiles = l; }),
+      api('fs.recent').then((r) => { UI.recent = r; recentCache = { at: Date.now(), list: r }; }),
+      api('fs.usage').then((u) => { UI.usage = u; }),
+    ]), 6000);
+    say('Setting up your desktop');
+    startDesktop(false, true);
+    await capped(Promise.all([wall, imagesReady(root), document.fonts && document.fonts.ready]), 4000);
+    await capped(nextFrame(), 120); // a hidden tab draws no frames
     bootDone();
+    if (firstRun) setTimeout(() => notify('Open the launcher to find your apps.', { type: 'success', title: 'Welcome to LiteOS' }), 500);
   }
 
   // ------------------------------------------------------------------ boot screen
@@ -239,12 +273,12 @@
   // ================================================================== desktop
   let clockTimer = null;
 
-  function startDesktop(firstRun) {
+  function startDesktop(firstRun, preloaded) {
     root.innerHTML =
       '<div class="wall" data-act="wall"></div><div class="desk-icons" role="list" aria-label="Desktop"></div><div class="windows"></div><div id="bars"></div><div id="pops"></div>' +
       '<div class="toasts" aria-live="polite"></div>';
     applySettings();
-    loadDeskFiles();
+    if (!preloaded) loadDeskFiles();
     if (!clockTimer) clockTimer = setInterval(() => tickClock(document), 10000);
     if (firstRun) {
       notify('Open the launcher to find your apps.', { type: 'success', title: 'Welcome to LiteOS' });
@@ -302,12 +336,15 @@
   // ------------------------------------------------------------------ desktop icons
   // The shortcuts the user chose in Settings › Personalisation › Desktop icons, then what is in the Desktop folder.
   let deskFiles = [];
-  async function loadDeskFiles() {
-    if (!S.user) return;
+  async function readDeskFiles() {
     let list = [];
     try { list = await api('fs.list', undefined, { path: '/Desktop' }); } catch (e) { list = []; } // no Desktop folder yet
     list = (Array.isArray(list) ? list : []).filter((f) => f && f.name && !f.name.startsWith('.'));
-    list.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return list.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }
+  async function loadDeskFiles() {
+    if (!S.user) return;
+    const list = await readDeskFiles();
     const key = (l) => l.map((f) => f.path + '|' + f.type).join('\n');
     if (key(list) === key(deskFiles)) return;
     deskFiles = list;
