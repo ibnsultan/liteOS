@@ -43,11 +43,39 @@
   --shadow-1: 0 1px 3px rgba(16, 32, 64, 0.12);
   --shadow-2: 0 8px 24px rgba(16, 32, 64, 0.16);
   --shadow-3: 0 24px 60px rgba(10, 30, 70, 0.28);
+  /* the shell's own surfaces */
+  --shadow-tile: 0 3px 8px rgba(10, 30, 70, 0.2);            /* app tiles in the dock and launcher */
+  --shadow-float: 0 14px 38px rgba(10, 30, 70, 0.24);        /* the floating dock, window previews */
+  --shadow-win: 0 24px 60px rgba(10, 30, 70, 0.22), 0 0 0 1px rgba(16, 32, 64, 0.10);
+  --shadow-win-focus: 0 28px 70px rgba(10, 30, 70, 0.32), 0 0 0 1px rgba(16, 32, 64, 0.14);
+  --edge: rgba(16, 32, 64, 0.06);                            /* hairline under the top bar, over the taskbar */
+  --accent-shadow: color-mix(in srgb, var(--accent) 35%, transparent);
+  --tip-bg: #16171A;
+  --tip-text: #FFFFFF;
 
-  --radius-s: 6px;
-  --radius: 8px;
-  --radius-l: 12px;
-  --radius-xl: 16px;
+  /* corners: small controls → panels; full makes a pill or a circle */
+  --radius-s: 2px;
+  --radius: 4px;
+  --radius-m: 6px;
+  --radius-l: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 14px;
+  --radius-full: 999px;
+
+  /* type sizes */
+  --fs-xs: 11px;
+  --fs-s: 12px;
+  --fs-m: 13px;
+  --fs-l: 14px;
+
+  /* motion */
+  --dur-fast: .12s;
+  --dur: .16s;
+  --dur-slow: .22s;
+  --ease: ease;
+  --ease-out: ease-out;
+  --ease-in: ease-in;
 
   --font: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
@@ -89,6 +117,13 @@
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.4);
   --shadow-3: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --shadow-tile: 0 3px 8px rgba(0, 0, 0, 0.35);
+  --shadow-float: 0 14px 38px rgba(0, 0, 0, 0.45);
+  --shadow-win: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-win-focus: 0 28px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --edge: rgba(0, 0, 0, 0.3);
+  --tip-bg: #323844;
+  --tip-text: #ECEFF4;
   color-scheme: dark;
 }
 

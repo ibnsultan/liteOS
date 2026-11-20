@@ -255,7 +255,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .nt-actions .btn { flex: 1; min-width: 0; height: 32px; justify-content: center; }
 
 /* ------------------------------------------------------------ windows with a custom title bar (app draws it; shell keeps the controls) */
-.win-custom .win-bar { position: absolute; top: 0; right: 0; left: auto; z-index: 3; height: 40px; padding: 0 6px; gap: 2px; background: transparent; border: none; pointer-events: none; }
+.win-custom .win-bar { position: absolute; top: 0; right: 0; left: auto; z-index: 3; height: 40px; padding: 0; gap: 10px; background: transparent; border: none; pointer-events: none; }
 .win-custom .win-bar > :not(.ctl) { display: none; }
 .win-custom .win-bar .ctl { pointer-events: auto; color: var(--text-2); }
 .win-custom.max .win-bar { height: 38px; }
