@@ -11,6 +11,6 @@
   "glyph": "doc",
   "colors": ["#5B93EA", "#2F6FD6"],
   "opens": ["ldoc", "docx"],
-  "window": { "size": [1040, 720], "chrome": "custom", "single": false },
+  "window": { "size": [1040, 720], "chrome": "custom", "single": false, "reportsReady": true },
   "permissions": ["files.pick"]
 }
