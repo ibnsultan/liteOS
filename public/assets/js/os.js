@@ -344,7 +344,7 @@
     return list.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   }
   async function loadDeskFiles() {
-    if (!S.user) return;
+    if (!S.user || deskPending) return; // an icon is being made and named: its own code reloads when done
     const list = await readDeskFiles();
     const key = (l) => l.map((f) => f.path + '|' + f.type).join('\n');
     if (key(list) === key(deskFiles)) return;
@@ -395,20 +395,141 @@
     { label: 'Presentation', ext: 'lslides', name: 'Untitled presentation', app: 'slides' },
     { label: 'Text file', ext: 'txt', name: 'New text file', app: 'code' },
   ];
-  async function deskNew(t) {
-    try {
-      if (!t) {
-        const name = await promptDialog({ title: 'New folder', label: 'Folder name', value: 'New folder', okLabel: 'Create' });
-        if (!name || !name.trim()) return;
-        await api('fs.mkdir', { path: join('/Desktop', name.trim()) });
-      } else {
-        for (let i = 1; ; i++) {
-          const path = join('/Desktop', t.name + (i > 1 ? ' ' + i : '') + '.' + t.ext);
-          try { await api('fs.write', { path, content: '', overwrite: false }); break; } catch (e) { if (!/exists/i.test(e.message) || i > 50) throw e; }
-        }
+  // As in Explorer, a new item is made at once with a default name ("New folder", "New folder (2)"…), placed where the
+  // desktop was right-clicked, and its name is open for typing over; Escape keeps the default.
+  // The icon shows at once, its picture shimmering while the server makes the item, and its name is open for typing
+  // straight away; the rename waits for the item to exist. Meanwhile the desktop isn't reloaded from the drive (that
+  // would drop the icon being named).
+  let deskPending = 0;
+  async function deskNew(t, at) {
+    const taken = new Set(deskFiles.map((f) => f.name.toLowerCase()));
+    let name = '';
+    for (let i = 1; i <= 50 && !name; i++) {
+      const n = t ? t.name + (i > 1 ? ' ' + i : '') + '.' + t.ext : 'New folder' + (i > 1 ? ' (' + i + ')' : '');
+      if (!taken.has(n.toLowerCase())) name = n;
+    }
+    if (!name) return;
+    const path = join('/Desktop', name);
+    if (at) deskPlaceAt(['file:' + path], at.x, at.y);
+    const entry = { name, path, type: t ? 'file' : 'dir', ext: t ? t.ext : '', size: 0, mtime: Date.now() / 1000, pending: true };
+    deskFiles = deskFiles.concat(entry);
+    deskPending++;
+    renderDesktopIcons();
+    const made = t ? api('fs.write', { path, content: '', overwrite: false }) : api('fs.mkdir', { path });
+    made.catch(() => {}); // handled below, once naming is done
+    const btn = $$('.desk-icon', root).find((b) => b.dataset.file === path);
+    const res = btn ? await deskRename(btn, { pending: made, entry }) : await made.then(() => ({ path }), (e) => ({ failed: e }));
+    deskPending--;
+    if (res && res.failed) {
+      deskFiles = deskFiles.filter((f) => f !== entry);
+      renderDesktopIcons();
+      notify(res.failed.message, { type: 'error', title: t ? 'Couldn\u2019t create file' : 'Couldn\u2019t create folder' });
+      return;
+    }
+    await loadDeskFiles();
+    filesChanged();
+    const nb = $$('.desk-icon', root).find((b) => b.dataset.file === ((res && res.path) || path));
+    if (nb) selectDeskIcon(nb);
+  }
+
+  /** Give icons (by layout key) the free cells nearest to a point on screen, kept in the desktop layout. */
+  function deskPlaceAt(keys, x, y) {
+    const g = deskGrid();
+    if (!g) return;
+    const br = g.box.getBoundingClientRect();
+    const c0 = Math.max(0, Math.min(g.cols - 1, Math.floor((x - br.left) / g.cw)));
+    const r0 = Math.max(0, Math.min(g.rows - 1, Math.floor((y - br.top) / g.ch)));
+    const layout = {};
+    $$('.desk-icon', g.box).forEach((b) => { layout[b.dataset.key] = [+b.dataset.col, +b.dataset.row]; });
+    const taken = new Set(Object.values(layout).map((v) => v[0] + ',' + v[1]));
+    keys.forEach((k, i) => {
+      const cell = freeCell(c0, Math.min(g.rows - 1, r0 + i), taken, g);
+      taken.add(cell[0] + ',' + cell[1]);
+      layout[k] = cell;
+    });
+    S.settings = Object.assign({}, set(), { deskLayout: layout });
+    saveSettings({ deskLayout: layout });
+  }
+
+  // Renaming in place, as in Explorer: the icon's name becomes an edit box over the label (the stem selected, so
+  // typing keeps the extension). Enter or a click elsewhere renames; Escape keeps the old name. The icon keeps its cell.
+  // A new item (opts.pending: the request making it) can be named before it exists: the rename waits for it. Resolves
+  // with { path } (where it ended up) or { failed } (the item couldn't be made).
+  function deskRename(btn, opts) {
+    opts = opts || {};
+    return new Promise((resolve) => deskRenameBox(btn, opts, resolve));
+  }
+  function deskRenameBox(btn, opts, resolve) {
+    const path = btn.dataset.file;
+    const label = btn && $('span', btn);
+    if (!path || !label || $('.desk-rename', root)) { resolve(opts.pending ? opts.pending.then(() => ({ path }), (e) => ({ failed: e })) : { path }); return; }
+    selectDeskIcon(btn);
+    const old = baseName(path);
+    const r = label.getBoundingClientRect();
+    const box = btn.getBoundingClientRect();
+    const ta = document.createElement('textarea');
+    ta.className = 'desk-rename';
+    ta.value = old;
+    ta.spellcheck = false;
+    ta.setAttribute('aria-label', 'Name');
+    Object.assign(ta.style, { left: (box.left - 4) + 'px', top: r.top - 2 + 'px', width: (box.width + 8) + 'px' });
+    root.appendChild(ta);
+    label.style.visibility = 'hidden';
+    const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'; };
+    fit();
+    ta.focus();
+    const dot = old.lastIndexOf('.');
+    ta.setSelectionRange(0, btn.dataset.type !== 'dir' && dot > 0 ? dot : old.length);
+    let done = false;
+    const finish = async (keep) => {
+      if (done) return;
+      done = true;
+      const name = ta.value.replace(/[\r\n]+/g, ' ').trim();
+      ta.remove();
+      label.style.visibility = '';
+      btn.focus({ preventScroll: true });
+      const bad = /[\/\\]/.test(name);
+      const wanted = keep || !name || name === old || bad ? '' : name;
+      if (opts.pending) {
+        // show the name typed while the item is still being made, then wait for it
+        if (opts.entry && wanted) { opts.entry.shown = wanted; renderDesktopIcons(); }
+        try { await opts.pending; } catch (e) { resolve({ failed: e }); return; }
       }
-      deskFilesChanged();
-    } catch (e) { notify(e.message, { type: 'error', title: t ? 'Couldn\u2019t create file' : 'Couldn\u2019t create folder' }); }
+      if (bad) notify('A name can’t contain / or \\.', { type: 'error', title: 'Couldn’t rename' });
+      if (!wanted) { if (opts.entry) { opts.entry.pending = false; renderDesktopIcons(); } resolve({ path }); return; }
+      const lay = set().deskLayout || {};
+      const cell = lay['file:' + path] || (btn.dataset.col != null ? [+btn.dataset.col, +btn.dataset.row] : null);
+      try {
+        const res = await api('fs.rename', { path, name });
+        const to = (res && res.path) || join('/Desktop', name);
+        if (cell) { // the renamed icon stays where it was
+          const next = Object.assign({}, lay, { ['file:' + to]: cell });
+          delete next['file:' + path];
+          S.settings = Object.assign({}, set(), { deskLayout: next });
+          saveSettings({ deskLayout: next });
+        }
+        if (opts.entry) { Object.assign(opts.entry, { name: baseName(to), path: to, shown: '', pending: false }); renderDesktopIcons(); }
+        if (!opts.pending) {
+          await loadDeskFiles();
+          filesChanged();
+          const nb = $$('.desk-icon', root).find((b) => b.dataset.file === to);
+          if (nb) selectDeskIcon(nb);
+        }
+        resolve({ path: to });
+      } catch (e) {
+        notify(e.message, { type: 'error', title: 'Couldn’t rename' });
+        if (opts.entry) { Object.assign(opts.entry, { shown: '', pending: false }); renderDesktopIcons(); }
+        resolve({ path });
+      }
+    };
+    ta.addEventListener('input', fit);
+    ta.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); finish(false); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(true); }
+    });
+    ta.addEventListener('blur', () => finish(false));
+    ['pointerdown', 'mousedown', 'click', 'dblclick', 'contextmenu'].forEach((ev) => ta.addEventListener(ev, (e) => e.stopPropagation()));
   }
 
   /** "Next desktop background": the built-in wallpaper after the current one (from a picture of your own: the first). */
@@ -443,8 +564,8 @@
       { label: 'Refresh', icon: 'reload', action: () => { deskFiles = []; deskFilesChanged(); } },
       'sep',
       { label: 'Next desktop background', icon: 'image', disabled: !(window.LOS_WALLPAPERS || []).length, action: nextWallpaper },
-      { label: 'New', icon: 'plus', items: [{ label: 'Folder', icon: 'folder', action: () => deskNew(null) }, 'sep']
-        .concat(DESK_NEW.filter((t) => window.LOS_app(t.app)).map((t) => ({ label: t.label, img: window.LOS_app(t.app).img, action: () => deskNew(t) }))) },
+      { label: 'New', icon: 'plus', items: [{ label: 'Folder', icon: 'folder', action: () => deskNew(null, at) }, 'sep']
+        .concat(DESK_NEW.filter((t) => window.LOS_app(t.app)).map((t) => ({ label: t.label, img: window.LOS_app(t.app).img, action: () => deskNew(t, at) }))) },
       { label: 'Add to desktop', icon: 'desktop', disabled: !addable.length, items: addable.map((x) => ({ label: x.label, img: x.img, action: () => saveSettings({ desktopIcons: onDesk.concat(x.id) }) })) },
       'sep',
       { label: 'Personalise', icon: 'palette', action: () => openApp('settings', { section: 'personalisation' }) },
@@ -466,8 +587,8 @@
     const tileSize = ({ small: 32, medium: 44, large: 60 })[box.dataset.size] || 44;
     box.innerHTML = deskItems().map((it) => '<button class="desk-icon" role="listitem" data-key="desk:' + it.id + '" data-desk="' + it.id + '" title="' + esc(it.label) + '">' +
       '<img src="' + esc(it.img) + '" alt="" draggable="false"><span>' + esc(it.label) + '</span></button>').join('') +
-      sortedDeskFiles().map((f) => '<button class="desk-icon desk-file" role="listitem" data-key="file:' + esc(f.path) + '" data-file="' + esc(f.path) + '" data-type="' + esc(f.type) + '" title="' + esc(f.name) + '">' +
-        fileTile(f, tileSize, Math.round(tileSize / 4)) + '<span>' + esc(f.name) + '</span></button>').join('');
+      sortedDeskFiles().map((f) => '<button class="desk-icon desk-file' + (f.pending ? ' pending' : '') + '" role="listitem" data-key="file:' + esc(f.path) + '" data-file="' + esc(f.path) + '" data-type="' + esc(f.type) + '" title="' + esc(f.shown || f.name) + '">' +
+        fileTile(f, tileSize, Math.round(tileSize / 4)) + '<span>' + esc(f.shown || f.name) + '</span></button>').join('');
     layoutDeskIcons();
   }
 
@@ -529,7 +650,7 @@
   }
   root.addEventListener('pointerdown', (e) => {
     const b = e.button === 0 && e.target.closest && e.target.closest('.desk-icon');
-    if (!b) return;
+    if (!b || b.classList.contains('pending')) return; // still being made: nothing to move yet
     const g = deskGrid();
     if (!g) return;
     const sx = e.clientX;
@@ -767,6 +888,7 @@
   });
 
   function openDeskIcon(btn) {
+    if (btn.classList.contains('pending')) return; // still being made
     if (btn.dataset.file) { selectDeskIcon(null); openFile(btn.dataset.file, btn.dataset.type === 'dir'); return; }
     const it = deskItems().find((x) => x.id === btn.dataset.desk);
     if (it) { selectDeskIcon(null); it.open(); }
@@ -780,11 +902,7 @@
       ...(window.LOS_opensWithCode(path, btn.dataset.type === 'dir') ? [{ label: 'Open with Code', icon: 'code', action: () => openApp('code', btn.dataset.type === 'dir' ? { folder: path } : { path }) }] : []),
       { label: 'Show in Files', icon: 'folder', action: () => openApp('files', { path: '/Desktop', select: path }) },
       'sep',
-      { label: 'Rename', icon: 'rename', action: async () => {
-        const name = await promptDialog({ title: 'Rename', label: 'Name', value: baseName(path), okLabel: 'Rename', selectStem: btn.dataset.type !== 'dir' });
-        if (!name || !name.trim() || name.trim() === baseName(path)) return;
-        try { await api('fs.rename', { path, name: name.trim() }); } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t rename' }); }
-      } },
+      { label: 'Rename', icon: 'rename', key: 'F2', action: () => deskRename(btn) },
       { label: 'Move to Trash', icon: 'trash', danger: true, action: async () => {
         try { await api('fs.delete', { paths: [path] }); notify('You can restore it from the Trash if you need it.', { type: 'success', title: 'Moved to Trash' }); }
         catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t move to Trash' }); }
@@ -832,6 +950,7 @@
     if (!b) return;
     if (e.key === 'Enter') { e.preventDefault(); (deskSel().length ? deskSel() : [b]).forEach(openDeskIcon); }
     if (e.key === 'Delete') { e.preventDefault(); trashDeskFiles(deskSel()); }
+    if (e.key === 'F2' && b.dataset.file) { e.preventDefault(); deskRename(b); }
     if (e.key === 'Escape') selectDeskIcon(null);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); $$('.desk-icon', root).forEach((x) => x.classList.add('sel')); }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -2321,12 +2440,60 @@
         else if (t.dataset.b === 'fwd') { if (fwd.length) { back.push(cwd); load(fwd.pop()); } }
         else if (t.dataset.b === 'up') load(parent(cwd), 'push');
         else if (t.dataset.b === 'refresh') load(cwd);
-        else if (t.dataset.b === 'mkdir') {
-          const n = await promptDialog({ title: 'New folder', label: 'Folder name', value: 'New folder', okLabel: 'Create' });
-          if (n && n.trim()) { try { await api('fs.mkdir', { path: join(cwd, n.trim()) }); load(cwd); } catch (ex) { notify(ex.message, { type: 'error', title: 'Couldn’t create folder' }); } }
-        } else if (t.dataset.b === 'cancel') done(null);
+        else if (t.dataset.b === 'mkdir') mkdirHere();
+        else if (t.dataset.b === 'cancel') done(null);
         else if (t.dataset.b === 'ok') ok();
       });
+      // New folder, as in Explorer: made at once as "New folder" ("New folder (2)"…) with its name open for typing over
+      async function mkdirHere() {
+        let path = '';
+        for (let i = 1; i <= 50 && !path; i++) {
+          const name = 'New folder' + (i > 1 ? ' (' + i + ')' : '');
+          if (entries.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
+          try { await api('fs.mkdir', { path: join(cwd, name) }); path = join(cwd, name); } catch (ex) {
+            if (!/exists/i.test(ex.message)) { notify(ex.message, { type: 'error', title: 'Couldn’t create folder' }); return; }
+          }
+        }
+        if (!path) return;
+        await load(cwd);
+        const en = entries.find((x) => x.path === path);
+        const row = en && $('[data-i="' + entries.indexOf(en) + '"]', list);
+        if (!row) return;
+        choose(en);
+        const label = $('.nm > span', $('[data-i="' + entries.indexOf(en) + '"]', list));
+        const r = label.getBoundingClientRect();
+        const inp = document.createElement('input');
+        inp.className = 'input fdlg-rename';
+        inp.value = baseName(path);
+        inp.spellcheck = false;
+        inp.setAttribute('aria-label', 'Folder name');
+        // inside the dialog (a modal dialog makes everything outside it unreachable), over the row's name
+        const br = box.getBoundingClientRect();
+        Object.assign(inp.style, { left: r.left - br.left - 4 + 'px', top: r.top - br.top - 4 + 'px', width: Math.max(160, r.width + 40) + 'px' });
+        box.appendChild(inp);
+        inp.focus();
+        inp.select();
+        let fin = false;
+        const finish = async (keep) => {
+          if (fin) return;
+          fin = true;
+          const name = inp.value.trim();
+          inp.remove();
+          if (keep || !name || name === baseName(path)) return;
+          try {
+            const res = await api('fs.rename', { path, name });
+            await load(cwd);
+            const hit = entries.find((x) => x.path === ((res && res.path) || join(cwd, name)));
+            if (hit) choose(hit);
+          } catch (ex) { notify(ex.message, { type: 'error', title: 'Couldn’t rename' }); }
+        };
+        inp.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') { e.preventDefault(); finish(false); }
+          if (e.key === 'Escape') { e.preventDefault(); finish(true); }
+        });
+        inp.addEventListener('blur', () => finish(false));
+      }
       list.addEventListener('dblclick', (e) => {
         const t = e.target.closest('[data-i]');
         if (!t) return;

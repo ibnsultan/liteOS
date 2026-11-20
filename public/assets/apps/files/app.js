@@ -198,6 +198,7 @@ LiteOS.ready((OS) => {
       else if (path === 'search:') entries = await fs.search(st.query, '', 300);
       else entries = await fs.list(path);
       if (seq !== loadSeq) return; // another folder was asked for meanwhile
+      if (opts.quiet && st.renaming && path === st.path) return; // a name is being typed: the rename reloads
       if (!opts.keepHistory && path !== st.path) { st.back.push(st.path); st.fwd = []; }
       st.path = path;
       st.entries = entries;
@@ -288,7 +289,7 @@ LiteOS.ready((OS) => {
     } else if (curView() !== 'list') {
       const v = curView();
       const isImg = (e) => e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
-      const name = (e) => (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : esc(e.name));
+      const name = (e) => (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : esc(e.shown || e.name));
       const size = (e) => (e.type === 'dir' ? (e.count != null ? e.count + (e.count === 1 ? ' item' : ' items') : '') : util.formatSize(e.size));
       // the picture: a big icon view shows an image's own thumbnail; everything else is the bare file icon, no plate behind it
       const pic = (e, px) => (px >= 48 && isImg(e) ? '<img class="pic" loading="lazy" alt="" draggable="false" src="' + esc(fs.rawUrl(e.path)) + '" style="max-width:' + px + 'px;max-height:' + px + 'px">' : tile(e, px));
@@ -299,7 +300,7 @@ LiteOS.ready((OS) => {
         else if (v === 'content') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(m === 'folder' ? kindOf(e) : util.dirname(e.path)) + '</small></span>' +
           '<span class="tx r"><small>Date modified: ' + esc(util.formatDate(e.mtime)) + '</small><small>' + (e.type === 'dir' ? '' : 'Size: ' + esc(size(e))) + '</small></span>';
         else inner = '<span class="ic">' + pic(e, px) + '</span><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span>';
-        return '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '" draggable="true"' + (e.type === 'dir' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + inner + '</div>';
+        return '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '" draggable="' + !e.pending + '"' + (e.type === 'dir' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + inner + '</div>';
       }).join('') + '</div>';
     } else {
       content.innerHTML = listHtml(list, m, cutSet);
@@ -309,7 +310,7 @@ LiteOS.ready((OS) => {
       ri.focus();
       const dot = ri.value.lastIndexOf('.');
       ri.setSelectionRange(0, dot > 0 ? dot : ri.value.length);
-      ri.addEventListener('keydown', (ev) => { ev.stopPropagation(); if (ev.key === 'Enter') finishRename(ri.value); if (ev.key === 'Escape') { st.renaming = null; render(); } });
+      ri.addEventListener('keydown', (ev) => { ev.stopPropagation(); if (ev.key === 'Enter') finishRename(ri.value); if (ev.key === 'Escape') finishRename(ri.defaultValue); });
       ri.addEventListener('blur', () => finishRename(ri.value));
       ri.addEventListener('mousedown', (ev) => ev.stopPropagation());
       ri.addEventListener('dblclick', (ev) => ev.stopPropagation());
@@ -327,12 +328,12 @@ LiteOS.ready((OS) => {
     else if (m === 'folder') head = '<div class="thead">' + hb('name', 'Name') + hb('mtime', 'Modified') + hb('size', 'Size') + hb('type', 'Type') + '</div>';
     else head = '<div class="thead">' + hb('name', 'Name') + '<span>Location</span>' + hb('mtime', 'Modified') + hb('size', 'Size') + '</div>';
     return head + list.map((e) => {
-      const nm = '<span class="nm">' + tile(e, 26, 7) + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : '<span>' + esc(e.name) + '</span>') + '</span>';
+      const nm = '<span class="nm">' + tile(e, 26, 7) + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : '<span>' + esc(e.shown || e.name) + '</span>') + '</span>';
       let cols;
       if (m === 'trash') cols = '<span class="c">' + esc(util.dirname(e.original)) + '</span><span class="c m">' + esc(util.formatDate(e.deletedAt)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
       else if (m === 'folder') cols = '<span class="c">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? e.count + ' items' : esc(util.formatSize(e.size))) + '</span><span class="c m">' + esc(kindOf(e)) + '</span>';
       else cols = '<span class="c">' + esc(where(e.path)) + '</span><span class="c m">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
-      return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' ? ' draggable="true"' : '') + (e.type === 'dir' && m === 'folder' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
+      return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' && !e.pending ? ' draggable="true"' : '') + (e.type === 'dir' && m === 'folder' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
     }).join('');
   }
 
@@ -372,34 +373,45 @@ LiteOS.ready((OS) => {
   }
 
   function openEntry(e) {
-    if (mode() === 'trash') return;
+    if (mode() === 'trash' || e.pending) return;
     if (e.type === 'drive') { go(e.path); return; }
     if (e.type === 'dir') go(e.path);
     else OS.openFile(e.path);
   }
 
+  // A new folder or file shows at once, its icon shimmering while it is made, with its name open for typing over
+  // ("New folder", "New folder (2)"…); a name typed before it exists is used once it does (finishRename).
   async function newItem(t) {
     if (!isFolder()) return;
-    if (!t) {
-      const name = await OS.dialog.prompt({ title: 'New folder', label: 'Folder name', value: 'New folder' });
-      if (!name || !name.trim()) return;
-      try { const e = await fs.mkdir(util.join(st.path, name.trim())); await load(st.path, { keepHistory: true }); select([e.path]); } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t create folder' }); }
+    const taken = new Set(st.entries.map((x) => x.name.toLowerCase()));
+    let name = '';
+    for (let i = 1; i <= 50 && !name; i++) {
+      const n = t ? t.name + (i > 1 ? ' ' + i : '') + '.' + t.ext : 'New folder' + (i > 1 ? ' (' + i + ')' : '');
+      if (!taken.has(n.toLowerCase())) name = n;
+    }
+    if (!name) return;
+    const path = util.join(st.path, name);
+    const entry = { name, path, type: t ? 'file' : 'dir', ext: t ? t.ext : '', size: 0, count: 0, mtime: Math.floor(Date.now() / 1000), pending: true };
+    entry.made = t ? fs.write(path, '', { overwrite: false }) : fs.mkdir(path);
+    entry.made.catch(() => {}); // reported below
+    st.entries = st.entries.concat(entry);
+    st.renaming = path;
+    select([path]);
+    try { await entry.made; } catch (ex) {
+      st.entries = st.entries.filter((x) => x !== entry);
+      if (st.renaming === path) st.renaming = null;
+      st.sel.delete(path);
+      render();
+      OS.notify(ex.message, { type: 'error', title: t ? 'Couldn’t create file' : 'Couldn’t create folder' });
       return;
     }
-    let i = 1;
-    for (;;) {
-      const name = t.name + (i > 1 ? ' ' + i : '') + '.' + t.ext;
-      try {
-        const e = await fs.write(util.join(st.path, name), '', { overwrite: false });
-        await load(st.path, { keepHistory: true });
-        select([e.path]);
-        st.renaming = e.path; render();
-        return;
-      } catch (ex) {
-        if (!/exists/i.test(ex.message) || i > 50) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t create file' }); return; }
-        i++;
-      }
-    }
+    announce();
+    // still being named: stop the shimmer without redrawing (that would reset the box being typed in)
+    if (st.renaming === path) {
+      entry.pending = false;
+      const row = content.querySelector('[data-path="' + CSS.escape(path) + '"]');
+      if (row) { row.classList.remove('pending'); row.setAttribute('draggable', 'true'); }
+    } else entry.pending = false; // named already: finishRename takes it from here
   }
 
   function select(paths) { st.sel = new Set(paths); st.anchor = paths[0] || null; render(); }
@@ -410,8 +422,17 @@ LiteOS.ready((OS) => {
     st.renaming = null;
     const e = st.entries.find((x) => x.path === path);
     const name = value.trim();
+    if (e && e.made) {
+      // a new item: show the name typed while it is still being made, then wait for it
+      if (e.pending && name && name !== e.name) { e.shown = name; render(); }
+      try { await e.made; } catch (ex) { return; } // newItem reports it and takes the item away
+      e.pending = false;
+      delete e.made;
+      if (!name || name === e.name) { await load(st.path, { keepHistory: true, keepSel: true, quiet: true }); return; }
+    }
     if (!e || !name || name === e.name) { render(); return; }
-    try { const r = await fs.rename(path, name); await load(st.path, { keepHistory: true }); select([r.path]); } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t rename' }); render(); }
+    try { const r = await fs.rename(path, name); await load(st.path, { keepHistory: true }); select([r.path]); announce(); }
+    catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t rename' }); e.shown = ''; render(); }
   }
 
   async function del(paths) {

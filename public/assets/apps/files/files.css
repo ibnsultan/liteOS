@@ -78,6 +78,14 @@ body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 
 .v-content .tx.r small:first-child { color: var(--text-2); }
 .v-content .lbl { font-weight: 500; }
 @container (max-width: 520px) { .v-content .it { grid-template-columns: 48px minmax(0, 1fr); } .v-content .tx.r { display: none; } }
+/* a new item still being made: its icon shimmers (a soft band of light sweeps across it) */
+.pending .ic img, .pending .nm img {
+  -webkit-mask: linear-gradient(110deg, #000 35%, rgba(0,0,0,.35) 50%, #000 65%) 100% 0 / 300% 100% no-repeat;
+  mask: linear-gradient(110deg, #000 35%, rgba(0,0,0,.35) 50%, #000 65%) 100% 0 / 300% 100% no-repeat;
+  animation: itemShimmer 1.4s cubic-bezier(.45, 0, .3, 1) infinite;
+}
+@keyframes itemShimmer { to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .pending .ic img, .pending .nm img { animation: none; -webkit-mask: none; mask: none; opacity: .6; } }
 .rename-input { height: 26px; font-size: 13px; padding: 0 6px; width: 100%; }
 .details { width: 260px; flex-shrink: 0; border-left: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 14px; background: var(--surface-2); overflow-y: auto; }
 .details .preview { height: 170px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; }
