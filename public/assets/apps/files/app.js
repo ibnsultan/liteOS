@@ -58,8 +58,217 @@ LiteOS.ready((OS) => {
     set(v) { try { window.parent.__losClipboard = v; } catch (e) { clip._local = v; } },
   };
 
-  const mode = () => (st.path === 'home:' ? 'home' : st.path === 'device:' ? 'device' : st.path === 'trash:' ? 'trash' : st.path === 'recent:' ? 'recent' : st.path === 'search:' ? 'search' : 'folder');
+  const mode = () => (st.path === 'home:' ? 'home' : st.path === 'device:' ? 'device' : st.path === 'trash:' ? 'trash' : st.path === 'recent:' ? 'recent' : st.path === 'search:' ? 'search' : isUsb(st.path) ? 'usb' : 'folder');
   const isFolder = () => mode() === 'folder';
+
+  // ------------------------------------------------------------------ USB drives (LiteLink)
+  // On a LiteLink thin client, LiteLink's window.LiteLink offers the USB drives plugged into the device: they show under
+  // This PC next to My drive, open like folders (usb:<drive>:/path), copy to and from My drive, and eject. All of it
+  // waits for LiteLink to be detected and to allow USB drives; without it (an ordinary PC) none of this runs and Files
+  // is as it always was. A drive is read only unless the connection allows writing (no rename or delete either way).
+  const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+  const usb = { on: false, write: false, drives: [], free: new Map(), ejected: new Set() };
+  const isUsb = (p) => typeof p === 'string' && p.startsWith('usb:');
+  const usbParse = (p) => { const m = /^usb:([^:]+):(\/.*)$/.exec(p || ''); return m ? { id: m[1], path: m[2] } : null; };
+  const usbPath = (id, path) => 'usb:' + id + ':' + (path || '/');
+  const usbDrive = (id) => usb.drives.find((d) => d.id === id);
+  const usbName = (id) => (usbDrive(id) || {}).name || 'USB drive';
+  const usbEntry = (d) => ({ name: d.name, path: usbPath(d.id, '/'), type: 'drive', usb: true, id: d.id, size: d.size, fstype: d.fstype, model: d.model });
+  const usbDrives = () => (usb.on ? usb.drives.map(usbEntry) : []);
+  // where something is, read out: "KINGSTON", "KINGSTON › Reports"
+  const usbWhere = (p) => { const u = usbParse(p); return usbName(u.id) + (u.path === '/' ? '' : u.path.replace(/\//g, ' › ')); };
+  // a folder's parent: the drive's top folder goes up to This PC
+  const parentOf = (p) => { if (isUsb(p)) { const u = usbParse(p); return u.path === '/' ? 'device:' : usbPath(u.id, util.dirname(u.path)); } return p === '/' ? 'device:' : util.dirname(p); };
+  const usbWritableHere = () => mode() === 'usb' && usb.write;
+  // where items can be dropped or pasted: a My drive folder, or a folder on a drive that may be written
+  const canDropOn = (p) => typeof p === 'string' && (p.startsWith('/') || (isUsb(p) && usb.write));
+  const canPasteHere = () => isFolder() || usbWritableHere();
+
+  async function usbList(p) {
+    const u = usbParse(p);
+    if (!LL || !u) throw new Error('USB drives are only available on a LiteLink device.');
+    const list = await LL.storage.browse(u.id, u.path);
+    if (list.free != null) usb.free.set(u.id, list.free);
+    return list.map((e) => ({ name: e.name, path: usbPath(u.id, util.join(u.path, e.name)), type: e.dir ? 'dir' : 'file',
+      ext: e.dir ? '' : util.ext(e.name), size: e.size, mtime: e.mtime, usb: true }));
+  }
+  // one item on a drive (its type), from its folder's listing
+  async function usbStat(p) {
+    const u = usbParse(p);
+    if (u.path === '/') return { name: usbName(u.id), path: p, type: 'dir', usb: true }; // the whole drive, as a folder
+    const name = util.basename(u.path);
+    const e = (await usbList(parentOf(p))).find((x) => x.name === name);
+    if (!e) throw new Error('“' + name + '” isn’t on the USB drive any more.');
+    return e;
+  }
+
+  // Drive → My drive: each file is read from the drive and uploaded with the usual upload; folders are made as they go.
+  async function usbImport(paths, dest) {
+    let n = 0;
+    const copy = async (e, dir) => {
+      if (e.type === 'dir') {
+        const target = util.join(dir, e.name);
+        await fs.mkdir(target).catch(async (ex) => { if (!(await fs.list(dir)).some((x) => x.name === e.name && x.type === 'dir')) throw ex; });
+        for (const k of await usbList(e.path)) await copy(k, target);
+      } else {
+        const u = usbParse(e.path);
+        const blob = await LL.storage.read(u.id, u.path);
+        await fs.upload(dir, [new File([blob], e.name, { lastModified: (e.mtime || 0) * 1000 })]);
+        n++;
+      }
+    };
+    const from = usbName(usbParse(paths[0]).id);
+    OS.notify('Copying from ' + from + '…', { title: 'Copy started' });
+    try {
+      for (const p of paths) await copy(st.entries.find((x) => x.path === p) || await usbStat(p), dest);
+      OS.notify(n + (n === 1 ? ' file was' : ' files were') + ' copied from ' + from + ' to ' + (dest === '/' ? 'My drive' : util.basename(dest)) + '.', { type: 'success', title: 'Copy complete' });
+    } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t copy from ' + from }); }
+    refresh();
+    announce();
+  }
+
+  // My drive (or files from the computer) → a drive: written through LiteLink; folders are made as they go.
+  async function usbExport(items, dest) {
+    const d = usbParse(dest);
+    let n = 0;
+    const put = async (e, dir) => {
+      const target = util.join(dir, e.name);
+      if (e.type === 'dir') {
+        await LL.storage.mkdir(d.id, target).catch(async (ex) => { if (!(await LL.storage.browse(d.id, dir)).some((x) => x.name === e.name && x.dir)) throw ex; });
+        for (const k of await fs.list(e.path)) await put(k, target);
+      } else {
+        const data = e.file || await (await fetch(fs.rawUrl(e.path))).blob();
+        await LL.storage.write(d.id, target, data, { overwrite: false });
+        n++;
+      }
+    };
+    const to = usbName(d.id);
+    OS.notify('Copying to ' + to + '…', { title: 'Copy started' });
+    try {
+      for (const e of items) await put(e, d.path);
+      OS.notify(n + (n === 1 ? ' file was' : ' files were') + ' copied to ' + to + '.', { type: 'success', title: 'Copy complete' });
+    } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t copy to ' + to }); }
+    refresh();
+    announce();
+  }
+  // My drive paths (pasted or dropped) → entries with their type
+  const driveItems = (paths) => Promise.all(paths.map((p) => st.entries.find((x) => x.path === p) || fs.stat(p)));
+
+  // Opening a file on a drive copies it to Downloads first, then opens it there with its app.
+  async function usbOpen(e) {
+    try {
+      const u = usbParse(e.path);
+      const blob = await LL.storage.read(u.id, u.path);
+      const [made] = await fs.upload('/Downloads', [new File([blob], e.name, { lastModified: (e.mtime || 0) * 1000 })]);
+      OS.openFile((made && made.path) || util.join('/Downloads', e.name));
+      announce();
+    } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t open ' + e.name }); }
+  }
+  async function usbDownload(e) {
+    try {
+      const u = usbParse(e.path);
+      const url = URL.createObjectURL(await LL.storage.read(u.id, u.path));
+      const a = document.createElement('a');
+      a.href = url; a.download = e.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t download ' + e.name }); }
+  }
+  // A new folder on a drive, named in place like one on My drive. LiteLink can't rename on a drive, so the folder is
+  // made once it has its name (Enter, a click elsewhere, or Escape for "New folder"), shimmering until the drive has it.
+  function usbNewFolder() {
+    if (!usbWritableHere()) return;
+    const taken = new Set(st.entries.map((x) => x.name.toLowerCase()));
+    let name = '';
+    for (let i = 1; i <= 50 && !name; i++) { const n = 'New folder' + (i > 1 ? ' (' + i + ')' : ''); if (!taken.has(n.toLowerCase())) name = n; }
+    if (!name) return;
+    const u = usbParse(st.path);
+    const path = usbPath(u.id, util.join(u.path, name));
+    st.entries = st.entries.concat({ name, path, type: 'dir', ext: '', size: 0, count: 0, mtime: Math.floor(Date.now() / 1000), usb: true, usbNew: true });
+    st.renaming = path;
+    select([path]);
+  }
+  async function usbMakeFolder(e, name) {
+    const u = usbParse(e.path);
+    const where = usbPath(u.id, util.dirname(u.path));
+    if (/[\\/]/.test(name)) { OS.notify('A folder name can’t contain / or \\.', { type: 'error', title: 'Couldn’t create folder' }); name = e.name; }
+    e.shown = name; e.pending = true;
+    render();
+    try {
+      await LL.storage.mkdir(u.id, util.join(util.dirname(u.path), name));
+      if (st.path === where) { await load(where, { keepHistory: true, quiet: true }); select([usbPath(u.id, util.join(util.dirname(u.path), name))]); }
+      announce();
+    } catch (ex) {
+      st.entries = st.entries.filter((x) => x !== e);
+      st.sel.delete(e.path);
+      render();
+      OS.notify(ex.message, { type: 'error', title: 'Couldn’t create folder' });
+    }
+  }
+  async function usbEject(id) {
+    const name = usbName(id);
+    try {
+      await LL.storage.eject(id);
+      OS.notify(name + ' can be removed from the device now.', { type: 'success', title: 'Safe to remove' });
+    } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t eject ' + name }); }
+  }
+  const FS_NAMES = { vfat: 'FAT32', fat: 'FAT32', exfat: 'exFAT', ntfs: 'NTFS', ntfs3: 'NTFS' };
+  async function usbProps(e) {
+    let free = usb.free.get(e.id);
+    if (free == null) { // not opened yet: its top folder's listing says how much is free
+      try { const top = await LL.storage.browse(e.id, '/'); if (top.free != null) { free = top.free; usb.free.set(e.id, free); } } catch (ex) { /* unknown */ }
+    }
+    propsDialog({ name: e.name, icon: OS.sysIcon('place.removable'), type: 'USB Drive',
+      fs: FS_NAMES[(e.fstype || '').toLowerCase()] || (e.fstype || '').toUpperCase(), capacity: e.size, free, eject: () => usbEject(e.id) });
+  }
+
+  // Every Files window hears the drive events; one notification is enough, so the first window to see an event says
+  // it and the others stay quiet (a marker on the shell window, as the shared clipboard does).
+  function usbNote(key, show) {
+    try {
+      const seen = window.parent.__losUsbNotes || (window.parent.__losUsbNotes = {});
+      if (seen[key] && Date.now() - seen[key] < 3000) return;
+      seen[key] = Date.now();
+    } catch (e) { /* not in the shell: just say it */ }
+    show();
+  }
+
+  // The drives plugged in now (an ejected one stays plugged in but is left out until it's plugged in again).
+  // This PC and the tree follow; a window inside a drive that went away goes back to This PC.
+  async function usbRefresh() {
+    try { usb.drives = (await LL.storage.list()).filter((d) => !usb.ejected.has(d.id)); } catch (e) { usb.drives = []; }
+    const here = usbParse(st.path);
+    if (here && !usbDrive(here.id)) load('device:');
+    else if (mode() === 'device') load('device:', { keepHistory: true, keepSel: true, quiet: true });
+    if (st.tree.open.has('device:')) await loadKids('device:');
+    renderSide();
+  }
+  if (LL) {
+    LL.ready.then((caps) => {
+      const access = caps && caps.storage && caps.storage.usb;
+      if (!access) return; // USB drives are off for this connection
+      usb.on = true;
+      usb.write = access === 'write';
+      LL.on('device-added', (d) => {
+        if (d && d.id) usbNote('added:' + d.id, () => OS.notify((d.name || 'A USB drive') + ' is connected.', {
+          title: 'USB drive connected', actions: [{ label: 'Open', action: () => go(usbPath(d.id, '/')) }] }));
+        usbRefresh();
+      });
+      LL.on('device-removed', (d) => {
+        if (d && d.id) {
+          // pulled out without Eject: say so (after Eject, "Safe to remove" has been said already)
+          if (!usb.ejected.has(d.id) && usbDrive(d.id)) {
+            const name = usbName(d.id);
+            usbNote('removed:' + d.id, () => OS.notify(name + ' was removed. Eject a drive before unplugging it, so nothing being copied is lost.', { title: 'USB drive removed' }));
+          }
+          usb.ejected.delete(d.id);
+        }
+        usbRefresh();
+      });
+      LL.on('device-ejected', (d) => { if (d) usb.ejected.add(d.id); usbRefresh(); });
+      usbRefresh();
+    }, () => {});
+  }
 
   // ------------------------------------------------------------------ chrome
   $('[data-c=back]').innerHTML = I('back');
@@ -70,6 +279,7 @@ LiteOS.ready((OS) => {
   // The command bar, laid out like Explorer's: New (with Upload beside it), the actions on the selection as icons,
   // Sort and View, a "more" menu, and the Details pane at the far end; groups split by thin lines. Plain buttons with
   // no frame: they fill on hover.
+  const EJECT_ICON = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5 5 13h14z M5 18h14"/></svg>';
   const SORT_ICON = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3.5 7.5 7 4l3.5 3.5M17 20V4M13.5 16.5 17 20l3.5-3.5"/></svg>';
   const cmdBtn = (c, label, icon, on, chev) => '<button class="cmd-btn" data-c="' + c + '"' + (on ? '' : ' disabled') + '>' + icon + '<span>' + label + '</span>' + (chev ? '<span class="chev">' + I('down', 12) + '</span>' : '') + '</button>';
   const cmdIcon = (c, label, icon, on) => '<button class="icon-btn cmd-ico" data-c="' + c + '" title="' + label + '" aria-label="' + label + '"' + (on ? '' : ' disabled') + '>' + I(icon) + '</button>';
@@ -82,12 +292,17 @@ LiteOS.ready((OS) => {
         cmdBtn('restore', 'Restore', I('undo'), has) + cmdBtn('purge', 'Delete permanently', I('x'), has);
     } else {
       const files = has && m !== 'device' && !selEntries().some((e) => e.pin); // a drive (or a pin on Home) can't be cut, copied, renamed or trashed
+      const onUsb = m === 'usb'; // a USB drive: copy only (no cut, rename or trash); New folder and Paste when it may be written
       const sortable = m !== 'home';
       const one = st.sel.size === 1 && selEntries()[0];
-      h += cmdBtn('new', 'New', I('plus'), isFolder()) + cmdIcon('upload', 'Upload', 'upload', isFolder()) + '<span class="sep"></span>' +
-        cmdIcon('cut', 'Cut', 'cut', files) + cmdIcon('copy', 'Copy', 'copy', files) + cmdIcon('paste', 'Paste', 'paste', !!clip.get() && isFolder()) +
-        cmdIcon('rename', 'Rename', 'rename', files && st.sel.size === 1) + cmdIcon('download', 'Download', 'download', !!one && one.type === 'file') +
-        cmdIcon('delete', 'Move to Trash', 'trash', files) + '<span class="sep"></span>' +
+      const writable = isFolder() || usbWritableHere();
+      // Eject: inside a drive, or with a drive selected in This PC
+      const ejectId = onUsb ? usbParse(st.path).id : (m === 'device' && one && one.usb ? one.id : null);
+      h += cmdBtn('new', onUsb ? 'New folder' : 'New', I('plus'), writable) + cmdIcon('upload', 'Upload', 'upload', writable) + '<span class="sep"></span>' +
+        cmdIcon('cut', 'Cut', 'cut', files && !onUsb) + cmdIcon('copy', 'Copy', 'copy', files) + cmdIcon('paste', 'Paste', 'paste', !!clip.get() && canPasteHere()) +
+        cmdIcon('rename', 'Rename', 'rename', files && !onUsb && st.sel.size === 1) + cmdIcon('download', 'Download', 'download', !!one && one.type === 'file') +
+        cmdIcon('delete', 'Move to Trash', 'trash', files && !onUsb) + '<span class="sep"></span>' +
+        (ejectId ? cmdBtn('eject', 'Eject', EJECT_ICON, true) + '<span class="sep"></span>' : '') +
         cmdBtn('sort', 'Sort', SORT_ICON, sortable, true) +
         cmdBtn('view', 'View', I(VIEWS.find(([v]) => v === curView())[2]), sortable, true) + '<span class="sep"></span>' +
         cmdIcon('more', 'See more', 'more', true);
@@ -117,14 +332,14 @@ LiteOS.ready((OS) => {
     const kids = st.tree.kids.get(path);
     const leaf = o.leaf || (kids && !kids.length);
     const tw = '<span class="tw' + (tree && !leaf ? (st.tree.open.has(path) ? ' open' : '') : ' none') + '"' + (tree && !leaf ? ' data-tw="' + esc(path) + '"' : '') + '>' + (tree ? I('forward', 12) : '') + '</span>';
-    const drop = path === 'trash:' ? ' data-droptrash="1"' : path.startsWith('/') ? ' data-dropdir="' + esc(path) + '"' : '';
+    const drop = path === 'trash:' ? ' data-droptrash="1"' : canDropOn(path) ? ' data-dropdir="' + esc(path) + '"' : '';
     return '<button class="nav-item tv' + (st.path === path ? ' active' : '') + '" data-go="' + esc(path) + '"' + drop + (tree ? ' style="--d:' + o.depth + '"' : '') + ' title="' + esc(label) + '">' +
       tw + S(role) + '<span class="nm">' + esc(label) + '</span>' + (o.pin ? '<span class="pinmark">' + I('pin', 12) + '</span>' : '') + '</button>';
   }
   function treeRows(path, depth) {
     const kids = st.tree.open.has(path) && st.tree.kids.get(path);
     if (!kids) return '';
-    return kids.map((k) => sideRow(k.path, k.name, k.type === 'drive' ? 'place.drive' : folderIcon(k.path), { depth, leaf: k.type === 'dir' && k.count === 0 }) + treeRows(k.path, depth + 1)).join('');
+    return kids.map((k) => sideRow(k.path, k.name, k.type === 'drive' ? (k.usb ? 'place.removable' : 'place.drive') : folderIcon(k.path), { depth, leaf: k.type === 'dir' && k.count === 0 }) + treeRows(k.path, depth + 1)).join('');
   }
   function renderSide() {
     const side = $('#side');
@@ -138,8 +353,8 @@ LiteOS.ready((OS) => {
   // The folders under a branch of the tree (the drives, under This PC), fetched when it is opened.
   async function loadKids(path) {
     try {
-      const list = path === 'device:' ? (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' }))
-        : (await fs.list(path)).filter((e) => e.type === 'dir' && !e.name.startsWith('.'))
+      const list = path === 'device:' ? (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' })).concat(usbDrives())
+        : (await (isUsb(path) ? usbList(path) : fs.list(path))).filter((e) => e.type === 'dir' && !e.name.startsWith('.'))
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
       st.tree.kids.set(path, list);
     } catch (e) { st.tree.kids.set(path, []); } // gone, or can't be read: nothing to open
@@ -157,7 +372,7 @@ LiteOS.ready((OS) => {
   function syncTree(path, entries) {
     st.tree.kids.set(path, entries.filter((e) => e.type === 'dir' && !e.name.startsWith('.'))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })));
-    const up = st.tree.kids.get(path === '/' ? 'device:' : util.dirname(path));
+    const up = st.tree.kids.get(parentOf(path));
     const me = up && up.find((k) => k.path === path);
     if (me && me.type === 'dir') me.count = entries.length;
   }
@@ -171,8 +386,13 @@ LiteOS.ready((OS) => {
       h = '<button>Home</button>';
     } else if (m === 'device') {
       h = '<button>This PC</button>';
-    } else if (m !== 'folder') {
+    } else if (m !== 'folder' && m !== 'usb') {
       h = '<button data-go="device:">This PC</button><span class="sepc">›</span><button>' + ({ trash: 'Trash', recent: 'Recent', search: 'Search results' })[m] + '</button>';
+    } else if (m === 'usb') {
+      const u = usbParse(st.path);
+      const parts = u.path.split('/').filter(Boolean);
+      h = '<button data-go="device:">This PC</button><span class="sepc">›</span><button data-go="' + esc(usbPath(u.id, '/')) + '">' + esc(usbName(u.id)) + '</button>' +
+        parts.map((p, i) => '<span class="sepc">›</span><button data-go="' + esc(usbPath(u.id, '/' + parts.slice(0, i + 1).join('/'))) + '">' + esc(p) + '</button>').join('');
     } else {
       const parts = st.path.split('/').filter(Boolean);
       h = '<button data-go="device:">This PC</button><span class="sepc">›</span><button data-go="/">My drive</button>' +
@@ -181,7 +401,7 @@ LiteOS.ready((OS) => {
     $('#crumbs').innerHTML = h;
     $('[data-c=back]').disabled = !st.back.length;
     $('[data-c=forward]').disabled = !st.fwd.length;
-    $('[data-c=up]').disabled = m !== 'folder';
+    $('[data-c=up]').disabled = m !== 'folder' && m !== 'usb';
   }
 
   // ------------------------------------------------------------------ data
@@ -190,7 +410,8 @@ LiteOS.ready((OS) => {
     const k = st.sort;
     const d = st.dir === 'asc' ? 1 : -1;
     return list.slice().sort((a, b) => {
-      if (mode() === 'folder' && a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+      if ((mode() === 'folder' || mode() === 'usb') && a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+      if (mode() === 'device' && !!a.usb !== !!b.usb) return a.usb ? 1 : -1; // My drive first, then the USB drives
       let r = 0;
       if (k === 'name') r = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
       else if (k === 'mtime') r = (a.mtime || a.deletedAt || 0) - (b.mtime || b.deletedAt || 0);
@@ -213,7 +434,8 @@ LiteOS.ready((OS) => {
     try {
       let entries;
       if (path === 'home:') entries = await homeEntries();
-      else if (path === 'device:') entries = (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' }));
+      else if (path === 'device:') entries = (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' })).concat(usbDrives());
+      else if (isUsb(path)) entries = await usbList(path);
       else if (path === 'trash:') entries = (await fs.trash.list()).map((t) => Object.assign({}, t, { path: 'trash:' + t.id, ext: util.ext(t.name) }));
       else if (path === 'recent:') entries = await fs.recent();
       else if (path === 'search:') entries = await fs.search(st.query, '', 300);
@@ -223,14 +445,14 @@ LiteOS.ready((OS) => {
       if (!opts.keepHistory && path !== st.path) { st.back.push(st.path); st.fwd = []; }
       st.path = path;
       st.entries = entries;
-      if (path.startsWith('/')) syncTree(path, entries);
+      if (path.startsWith('/') || isUsb(path)) syncTree(path, entries);
       if (!opts.keepSel) st.sel.clear();
       else st.sel = new Set([...st.sel].filter((p) => entries.some((e) => e.path === p)));
       render();
     } catch (e) {
       if (seq !== loadSeq) return;
       OS.notify(e.message, { type: 'error', title: 'Couldn’t open folder' });
-      if (path !== '/' && !opts.fallback) load('/', { fallback: true });
+      if (path !== '/' && !opts.fallback) load(isUsb(path) ? 'device:' : '/', { fallback: true });
     } finally {
       if (seq === loadSeq) setBusy(false);
     }
@@ -270,7 +492,10 @@ LiteOS.ready((OS) => {
     renderSide();
     renderCrumbs();
     const m = mode();
-    const title = m === 'folder' ? (st.path === '/' ? 'My drive' : util.basename(st.path)) : ({ home: 'Home', device: 'This PC', trash: 'Trash', recent: 'Recent', search: 'Search' })[m];
+    const usbHere = m === 'usb' && usbParse(st.path);
+    const title = m === 'folder' ? (st.path === '/' ? 'My drive' : util.basename(st.path))
+      : usbHere ? (usbHere.path === '/' ? usbName(usbHere.id) : util.basename(usbHere.path))
+        : ({ home: 'Home', device: 'This PC', trash: 'Trash', recent: 'Recent', search: 'Search' })[m];
     // no page heading: the window title and the path bar say where you are; a note shows only when there is one
     const note = m === 'search' ? 'Results for “' + st.query + '”' : m === 'trash' ? 'Items here still use storage until you empty the Trash.' : '';
     $('#infobar').textContent = note;
@@ -294,6 +519,15 @@ LiteOS.ready((OS) => {
       // devices and drives, like Explorer's "This PC": the drive's picture (its own .ico, or the generic disk),
       // its name, how full it is and how much is free
       content.innerHTML = '<div class="dev-head">' + I('down', 12) + 'Devices and drives</div><div class="drives">' + list.map((e) => {
+        if (e.usb) {
+          // a USB drive on the LiteLink device: how full it is once it has been opened (free space comes with a listing)
+          const free = usb.free.get(e.id);
+          const upct = free != null && e.size ? Math.min(100, Math.round(((e.size - free) / e.size) * 100)) : null;
+          return '<div class="drive' + (st.sel.has(e.path) ? ' sel' : '') + '" data-path="' + esc(e.path) + '"' + (usb.write ? ' data-dropdir="' + esc(e.path) + '"' : '') + ' title="' + esc(e.name) + '">' +
+            '<img class="drive-ico" src="' + esc(OS.sysIcon('place.removable')) + '" alt="" draggable="false"><span class="drive-txt"><span class="drive-name">' + esc(e.name) + '</span>' +
+            (upct != null ? '<span class="drive-bar' + (upct >= 90 ? ' full' : '') + '"><i style="width:' + upct + '%"></i></span><small>' + esc(util.formatSize(free)) + ' free of ' + esc(util.formatSize(e.size)) + '</small>'
+              : '<small>USB drive · ' + esc(util.formatSize(e.size)) + '</small>') + '</span></div>';
+        }
         const pct = e.quota ? Math.min(100, Math.round((e.used / e.quota) * 100)) : 0;
         const pic = e.icon ? fs.rawUrl(e.icon) : DISK;
         return '<div class="drive' + (st.sel.has(e.path) ? ' sel' : '') + '" data-path="' + esc(e.path) + '" data-dropdir="' + esc(e.path) + '" title="' + esc(e.name) + '">' +
@@ -306,22 +540,22 @@ LiteOS.ready((OS) => {
     } else if (!list.length) {
       content.innerHTML = '<div class="empty">' + S(m === 'trash' ? 'shell.trash' : m === 'search' ? 'shell.search' : 'place.folder', 40) +
         '<div style="font-weight:600;color:var(--text)">' + (m === 'trash' ? 'Trash is empty' : m === 'search' ? 'No files found' : m === 'recent' ? 'Nothing here yet' : 'This folder is empty') + '</div>' +
-        '<div>' + (m === 'folder' ? 'Drop files here, or use New and Upload.' : m === 'recent' ? 'Files you open or save show up here.' : '') + '</div></div>';
+        '<div>' + (m === 'folder' ? 'Drop files here, or use New and Upload.' : m === 'usb' && usb.write ? 'Drop files here, or paste from My drive.' : m === 'recent' ? 'Files you open or save show up here.' : '') + '</div></div>';
     } else if (curView() !== 'list') {
       const v = curView();
       const isImg = (e) => e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
       const name = (e) => (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : esc(e.shown || e.name));
       const size = (e) => (e.type === 'dir' ? (e.count != null ? e.count + (e.count === 1 ? ' item' : ' items') : '') : util.formatSize(e.size));
       // the picture: a big icon view shows an image's own thumbnail; everything else is the bare file icon, no plate behind it
-      const pic = (e, px) => (px >= 48 && isImg(e) ? '<img class="pic" loading="lazy" alt="" draggable="false" src="' + esc(fs.rawUrl(e.path)) + '" style="max-width:' + px + 'px;max-height:' + px + 'px">' : tile(e, px));
+      const pic = (e, px) => (px >= 48 && isImg(e) && !e.usb ? '<img class="pic" loading="lazy" alt="" draggable="false" src="' + esc(fs.rawUrl(e.path)) + '" style="max-width:' + px + 'px;max-height:' + px + 'px">' : tile(e, px));
       const px = ICON_VIEWS[v] || (v === 'tiles' ? 48 : v === 'content' ? 40 : 20);
       content.innerHTML = '<div class="items v-' + v + '">' + list.map((e) => {
         let inner;
         if (v === 'tiles') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(kindOf(e)) + '</small><small>' + esc(size(e)) + '</small></span>';
-        else if (v === 'content') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(m === 'folder' ? kindOf(e) : util.dirname(e.path)) + '</small></span>' +
+        else if (v === 'content') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(m === 'folder' || m === 'usb' ? kindOf(e) : util.dirname(e.path)) + '</small></span>' +
           '<span class="tx r"><small>Date modified: ' + esc(util.formatDate(e.mtime)) + '</small><small>' + (e.type === 'dir' ? '' : 'Size: ' + esc(size(e))) + '</small></span>';
         else inner = '<span class="ic">' + pic(e, px) + '</span><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span>';
-        return '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '" draggable="' + !e.pending + '"' + (e.type === 'dir' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + inner + '</div>';
+        return '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '" draggable="' + !e.pending + '"' + (e.type === 'dir' && canDropOn(e.path) ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + inner + '</div>';
       }).join('') + '</div>';
     } else {
       content.innerHTML = listHtml(list, m, cutSet);
@@ -346,15 +580,15 @@ LiteOS.ready((OS) => {
     const hb = (k, label) => (plain ? '<span>' + label + '</span>' : '<button data-sort="' + k + '">' + label + arrow(k) + '</button>');
     let head;
     if (m === 'trash') head = '<div class="thead">' + hb('name', 'Name') + '<span>Original location</span>' + hb('mtime', 'Deleted') + hb('size', 'Size') + '</div>';
-    else if (m === 'folder') head = '<div class="thead">' + hb('name', 'Name') + hb('mtime', 'Modified') + hb('size', 'Size') + hb('type', 'Type') + '</div>';
+    else if (m === 'folder' || m === 'usb') head = '<div class="thead">' + hb('name', 'Name') + hb('mtime', 'Modified') + hb('size', 'Size') + hb('type', 'Type') + '</div>';
     else head = '<div class="thead">' + hb('name', 'Name') + '<span>Location</span>' + hb('mtime', 'Modified') + hb('size', 'Size') + '</div>';
     return head + list.map((e) => {
       const nm = '<span class="nm">' + tile(e, 26, 7) + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : '<span>' + esc(e.shown || e.name) + '</span>') + '</span>';
       let cols;
       if (m === 'trash') cols = '<span class="c">' + esc(util.dirname(e.original)) + '</span><span class="c m">' + esc(util.formatDate(e.deletedAt)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
-      else if (m === 'folder') cols = '<span class="c">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? e.count + ' items' : esc(util.formatSize(e.size))) + '</span><span class="c m">' + esc(kindOf(e)) + '</span>';
+      else if (m === 'folder' || m === 'usb') cols = '<span class="c">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? (e.count != null ? e.count + ' items' : '—') : esc(util.formatSize(e.size))) + '</span><span class="c m">' + esc(kindOf(e)) + '</span>';
       else cols = '<span class="c">' + esc(where(e.path)) + '</span><span class="c m">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
-      return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' && !e.pending ? ' draggable="true"' : '') + (e.type === 'dir' && m === 'folder' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
+      return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + (e.pending ? ' pending' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' && !e.pending ? ' draggable="true"' : '') + (e.type === 'dir' && (m === 'folder' || m === 'usb') && canDropOn(e.path) ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
     }).join('');
   }
 
@@ -364,7 +598,10 @@ LiteOS.ready((OS) => {
     const sel = selEntries();
     const size = sel.reduce((a, e) => a + (e.size || 0), 0);
     $('#st-sel').textContent = sel.length ? sel.length + ' selected' + (size ? ' · ' + util.formatSize(size) : '') : '';
-    $('#st-sync').textContent = st.usage ? util.formatSize(st.usage.used) + ' used' : '';
+    const here = mode() === 'usb' && usbParse(st.path);
+    const free = here && usb.free.get(here.id);
+    $('#st-sync').textContent = here ? (free != null ? util.formatSize(free) + ' free' : '') + (usb.write ? '' : (free != null ? ' · ' : '') + 'Read only')
+      : st.usage ? util.formatSize(st.usage.used) + ' used' : '';
   }
 
   function renderDetails() {
@@ -377,13 +614,14 @@ LiteOS.ready((OS) => {
       return;
     }
     const e = sel[0];
-    const isImg = e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
+    const isImg = e.type === 'file' && !e.usb && window.LOS_KINDS.image.includes(e.ext);
+    const loc = e.usb ? usbWhere(parentOf(e.path)) : util.dirname(e.path) === '/' ? 'My drive' : 'My drive' + util.dirname(e.path).replace(/\//g, ' › ');
     d.innerHTML = '<div class="preview">' + (isImg ? '<img alt="" src="' + esc(fs.rawUrl(e.path)) + '">' : tile(e, 64, 16)) + '</div>' +
       '<div><div class="name">' + esc(e.name) + '</div><div class="hint">' + esc(kindOf(e)) + '</div></div>' +
       '<div class="row"><button class="btn btn-primary grow" data-c="open">Open</button>' + (e.type === 'file' ? '<button class="btn grow" data-c="download">Download</button>' : '') +
       '<button class="icon-btn" data-c="more" aria-label="More actions" style="border:1px solid var(--line-strong);width:32px;height:32px">' + I('more') + '</button></div>' +
       '<dl>' + (e.type === 'file' ? '<dt>Size</dt><dd>' + esc(util.formatSize(e.size)) + '</dd>' : (e.count != null ? '<dt>Contains</dt><dd>' + e.count + ' items</dd>' : '')) +
-      '<dt>Modified</dt><dd>' + esc(util.formatDate(e.mtime)) + '</dd><dt>Location</dt><dd>' + esc(util.dirname(e.path) === '/' ? 'My drive' : 'My drive' + util.dirname(e.path).replace(/\//g, ' › ')) + '</dd></dl>';
+      '<dt>Modified</dt><dd>' + esc(util.formatDate(e.mtime)) + '</dd><dt>Location</dt><dd>' + esc(loc) + '</dd></dl>';
   }
 
   // ------------------------------------------------------------------ actions
@@ -397,6 +635,7 @@ LiteOS.ready((OS) => {
     if (mode() === 'trash' || e.pending) return;
     if (e.type === 'drive') { go(e.path); return; }
     if (e.type === 'dir') go(e.path);
+    else if (e.usb) usbOpen(e);
     else OS.openFile(e.path);
   }
 
@@ -443,6 +682,7 @@ LiteOS.ready((OS) => {
     st.renaming = null;
     const e = st.entries.find((x) => x.path === path);
     const name = value.trim();
+    if (e && e.usbNew) { delete e.usbNew; usbMakeFolder(e, name || e.name); return; } // a new folder on a drive
     if (e && e.made) {
       // a new item: show the name typed while it is still being made, then wait for it
       if (e.pending && name && name !== e.name) { e.shown = name; render(); }
@@ -468,6 +708,9 @@ LiteOS.ready((OS) => {
   async function paste(dest) {
     const c = clip.get();
     if (!c || !c.paths.length) return;
+    // to or from a USB drive: always a copy (a drive's items can't be cut)
+    if (isUsb(dest)) { if (usb.write) usbExport(await driveItems(c.paths.filter((p) => !isUsb(p))).catch(() => []), dest); return; }
+    if (c.paths.some(isUsb)) { usbImport(c.paths.filter(isUsb), dest); return; }
     try {
       if (c.mode === 'cut') { await fs.move(c.paths, dest); clip.set(null); }
       else await fs.copy(c.paths, dest);
@@ -479,6 +722,7 @@ LiteOS.ready((OS) => {
     files = Array.from(files || []);
     if (!files.length) return;
     dir = dir || st.path;
+    if (isUsb(dir)) { if (usb.write) await usbExport(files.map((f) => ({ name: f.name, file: f })), dir); return; } // from the computer onto a drive
     OS.notify('Uploading ' + files.length + (files.length === 1 ? ' file…' : ' files…'), { title: 'Upload started' });
     try {
       await fs.upload(dir, files);
@@ -488,6 +732,7 @@ LiteOS.ready((OS) => {
   }
 
   function download(e) {
+    if (e.usb) { usbDownload(e); return; }
     const a = document.createElement('a');
     a.href = fs.rawUrl(e.path, true);
     a.download = e.name;
@@ -527,6 +772,7 @@ LiteOS.ready((OS) => {
       ], at);
       return;
     }
+    if (e.usb) { usbItemMenu(e, at); return; }
     const multi = st.sel.size > 1;
     const isImg = e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
     const items = [{ label: 'Open', icon: 'forward', key: 'Enter', action: () => selEntries().forEach(openEntry) }];
@@ -546,13 +792,30 @@ LiteOS.ready((OS) => {
     OS.menu(items, at);
   }
 
+  // An item on a USB drive: open it, copy it (Paste in My drive), or copy it straight to a folder there
+  function usbItemMenu(e, at) {
+    const multi = st.sel.size > 1;
+    const paths = () => [...st.sel].filter(isUsb);
+    const items = [{ label: 'Open', icon: 'forward', key: 'Enter', action: () => selEntries().forEach(openEntry) }];
+    if (e.type === 'dir' && !multi) items.push({ label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) });
+    items.push('sep',
+      { label: 'Copy', icon: 'copy', key: 'Ctrl+C', action: () => { clip.set({ mode: 'copy', paths: paths() }); render(); } },
+      { label: 'Copy to My drive…', icon: 'folder', action: async () => {
+        const dest = await OS.dialog.folder({ title: 'Copy to', startIn: '/' });
+        if (dest) usbImport(paths(), dest);
+      } });
+    if (e.type === 'dir' && !multi && usb.write && clip.get()) items.push({ label: 'Paste into folder', icon: 'paste', action: () => paste(e.path) });
+    if (e.type === 'file' && !multi) items.push({ label: 'Download', icon: 'download', action: () => download(e) });
+    OS.menu(items, at);
+  }
+
   // a folder in the pane or a pin on Home: open it, or pin and unpin it
   function pinItem(p) {
     return isPinned(p) ? { label: 'Unpin from Quick access', icon: 'unpin', action: () => setPinned(p, false) } : { label: 'Pin to Quick access', icon: 'pin', action: () => setPinned(p, true) };
   }
   function folderMenu(p, at) {
     const items = [{ label: 'Open', icon: 'open', action: () => go(p) }, { label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: p }) }];
-    if (p !== '/') items.push('sep', pinItem(p));
+    if (p !== '/' && !isUsb(p)) items.push('sep', pinItem(p)); // pins follow the user to other devices: never a USB drive's folder
     OS.menu(items, at);
   }
 
@@ -611,6 +874,17 @@ LiteOS.ready((OS) => {
     dlg.showModal();
   }
   function driveMenu(e, at) {
+    if (e.usb) {
+      OS.menu([
+        { label: 'Open', icon: 'open', key: 'Enter', action: () => go(e.path) },
+        { label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) },
+        'sep',
+        { label: 'Eject', action: () => usbEject(e.id) },
+        'sep',
+        { label: 'Properties', icon: 'info', action: () => usbProps(e) },
+      ], at);
+      return;
+    }
     OS.menu([
       { label: 'Open', icon: 'open', key: 'Enter', action: () => go(e.path) },
       { label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) },
@@ -635,6 +909,14 @@ LiteOS.ready((OS) => {
 
   function bgMenu(at) {
     if (mode() === 'trash') { OS.menu([{ label: 'Empty Trash', icon: 'trash', danger: true, action: () => trashAction('purge') }], at); return; }
+    if (mode() === 'usb') {
+      const u = usbParse(st.path);
+      OS.menu([viewItem(), sortItem(), 'sep', { label: 'Refresh', icon: 'reload', key: 'F5', action: refresh }]
+        .concat(usb.write ? [{ label: 'Paste', icon: 'paste', key: 'Ctrl+V', disabled: !clip.get(), action: () => paste(st.path) }, 'sep',
+          { label: 'New folder', icon: 'folder', action: usbNewFolder }, { label: 'Upload files', icon: 'upload', action: () => $('#upload').click() }] : [])
+        .concat(['sep', { label: 'Eject ' + usbName(u.id), action: () => usbEject(u.id) }]), at);
+      return;
+    }
     if (!isFolder()) return;
     OS.menu([
       viewItem(),
@@ -728,8 +1010,14 @@ LiteOS.ready((OS) => {
     switch (b.dataset.c) {
       case 'back': if (st.back.length) { st.fwd.push(st.path); load(st.back.pop(), { keepHistory: true }); } break;
       case 'forward': if (st.fwd.length) { st.back.push(st.path); load(st.fwd.pop(), { keepHistory: true }); } break;
-      case 'up': go(st.path === '/' ? 'device:' : util.dirname(st.path)); break;
-      case 'new': newMenu(at); break;
+      case 'up': go(parentOf(st.path)); break;
+      case 'new': if (mode() === 'usb') usbNewFolder(); else newMenu(at); break;
+      case 'eject': {
+        const one = sel.length === 1 && sel[0];
+        const id = mode() === 'usb' ? usbParse(st.path).id : one && one.usb ? one.id : null;
+        if (id) usbEject(id);
+        break;
+      }
       case 'upload': $('#upload').click(); break;
       case 'cut': clip.set({ mode: 'cut', paths: [...st.sel] }); render(); break;
       case 'copy': clip.set({ mode: 'copy', paths: [...st.sel] }); OS.notify('Paste in any folder to make a copy.', { title: 'Ready to paste' }); render(); break;
@@ -841,6 +1129,11 @@ LiteOS.ready((OS) => {
     if (p === 'device:') deviceMenu(ev);
     else if (p === 'trash:') OS.menu([{ label: 'Open', icon: 'open', action: () => go(p) }, 'sep', { label: 'Empty Trash', icon: 'trash', danger: true, action: () => trashAction('purge') }], ev);
     else if (p.startsWith('/')) folderMenu(p, ev);
+    else if (isUsb(p)) {
+      const u = usbParse(p);
+      const d = usbDrive(u.id);
+      if (u.path === '/' && d) driveMenu(usbEntry(d), ev); else folderMenu(p, ev);
+    }
     else OS.menu([{ label: 'Open', icon: 'open', action: () => go(p) }], ev);
   });
   $('#main').addEventListener('contextmenu', (ev) => {
@@ -866,14 +1159,16 @@ LiteOS.ready((OS) => {
     if (ctrl && ev.shiftKey && /^Digit[1-8]$/.test(ev.code)) { ev.preventDefault(); if (mode() !== 'trash') setView(VIEWS[+ev.code.slice(5) - 1][0]); return; }
     if (ev.altKey && ev.shiftKey && ev.code === 'KeyP') { ev.preventDefault(); toggleDetails(); return; }
     if (mode() === 'device') { if (ev.key === 'Enter' && sel.length) { ev.preventDefault(); sel.forEach(openEntry); } return; }
+    // a USB drive's items can't be trashed, renamed or cut
+    if (mode() === 'usb' && (ev.key === 'Delete' || ev.key === 'F2' || (ctrl && ev.key.toLowerCase() === 'x'))) return;
     if (ev.key === 'Delete' && sel.length) { ev.preventDefault(); if (mode() === 'trash') trashAction('purge', trashIds()); else del(selPaths()); }
     else if (ev.key === 'F2' && sel.length === 1 && mode() !== 'trash' && !sel[0].pin) { ev.preventDefault(); st.renaming = sel[0].path; render(); }
     else if (ev.key === 'Enter' && sel.length) { ev.preventDefault(); sel.forEach(openEntry); }
-    else if (ev.key === 'Backspace' && isFolder()) { ev.preventDefault(); go(st.path === '/' ? 'device:' : util.dirname(st.path)); }
+    else if (ev.key === 'Backspace' && (isFolder() || mode() === 'usb')) { ev.preventDefault(); go(parentOf(st.path)); }
     else if (ctrl && ev.key.toLowerCase() === 'a') { ev.preventDefault(); select(st.entries.map((e) => e.path)); }
     else if (ctrl && ev.key.toLowerCase() === 'c' && sel.length && mode() !== 'trash') { clip.set({ mode: 'copy', paths: [...st.sel] }); render(); }
     else if (ctrl && ev.key.toLowerCase() === 'x' && sel.length && mode() !== 'trash') { clip.set({ mode: 'cut', paths: [...st.sel] }); render(); }
-    else if (ctrl && ev.key.toLowerCase() === 'v' && isFolder()) { paste(st.path); }
+    else if (ctrl && ev.key.toLowerCase() === 'v' && canPasteHere()) { paste(st.path); }
     else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       const list = sorted(st.entries).map((e) => e.path);
       if (!list.length) return;
@@ -915,7 +1210,8 @@ LiteOS.ready((OS) => {
     if (phase === 'leave') return null;
     const el = document.elementFromPoint(x, y);
     const target = el && el.closest('[data-dropdir],[data-droptrash]');
-    if (target) { target.classList.add('drop'); return target.dataset.droptrash ? 'trash:' : target.dataset.dropdir; }
+    // desktop icons are moved by the shell on the server: never onto a USB drive
+    if (target && !isUsb(target.dataset.dropdir)) { target.classList.add('drop'); return target.dataset.droptrash ? 'trash:' : target.dataset.dropdir; }
     if (isFolder() && el && main.contains(el)) { main.classList.add('dragover'); return st.path; }
     return null;
   };
@@ -948,7 +1244,7 @@ LiteOS.ready((OS) => {
       target.classList.add('drop');
       ev.dataTransfer.dropEffect = ev.ctrlKey ? 'copy' : 'move';
       main.classList.remove('dragover');
-    } else if (isFolder() && main.contains(ev.target) && (external || (internal && !dragPaths))) {
+    } else if (canPasteHere() && main.contains(ev.target) && (external || (internal && !dragPaths))) {
       // Files from the computer, or items dragged in from another Files window: drop into this folder.
       ev.preventDefault();
       ev.dataTransfer.dropEffect = internal ? (ev.ctrlKey ? 'copy' : 'move') : 'copy';
@@ -963,7 +1259,7 @@ LiteOS.ready((OS) => {
     document.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop'));
     if (isExternalFiles(ev)) {
       ev.preventDefault();
-      const dir = target && target.dataset.dropdir ? target.dataset.dropdir : (isFolder() ? st.path : null);
+      const dir = target && target.dataset.dropdir ? target.dataset.dropdir : (canPasteHere() ? st.path : null);
       if (dir) { await upload(ev.dataTransfer.files, dir); announce(); }
       return;
     }
@@ -974,9 +1270,12 @@ LiteOS.ready((OS) => {
     if (!paths.length) return;
     const local = !!dragPaths;
     dragPaths = null;
-    if (target && target.dataset.droptrash) { await del(paths); announce(); return; }
-    const dest = target && target.dataset.dropdir ? target.dataset.dropdir : (!local && isFolder() ? st.path : null);
+    if (target && target.dataset.droptrash) { if (!paths.some(isUsb)) { await del(paths); announce(); } return; }
+    const dest = target && target.dataset.dropdir ? target.dataset.dropdir : (!local && canPasteHere() ? st.path : null);
     if (!dest) return;
+    // to or from a USB drive: a copy, whatever the keys
+    if (isUsb(dest)) { const mine = paths.filter((p) => !isUsb(p)); if (mine.length && usb.write) usbExport(await driveItems(mine).catch(() => []), dest); return; }
+    if (paths.some(isUsb)) { usbImport(paths.filter(isUsb), dest); return; }
     try {
       if (ev.ctrlKey) await fs.copy(paths, dest); else await fs.move(paths, dest);
       refresh();
@@ -987,7 +1286,10 @@ LiteOS.ready((OS) => {
 
   // Theme changes don't need a re-render (CSS variables), but settings like wallpaper don't affect Files.
   OS.win.keepState(() => ({ path: st.path === 'search:' ? (st.back[st.back.length - 1] || 'home:') : st.path, scroll: $('#content').scrollTop }));
-  load(['home:', 'device:', 'trash:', 'recent:'].includes(st.path) || st.path.startsWith('/') ? st.path : 'home:', { keepHistory: true }).then(() => {
+  // a USB drive's folder (after a reload, or opened in a new window) only where LiteLink is: it lists the drives first
+  const start = ['home:', 'device:', 'trash:', 'recent:'].includes(st.path) || st.path.startsWith('/') ? st.path : isUsb(st.path) && LL ? st.path : 'home:';
+  (isUsb(start) ? LL.ready.then(() => LL.storage.list()).then((d) => { usb.drives = d; }, () => {}) : Promise.resolve())
+    .then(() => load(start, { keepHistory: true })).then(() => {
     if (kept.scroll > 0) $('#content').scrollTop = kept.scroll;
     // Other apps can ask Files to highlight a file: LiteOS.open('files', { path: dir, select: file })
     if (OS.args.select && st.entries.some((e) => e.path === OS.args.select)) select([OS.args.select]);
