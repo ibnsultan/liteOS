@@ -65,28 +65,47 @@ LiteOS.ready((OS) => {
   $('[data-c=up]').innerHTML = I('up');
   $('#search-ico').outerHTML = I('search', 14);
 
+  // The command bar, laid out like Explorer's: New (with Upload beside it), the actions on the selection as icons,
+  // Sort and View, a "more" menu, and the Details pane at the far end; groups split by thin lines. Plain buttons with
+  // no frame: they fill on hover.
+  const SORT_ICON = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3.5 7.5 7 4l3.5 3.5M17 20V4M13.5 16.5 17 20l3.5-3.5"/></svg>';
+  const cmdBtn = (c, label, icon, on, chev) => '<button class="cmd-btn" data-c="' + c + '"' + (on ? '' : ' disabled') + '>' + icon + '<span>' + label + '</span>' + (chev ? '<span class="chev">' + I('down', 12) + '</span>' : '') + '</button>';
+  const cmdIcon = (c, label, icon, on) => '<button class="icon-btn cmd-ico" data-c="' + c + '" title="' + label + '" aria-label="' + label + '"' + (on ? '' : ' disabled') + '>' + I(icon) + '</button>';
   function renderCmd() {
     const m = mode();
     const has = st.sel.size > 0;
     let h = '';
     if (m === 'trash') {
-      h += '<button class="btn" data-c="restore"' + (has ? '' : ' disabled') + '>Restore</button>' +
-        '<button class="btn" data-c="purge"' + (has ? '' : ' disabled') + '>Delete permanently</button>' +
-        '<span class="spacer"></span><button class="btn btn-danger" data-c="empty">Empty Trash</button>';
+      h += cmdBtn('empty', 'Empty Trash', I('trash'), true) + '<span class="sep"></span>' +
+        cmdBtn('restore', 'Restore', I('undo'), has) + cmdBtn('purge', 'Delete permanently', I('x'), has);
     } else {
       const files = has && m !== 'device' && !selEntries().some((e) => e.pin); // a drive (or a pin on Home) can't be cut, copied, renamed or trashed
-      const fixed = m === 'home' ? ' disabled' : '';
-      h += '<button class="btn btn-primary" data-c="new"' + (isFolder() ? '' : ' disabled') + '>New' + I('down', 12) + '</button>' +
-        '<button class="btn btn-ghost" data-c="upload"' + (isFolder() ? '' : ' disabled') + '>Upload</button><span class="sep"></span>' +
-        [['cut', 'Cut', 'cut', files], ['copy', 'Copy', 'copy', files], ['paste', 'Paste', 'paste', !!clip.get() && isFolder()], ['rename', 'Rename', 'rename', files && st.sel.size === 1],
-          ['download', 'Download', 'download', st.sel.size === 1 && selEntries()[0] && selEntries()[0].type === 'file'], ['delete', 'Move to Trash', 'trash', files]]
-          .map(([c, l, ic, en]) => '<button class="icon-btn" data-c="' + c + '" title="' + l + '" aria-label="' + l + '"' + (en ? '' : ' disabled') + (c === 'delete' ? ' style="color:var(--danger)"' : '') + '>' + I(ic) + '</button>').join('') +
-        '<span class="spacer"></span>' +
-        '<button class="btn btn-ghost" data-c="sort"' + fixed + '>Sort: ' + ({ name: 'Name', mtime: 'Modified', size: 'Size', type: 'Type' })[st.sort] + '</button>' +
-        '<button class="btn btn-ghost" data-c="view"' + fixed + '>View: ' + viewLabel() + '</button>' +
-        '<button class="icon-btn' + (st.details ? ' active' : '') + '" data-c="details" aria-label="Details pane" title="Details pane">' + I('panel') + '</button>';
+      const sortable = m !== 'home';
+      const one = st.sel.size === 1 && selEntries()[0];
+      h += cmdBtn('new', 'New', I('plus'), isFolder()) + cmdIcon('upload', 'Upload', 'upload', isFolder()) + '<span class="sep"></span>' +
+        cmdIcon('cut', 'Cut', 'cut', files) + cmdIcon('copy', 'Copy', 'copy', files) + cmdIcon('paste', 'Paste', 'paste', !!clip.get() && isFolder()) +
+        cmdIcon('rename', 'Rename', 'rename', files && st.sel.size === 1) + cmdIcon('download', 'Download', 'download', !!one && one.type === 'file') +
+        cmdIcon('delete', 'Move to Trash', 'trash', files) + '<span class="sep"></span>' +
+        cmdBtn('sort', 'Sort', SORT_ICON, sortable, true) +
+        cmdBtn('view', 'View', I(VIEWS.find(([v]) => v === curView())[2]), sortable, true) + '<span class="sep"></span>' +
+        cmdIcon('more', 'See more', 'more', true);
     }
+    h += '<span class="spacer"></span>' + (m === 'trash' || m === 'device' ? '' :
+      '<button class="cmd-btn' + (st.details ? ' active' : '') + '" data-c="details" aria-pressed="' + st.details + '" title="Details pane (Alt+Shift+P)">' + I('panel') + '<span>Details</span></button>');
     $('#cmdbar').innerHTML = h;
+  }
+  // the bar's "more" menu: selection, refresh and opening elsewhere
+  function moreMenu(at) {
+    const all = st.entries.map((e) => e.path);
+    OS.menu([
+      { label: 'Select all', key: 'Ctrl+A', disabled: !all.length, action: () => select(all) },
+      { label: 'Select none', disabled: !st.sel.size, action: () => select([]) },
+      { label: 'Invert selection', disabled: !all.length, action: () => select(all.filter((p) => !st.sel.has(p))) },
+      'sep',
+      { label: 'Refresh', icon: 'reload', key: 'F5', action: refresh },
+      { label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: st.path }) },
+      ...(isFolder() ? [{ label: 'Open with Code', icon: 'code', action: () => OS.open('code', { folder: st.path }) }] : []),
+    ], at);
   }
 
   // One row of the pane. Every row has the arrow's slot, so the icons line up; tree rows (depth set) fill it.
@@ -672,6 +691,7 @@ LiteOS.ready((OS) => {
       case 'sort': sortMenu(at); break;
       case 'view': OS.menu(viewItems(), at); break;
       case 'details': toggleDetails(); break;
+      case 'more': moreMenu(at); break;
       case 'open': if (sel[0]) openEntry(sel[0]); break;
       case 'more': if (sel[0]) itemMenu(sel[0], at); break;
       case 'restore': trashAction('restore', trashIds()); break;

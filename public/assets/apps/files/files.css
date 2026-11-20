@@ -10,7 +10,18 @@ body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 
 .crumbs button:hover { background: var(--hover); }
 .crumbs button:last-child { color: var(--text); font-weight: 600; }
 .crumbs .sepc { color: var(--disabled); }
-.toolbar.cmd { height: 46px; }
+.toolbar.cmd { height: 48px; gap: 2px; padding: 0 8px; }
+/* the command bar, as in Explorer: frameless buttons that fill on hover, groups split by thin lines */
+.toolbar.cmd .sep { height: 24px; margin: 0 6px; }
+.cmd-btn { height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; border: none; border-radius: 4px; background: transparent; color: var(--text); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.cmd-btn:hover:not(:disabled) { background: var(--hover); }
+.cmd-btn:disabled { color: var(--disabled); cursor: default; }
+.cmd-btn .chev { display: inline-flex; margin-left: -2px; color: var(--muted); }
+.cmd-btn:disabled .chev { color: inherit; }
+.cmd-btn.active { background: var(--hover); }
+.cmd-ico { width: 36px; height: 32px; border-radius: 4px; color: var(--text); }
+.cmd-ico:disabled { opacity: 1; color: var(--disabled); }
+@media (max-width: 620px) { .cmd-btn > span:not(.chev) { display: none; } .cmd-btn { padding: 0 8px; gap: 4px; } }
 .main { display: flex; flex-direction: column; position: relative; outline: none; overflow: hidden; container-type: inline-size; }
 @container (max-width: 620px) {
   .thead, .frow { grid-template-columns: minmax(0, 1fr) 130px 80px !important; }
