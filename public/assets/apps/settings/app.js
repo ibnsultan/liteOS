@@ -288,7 +288,7 @@ LiteOS.ready((OS) => {
   function desktopIconsSection() {
     const on = s().desktopIcons || [];
     const items = [
-      { id: 'files', name: 'My drive', hint: 'Opens Files', img: window.LOS_app('files').img },
+      { id: 'files', name: 'This PC', hint: 'Your drives, in Files', img: window.LOS_hasSysIcon('device.computer') ? window.LOS_sysIcon('device.computer') : window.LOS_app('files').img },
       { id: 'trash', name: 'Trash', hint: 'Deleted files, until you empty it', img: window.LOS_appIconUrl('trash') },
       { id: 'settings', name: 'Settings', hint: 'Personalisation, account and more', img: window.LOS_app('settings').img },
     ].concat(window.LOS_APPS.filter((a) => a.id !== 'files' && a.id !== 'settings').map((a) => ({ id: a.id, name: a.name, hint: '', img: a.img })));

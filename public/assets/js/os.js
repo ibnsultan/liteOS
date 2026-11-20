@@ -362,12 +362,15 @@
   window.addEventListener('focus', deskFilesChanged);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) deskFilesChanged(); });
 
+  const thisPcIcon = () => (window.LOS_hasSysIcon('device.computer') ? window.LOS_sysIcon('device.computer') : window.LOS_app('files').img);
   function deskItems() {
     return (set().desktopIcons || []).map((id) => {
       if (id === 'trash') return { id, label: 'Trash', img: window.LOS_appIconUrl('trash'), open: () => openApp('files', { path: 'trash:' }) };
       const app = window.LOS_app(id);
       if (!app) return null;
-      return { id, label: id === 'files' ? 'My drive' : app.name, img: app.img, open: () => openApp(id) };
+      // the Files shortcut is "This PC", as in Windows: the computer, opening on its drives
+      if (id === 'files') return { id, label: 'This PC', img: thisPcIcon(), open: () => openApp('files', { path: 'device:' }) };
+      return { id, label: app.name, img: app.img, open: () => openApp(id) };
     }).filter(Boolean);
   }
 
@@ -422,7 +425,7 @@
     // shortcuts that can go on the desktop: the apps and the Trash, minus those already there
     const onDesk = s.desktopIcons || [];
     const addable = [{ id: 'trash', label: 'Trash', img: window.LOS_appIconUrl('trash') }]
-      .concat(window.LOS_APPS.filter((a) => !a.system || a.id === 'files').map((a) => ({ id: a.id, label: a.id === 'files' ? 'My drive' : a.name, img: a.img })))
+      .concat(window.LOS_APPS.filter((a) => !a.system || a.id === 'files').map((a) => (a.id === 'files' ? { id: a.id, label: 'This PC', img: thisPcIcon() } : { id: a.id, label: a.name, img: a.img })))
       .filter((x) => !onDesk.includes(x.id));
     const size = s.deskIconSize || 'medium';
     const sort = s.deskSort || 'name';
