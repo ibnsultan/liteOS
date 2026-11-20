@@ -1518,7 +1518,7 @@
       '<button class="ibtn ctl" data-w="min" aria-label="Minimise">' + ICON('window.minimize', 14) + '</button>' +
       '<button class="ibtn ctl" data-w="max" aria-label="Maximise">' + ICON('window.maximize', 13) + '</button>' +
       '<button class="ibtn ctl close" data-w="close" aria-label="Close">' + ICON('window.close', 14) + '</button></div>' +
-      '<div class="win-body"><iframe title="' + esc(app.name) + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay; picture-in-picture; encrypted-media; web-share; accelerometer; gyroscope" allowfullscreen></iframe>' +
+      '<div class="win-body"><iframe title="' + esc(app.name) + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay; picture-in-picture; encrypted-media; web-share; accelerometer; gyroscope; camera; microphone" allowfullscreen></iframe>' +
       '<div class="win-load" role="progressbar" aria-label="Opening ' + esc(app.name) + '">' + '<span class="ld-mark" aria-hidden="true">' + appTile(app, 48) + appTile(app, 48) + '</span>' +
       '<p class="ld-text" aria-live="polite"></p><span class="ld-bar" aria-hidden="true"><i></i></span></div>' +
       '<div class="win-shield"></div></div>' +
