@@ -1390,13 +1390,14 @@
       '<button class="ibtn ctl" data-w="max" aria-label="Maximise">' + ICON('window.maximize', 13) + '</button>' +
       '<button class="ibtn ctl close" data-w="close" aria-label="Close">' + ICON('window.close', 14) + '</button></div>' +
       '<div class="win-body"><iframe title="' + esc(app.name) + '" allow="fullscreen; clipboard-read; clipboard-write; autoplay; picture-in-picture; encrypted-media; web-share; accelerometer; gyroscope" allowfullscreen></iframe>' +
-      '<div class="win-load" role="progressbar" aria-label="Opening ' + esc(app.name) + '">' + appTile(app, 48, 12, 28) + '<span class="spin" aria-hidden="true"></span></div>' +
+      '<div class="win-load" role="progressbar" aria-label="Opening ' + esc(app.name) + '">' + '<span class="ld-mark" aria-hidden="true">' + appTile(app, 48) + appTile(app, 48) + '</span>' +
+      '<p class="ld-text" aria-live="polite"></p><span class="ld-bar" aria-hidden="true"><i></i></span></div>' +
       '<div class="win-shield"></div></div>' +
       ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => '<div class="rz ' + d + '" data-rz="' + d + '"></div>').join('');
     const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null };
     wins.set(id, win);
     $('.windows', root).appendChild(el);
-    win.iframe.addEventListener('load', () => winLoaded(win));
+    win.iframe.addEventListener('load', () => winPaged(win));
     winLoading(win);
     win.iframe.src = app.entry + '?' + new URLSearchParams(Object.assign({}, args, { win: id }));
     setTitle(win, app.name);
@@ -1407,18 +1408,52 @@
   }
 
   // Loading cover: the app's icon over the window body until its page has loaded (the frame's load event fires once
-  // the SDK's ready() callbacks have run). The spinner only fades in on slow loads, so fast ones don't flicker.
+  // the SDK's ready() callbacks have run). The icon runs the brand's "Shimmer" loader (motion 02): it sits dimmed while a
+  // band of light sweeps across a second copy of it, so any app icon works without editing the icon itself.
+  // An app whose manifest sets window.reportsReady keeps the cover up after its page loads, until it calls
+  // OS.win.loaded() (when what it opened is on screen); meanwhile OS.win.loading(text, progress) shows a line of text
+  // and a progress bar under the icon. Each message gives it another 15 s, so a slow but busy app stays covered and
+  // one that has stopped answering is uncovered anyway. One that has said nothing at all a few seconds after its page
+  // loaded (it failed while starting, say) is uncovered then rather than after the full wait.
+  const LOAD_WAIT = 15000, QUIET_WAIT = 3000;
   function winLoading(w) {
     const c = $('.win-load', w.el);
     if (!c) return;
     c.classList.remove('done');
+    w.covered = true;
+    w.heard = false;
+    winLoadText(w, '', null);
     clearTimeout(w.loadTimer);
-    w.loadTimer = setTimeout(() => winLoaded(w), 15000); // never leave a window covered
+    w.loadTimer = setTimeout(() => winLoaded(w), LOAD_WAIT); // never leave a window covered
+  }
+  /** The frame's page has loaded: uncovered now, unless the app says when it's ready. */
+  function winPaged(w) {
+    if (!w.covered) return;
+    // a new frame first "loads" a blank page (some browsers report that after the listener is attached): not the app yet
+    try { if (w.iframe.contentWindow.location.href === 'about:blank') return; } catch (e) { /* another origin: it's the app */ }
+    if (!w.app.reports) { winLoaded(w); return; }
+    if (w.heard) return; // it's reporting: the wait from its last message stands
+    clearTimeout(w.loadTimer);
+    w.loadTimer = setTimeout(() => winLoaded(w), QUIET_WAIT);
   }
   function winLoaded(w) {
     clearTimeout(w.loadTimer);
+    w.covered = false;
     const c = $('.win-load', w.el);
     if (c) requestAnimationFrame(() => c.classList.add('done'));
+  }
+  function winLoadText(w, text, progress) {
+    const c = $('.win-load', w.el);
+    if (!c) return;
+    // the line is a live region: rewritten only when it changes, so screen readers don't repeat it on every update
+    const line = $('.ld-text', c);
+    if (line.textContent !== (text || '')) line.textContent = text || '';
+    const bar = $('.ld-bar', c);
+    const on = typeof progress === 'number' && isFinite(progress);
+    bar.classList.toggle('on', on);
+    if (!on) $('i', bar).style.width = '0';
+    else $('i', bar).style.width = Math.round(Math.max(0, Math.min(1, progress)) * 100) + '%';
+    if (text) c.setAttribute('aria-valuetext', text + (on ? ' ' + Math.round(progress * 100) + '%' : '')); else c.removeAttribute('aria-valuetext');
   }
 
   function openFile(path, isDir) {
@@ -2299,6 +2334,17 @@
       /** Apps set their top-bar menus: [{ label, items: [{ label, icon, key, disabled, action } | 'sep'] }] */
       setMenus(id, menus) { const w = wins.get(id); if (w) { w.menus = Array.isArray(menus) ? menus : []; if (focusedId === id) renderBars(); } },
       setDirty(id, d) { const w = wins.get(id); if (w && w.dirty !== d) { w.dirty = d; setTitle(w, w.title); } },
+      /** While the window is covered: what the app is doing (a line of text) and how far it has got (0–1, or none). */
+      loading(id, text, progress) {
+        const w = wins.get(id);
+        if (!w || !w.covered) return;
+        w.heard = true;
+        winLoadText(w, String(text || '').slice(0, 120), typeof progress === 'number' ? progress : null);
+        clearTimeout(w.loadTimer);
+        w.loadTimer = setTimeout(() => winLoaded(w), LOAD_WAIT);
+      },
+      /** The app is ready to be seen: the cover goes. */
+      loaded(id) { const w = wins.get(id); if (w && w.covered) winLoaded(w); },
       // Custom title bars: the app reports pointer positions in screen coordinates while the user drags its own title
       // area (its document keeps the pointer captured). They become shell positions from where the drag started,
       // then the drag is the same as on a shell title bar, edge snapping included.

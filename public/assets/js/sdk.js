@@ -140,6 +140,13 @@
     /** Mark unsaved changes; the shell asks before closing a dirty window. */
     setDirty(dirty) { if (host && winId) host.win.setDirty(winId, !!dirty); },
     /**
+     * For apps whose manifest sets window.reportsReady: the window stays covered by the opening screen after the page
+     * loads, until loaded() is called. Until then, loading(text, progress) shows what the app is doing under its icon
+     * ("Reading the workbook", 0.45). Each call keeps the cover up another 15 seconds.
+     */
+    loading(text, progress) { if (host && winId && host.win.loading) host.win.loading(winId, text, progress); },
+    loaded() { if (host && winId && host.win.loaded) host.win.loaded(winId); },
+    /**
      * Menus shown in the top bar while this window is focused, merged with the
      * standard File / View / Window / Help menus:
      *   setMenus([{ label: 'File', items: [{ label: 'Save', key: 'Ctrl+S', icon: 'save', action }, 'sep', …] }])

@@ -82,6 +82,8 @@ class AppRegistry
             'size' => $app['window']['size'] ?? [960, 640],
             'chrome' => $app['window']['chrome'] ?? 'standard',
             'single' => (bool) ($app['window']['single'] ?? false),
+            // the app says when it's ready to be seen (OS.win.loaded): its window stays covered until then
+            'reports' => (bool) ($app['window']['reportsReady'] ?? false),
             'system' => (bool) ($app['system'] ?? false),
         ], $this->all()));
     }
