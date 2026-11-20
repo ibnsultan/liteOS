@@ -23,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // accept proxied traffic thru localhost
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
+
         // signed out: the sign-in page; signed in: the desktop
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('home'));
