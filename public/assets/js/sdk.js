@@ -157,7 +157,7 @@
       el.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || !ok(e.target)) return;
         e.preventDefault();
-        host.win.dragStart(winId, e.screenX, e.screenY, e.clientX / Math.max(1, window.innerWidth));
+        host.win.dragStart(winId, e.screenX, e.screenY, e.clientX / Math.max(1, window.innerWidth), e.clientY);
         el.setPointerCapture(e.pointerId);
         const move = (ev) => host.win.dragMove(winId, ev.screenX, ev.screenY);
         const up = () => {

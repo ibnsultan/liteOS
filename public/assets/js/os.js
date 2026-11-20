@@ -1018,17 +1018,195 @@
   }
 
   // ------------------------------------------------------------------ top bar: app menus
-  function snapWin(w, side) {
-    const a = workArea();
+  // ================================================================== snap groups (tiling)
+  // Windows snapped to the halves and quarters of the screen form one group, laid out by a small tree: two columns
+  // split by a vertical edge (T.x), and each column holds one window or two stacked ones split at its own ratio (r).
+  // The edges between tiles are shared: dragging one resizes the windows on both sides. The group minimises and comes
+  // forward together, a minimised one keeps its place, and when a window leaves, the window it shared a column with
+  // takes its space.
+  // With the floating bars, the group takes the whole screen and the bars slide away, the same as a maximised window.
+  const TILE_GAP = 0; // tiles touch: a gap would let a press through to the window behind, and the edge handles sit inside each window
+  const TILE_MIN_W = 360;
+  const TILE_MIN_H = 200;
+  const newCol = () => ({ one: null, top: null, bot: null, r: 0.5 });
+  const T = { x: 0.5, l: newCol(), r: newCol() };
+  const ZONES = { l: ['l', 'one'], tl: ['l', 'top'], bl: ['l', 'bot'], r: ['r', 'one'], tr: ['r', 'top'], br: ['r', 'bot'] };
+  const ZONE_LABEL = { l: 'Left', r: 'Right', tl: 'Top left', tr: 'Top right', bl: 'Bottom left', br: 'Bottom right' };
+  const tileArea = () => (fullMax() ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight } : workArea());
+  const tiledWins = () => [...wins.values()].filter((x) => x.tile);
+  const colEmpty = (c) => !c.one && !c.top && !c.bot;
+
+  /** Where a zone is on screen with the group's current edges (also for the drag preview of an empty zone). */
+  function zoneRect(zone) {
+    const a = tileArea();
+    const [side, slot] = ZONES[zone];
+    const lw = Math.round(a.w * T.x);
+    const g = TILE_GAP / 2;
+    const x = side === 'l' ? a.x : a.x + lw + g;
+    const w = side === 'l' ? lw - g : a.w - lw - g;
+    if (slot === 'one') return { x, y: a.y, w, h: a.h };
+    const th = Math.round(a.h * T[side].r);
+    return slot === 'top' ? { x, y: a.y, w, h: th - g } : { x, y: a.y + th + g, w, h: a.h - th - g };
+  }
+
+  /** Bring every window's tile, class and position in line with the tree. */
+  function syncTiles() {
+    const where = new Map();
+    ['l', 'r'].forEach((side) => ['one', 'top', 'bot'].forEach((slot) => {
+      const id = T[side][slot];
+      if (id && wins.has(id)) where.set(id, side === 'l' ? { one: 'l', top: 'tl', bot: 'bl' }[slot] : { one: 'r', top: 'tr', bot: 'br' }[slot]);
+      else T[side][slot] = null;
+    }));
+    wins.forEach((w) => {
+      const z = where.get(w.id) || null;
+      if (w.tile === z && !z) return;
+      w.tile = z;
+      w.el.classList.toggle('tiled', !!z);
+      if (z) w.el.dataset.tile = z; else delete w.el.dataset.tile;
+      applyRect(w);
+    });
+    if (!where.size) { T.x = 0.5; T.l.r = 0.5; T.r.r = 0.5; }
+    updateImmersive();
+  }
+
+  /** Take a window out of the group; the window it shared a column with takes the whole column. */
+  function untile(w) {
+    if (!w.tile) return;
+    const [side, slot] = ZONES[w.tile];
+    const c = T[side];
+    c[slot] = null;
+    if (slot !== 'one') { const other = c.top || c.bot; c.top = null; c.bot = null; if (other) c.one = other; }
+    syncTiles();
+  }
+
+  /** Snap a window into a zone ('l', 'r', 'tl', 'tr', 'bl', 'br') or maximise it ('max'). */
+  function snapWin(w, zone, opts) {
+    hideSnapAssist();
+    if (zone === 'max') { untile(w); if (!w.max) toggleMax(w); return; }
     if (w.max) toggleMax(w);
-    w.prev = Object.assign({}, w.rect);
-    w.snap = side;
-    w.rect = side === 'left' ? { x: a.x, y: a.y, w: Math.round(a.w / 2), h: a.h } : { x: a.x + Math.round(a.w / 2), y: a.y, w: Math.round(a.w / 2), h: a.h };
-    applyRect(w);
+    if (w.min) { w.min = false; w.el.classList.remove('min'); }
+    if (w.tile === zone) return;
+    untile(w);
+    const [side, slot] = ZONES[zone];
+    const c = T[side];
+    if (slot === 'one') { c.one = null; c.top = null; c.bot = null; } // anything in that column floats again
+    else {
+      const other = slot === 'top' ? 'bot' : 'top';
+      if (c.one) { c[other] = c.one; c.one = null; } // the half already there moves to the other quarter
+    }
+    c[slot] = w.id;
+    syncTiles();
+    focus(w);
+    if (!(opts && opts.noAssist)) setTimeout(() => showSnapAssist(), 0);
+  }
+
+  /** The zone the pointer is in while dragging a window (shell coordinates), or null. */
+  function zoneAt(x, y) {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const a = workArea();
+    const atL = x <= 4;
+    const atR = x >= W - 5;
+    if (atL || atR) {
+      const v = y < a.y + a.h * 0.22 ? 't' : y > a.y + a.h * 0.78 ? 'b' : '';
+      return v + (atL ? 'l' : 'r');
+    }
+    if (y <= a.y + 2 || y <= 2) return x < W * 0.15 ? 'tl' : x > W * 0.85 ? 'tr' : 'max';
+    if (y >= H - 4) return x < W * 0.15 ? 'bl' : x > W * 0.85 ? 'br' : null;
+    return null;
+  }
+
+  // Snap Assist: after a snap, an empty part of the group offers the other open windows to fill it.
+  let assistEl = null;
+  function emptyZone() {
+    if (!tiledWins().length) return null;
+    for (const side of ['l', 'r']) {
+      const c = T[side];
+      if (colEmpty(c)) return side;
+      if (!c.one && !c.top) return 't' + side;
+      if (!c.one && !c.bot) return 'b' + side;
+    }
+    return null;
+  }
+  function hideSnapAssist() { if (assistEl) { assistEl.remove(); assistEl = null; } }
+  function showSnapAssist() {
+    hideSnapAssist();
+    const zone = emptyZone();
+    const list = [...wins.values()].filter((x) => !x.tile && !x.min).sort((a2, b2) => +b2.el.style.zIndex - +a2.el.style.zIndex);
+    if (!zone || !list.length) return;
+    const r = zoneRect(zone);
+    assistEl = document.createElement('div');
+    assistEl.className = 'snap-assist';
+    assistEl.setAttribute('role', 'listbox');
+    assistEl.setAttribute('aria-label', 'Choose a window for the ' + ZONE_LABEL[zone].toLowerCase() + ' of the screen');
+    Object.assign(assistEl.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', zIndex: String(++zTop) });
+    assistEl.innerHTML = '<div class="sa-list">' + list.map((x) => '<button class="sa-item" role="option" data-id="' + x.id + '">' + appTile(x.app, 32) +
+      '<span>' + esc(x.title) + '</span></button>').join('') + '</div>';
+    $('.windows', root).appendChild(assistEl);
+    assistEl.addEventListener('click', (e) => {
+      const b = e.target.closest('.sa-item');
+      if (b) { const x = wins.get(b.dataset.id); if (x) snapWin(x, zone); return; }
+      hideSnapAssist();
+    });
+    assistEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); hideSnapAssist(); } });
+    const first = $('.sa-item', assistEl);
+    if (first) first.focus({ preventScroll: true });
+  }
+  // a press anywhere else dismisses it
+  document.addEventListener('pointerdown', (e) => { if (assistEl && !assistEl.contains(e.target)) hideSnapAssist(); }, true);
+
+  /**
+   * One drag session for every window: the shell's own title bar and apps that draw their own (they report the
+   * pointer through the SDK). Positions are in shell coordinates. Dragging a maximised or snapped window pulls it out
+   * under the pointer; dropping on an edge or corner snaps it, at the top edge maximises it.
+   */
+  function dragSession(w, px, py) {
+    const a = workArea();
+    let offX = px - w.rect.x;
+    let offY = py - w.rect.y;
+    let moved = false;
+    let zone = null;
+    let ghost = null;
+    const sx = px;
+    const sy = py;
+    return {
+      move(x, y) {
+        if (!moved && Math.abs(x - sx) + Math.abs(y - sy) < 4) return;
+        if (!moved) {
+          moved = true;
+          root.classList.add('dragging');
+          hideSnapAssist();
+          if (w.max || w.tile) {
+            const r = w.el.getBoundingClientRect();
+            const ratio = Math.min(0.9, Math.max(0.1, (sx - r.left) / Math.max(1, r.width)));
+            if (w.max) toggleMax(w);
+            untile(w);
+            offX = Math.round(w.rect.w * ratio);
+            offY = Math.min(20, Math.max(8, sy - r.top));
+          }
+        }
+        w.rect.x = Math.round(x - offX);
+        w.rect.y = Math.round(Math.max(a.y, Math.min(y - offY, a.y + a.h - 40)));
+        applyRect(w);
+        zone = zoneAt(x, y);
+        if (zone && !ghost) { ghost = document.createElement('div'); ghost.className = 'snap-ghost'; $('.windows', root).appendChild(ghost); }
+        if (!zone && ghost) { ghost.remove(); ghost = null; }
+        if (ghost) {
+          ghost.style.zIndex = String(zTop + 1);
+          const g = zone === 'max' ? (fullMax() ? tileArea() : a) : zoneRect(zone);
+          Object.assign(ghost.style, { left: g.x + 6 + 'px', top: g.y + 6 + 'px', width: g.w - 12 + 'px', height: g.h - 12 + 'px' });
+        }
+      },
+      end() {
+        root.classList.remove('dragging');
+        if (ghost) ghost.remove();
+        if (moved && zone) snapWin(w, zone);
+      },
+    };
   }
 
   const helpMenu = () => ({ label: 'Help', items: [
-    { label: 'Keyboard shortcuts', icon: 'info', action: () => alertDialog({ title: 'Keyboard shortcuts', message: 'Alt + Space — open the launcher. Esc — close menus and dialogs. Double-click a title bar — maximise. Drag a window to the top edge to maximise it, or to the left or right edge to snap it.' }) },
+    { label: 'Keyboard shortcuts', icon: 'info', action: () => alertDialog({ title: 'Keyboard shortcuts', message: 'Alt + Space — open the launcher. Esc — close menus and dialogs. Double-click a title bar — maximise. Drag a window to the top edge to maximise it, to the left or right edge to snap it to that half, or into a corner for a quarter. Snapped windows share their edges: drag the edge between them to resize both.' }) },
     { label: 'About ' + (S.system.instanceName || 'LiteOS'), icon: 'info', action: () => openApp('settings', { section: 'about' }) },
   ] });
 
@@ -1040,8 +1218,11 @@
         { label: w.max ? 'Restore' : 'Maximise', icon: w.max ? 'window.restore' : 'window.maximize', action: () => toggleMax(w) },
         { label: 'Minimise', icon: 'minus', action: () => minimize(w) },
         'sep',
-        { label: 'Snap to the left', icon: 'back', action: () => snapWin(w, 'left') },
-        { label: 'Snap to the right', icon: 'forward', action: () => snapWin(w, 'right') },
+        { label: 'Snap', icon: 'grid', items: [
+          ...['l', 'r', 'sep', 'tl', 'tr', 'bl', 'br'].map((z) => (z === 'sep' ? 'sep' : { label: ZONE_LABEL[z], checked: w.tile === z, action: () => snapWin(w, z) })),
+          'sep',
+          { label: 'Unsnap', disabled: !w.tile, action: () => untile(w) },
+        ] },
       ],
     };
     // The app's own commands run in the app's frame, but this menu bar belongs to the desktop, which has focus while
@@ -1166,7 +1347,7 @@
   /** With the floating bars, a maximised window takes the whole screen and the bars hide (see updateImmersive). */
   const fullMax = () => set().taskbar !== 'classic';
   function applyRect(w) {
-    const r = w.max ? (fullMax() ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight } : workArea()) : w.rect;
+    const r = w.max ? (fullMax() ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight } : workArea()) : w.tile ? zoneRect(w.tile) : w.rect;
     Object.assign(w.el.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
   }
 
@@ -1212,7 +1393,7 @@
       '<div class="win-load" role="progressbar" aria-label="Opening ' + esc(app.name) + '">' + appTile(app, 48, 12, 28) + '<span class="spin" aria-hidden="true"></span></div>' +
       '<div class="win-shield"></div></div>' +
       ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => '<div class="rz ' + d + '" data-rz="' + d + '"></div>').join('');
-    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, snap: null };
+    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null };
     wins.set(id, win);
     $('.windows', root).appendChild(el);
     win.iframe.addEventListener('load', () => winLoaded(win));
@@ -1258,6 +1439,9 @@
   function focus(w) {
     if (!w) return;
     if (focusedId === w.id && !w.min && w.el.style.zIndex == zTop) return;
+    if (assistEl && !w.tile) hideSnapAssist(); // picking another window dismisses Snap Assist
+    // a snapped window comes forward with the rest of its group
+    if (w.tile) tiledWins().forEach((x) => { if (x !== w && !x.min) x.el.style.zIndex = String(++zTop); });
     w.el.style.zIndex = String(++zTop);
     w.lastFocus = Date.now();
     focusedId = w.id;
@@ -1275,6 +1459,8 @@
   }
 
   function minimize(w) {
+    hideSnapAssist();
+    // a snapped window keeps its place in the group while minimised, and comes back to it
     w.min = true;
     w.el.classList.add('min');
     if (focusedId === w.id) focusTopmost(); else renderBars();
@@ -1287,6 +1473,7 @@
   }
 
   function toggleMax(w) {
+    if (!w.max && w.tile) untile(w); // maximising takes it out of the group
     if (w.max) { w.max = false; w.el.classList.remove('max'); }
     else { w.max = true; w.el.classList.add('max'); }
     $('[data-w=max]', w.el).innerHTML = ICON(w.max ? 'window.restore' : 'window.maximize', 13);
@@ -1303,6 +1490,8 @@
     }
     w.el.classList.add('closing');
     wins.delete(w.id);
+    if (w.tile) untile(w); // after leaving the list, so the closing window stays where it is while it fades
+    if (assistEl) showSnapAssist(); // the closed window may have been one of its choices
     setTimeout(() => w.el.remove(), 120);
     if (focusedId === w.id) focusTopmost(); else renderBars();
     return true;
@@ -1327,52 +1516,15 @@
   }
 
   function startDrag(w, e) {
-    const sx = e.clientX;
-    const sy = e.clientY;
-    let offX = sx - w.rect.x;
-    let offY = sy - w.rect.y;
-    let moved = false;
-    let snap = null;
-    let ghost = null;
     const target = e.target;
     target.setPointerCapture(e.pointerId);
-    const a = workArea();
-    const move = (ev) => {
-      if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return;
-      if (!moved) { moved = true; root.classList.add('dragging'); }
-      if (w.max || w.snap) {
-        const prev = w.prev || w.rect;
-        const ratio = Math.min(0.9, Math.max(0.1, (sx - (w.max ? 0 : w.rect.x)) / (w.max ? window.innerWidth : w.rect.w)));
-        if (w.max) toggleMax(w);
-        w.snap = null;
-        w.rect = { x: 0, y: 0, w: prev.w, h: prev.h };
-        offX = w.rect.w * ratio;
-        offY = 20;
-      }
-      w.rect.x = Math.round(ev.clientX - offX);
-      w.rect.y = Math.round(Math.max(a.y, Math.min(ev.clientY - offY, a.y + a.h - 40)));
-      applyRect(w);
-      snap = ev.clientY <= a.y + 2 ? 'max' : ev.clientX <= 2 ? 'left' : ev.clientX >= window.innerWidth - 3 ? 'right' : null;
-      if (snap && !ghost) { ghost = document.createElement('div'); ghost.className = 'snap-ghost'; $('.windows', root).appendChild(ghost); }
-      if (!snap && ghost) { ghost.remove(); ghost = null; }
-      if (ghost) {
-        const g = snap === 'max' ? a : snap === 'left' ? { x: a.x, y: a.y, w: a.w / 2, h: a.h } : { x: a.x + a.w / 2, y: a.y, w: a.w / 2, h: a.h };
-        Object.assign(ghost.style, { left: g.x + 6 + 'px', top: g.y + 6 + 'px', width: g.w - 12 + 'px', height: g.h - 12 + 'px' });
-      }
-    };
+    const d = dragSession(w, e.clientX, e.clientY);
+    const move = (ev) => d.move(ev.clientX, ev.clientY);
     const up = () => {
       target.removeEventListener('pointermove', move);
       target.removeEventListener('pointerup', up);
       target.removeEventListener('pointercancel', up);
-      root.classList.remove('dragging');
-      if (ghost) ghost.remove();
-      if (snap === 'max') { w.prev = Object.assign({}, w.rect); toggleMax(w); }
-      else if (snap) {
-        w.prev = Object.assign({}, w.rect);
-        w.snap = snap;
-        w.rect = snap === 'left' ? { x: a.x, y: a.y, w: Math.round(a.w / 2), h: a.h } : { x: a.x + Math.round(a.w / 2), y: a.y, w: Math.round(a.w / 2), h: a.h };
-        applyRect(w);
-      }
+      d.end();
     };
     target.addEventListener('pointermove', move);
     target.addEventListener('pointerup', up);
@@ -1391,7 +1543,7 @@
     const minH = 240;
     const a = workArea();
     root.classList.add('dragging');
-    w.snap = null;
+    if (w.tile) { tileResize(w, handle, dir); return; }
     const move = (ev) => {
       const dx = ev.clientX - sx;
       const dy = ev.clientY - sy;
@@ -1410,6 +1562,29 @@
     };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', up);
+  }
+
+  /** Resizing a snapped window moves the edges it shares with the rest of the group (its outer edges have no handles). */
+  function tileResize(w, handle, dir) {
+    const [side, slot] = ZONES[w.tile];
+    const ta = tileArea();
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const move = (ev) => {
+      const xEdge = (side === 'l' && dir.includes('e')) || (side === 'r' && dir.includes('w'));
+      const yEdge = (slot === 'top' && dir.includes('s')) || (slot === 'bot' && dir.includes('n'));
+      if (xEdge) { const m = Math.min(0.45, TILE_MIN_W / ta.w); T.x = clamp((ev.clientX - ta.x) / ta.w, m, 1 - m); }
+      if (yEdge) { const m = Math.min(0.45, TILE_MIN_H / ta.h); T[side].r = clamp((ev.clientY - ta.y) / ta.h, m, 1 - m); }
+      tiledWins().forEach(applyRect);
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      root.classList.remove('dragging');
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
   }
 
   function appClicked(appId) {
@@ -2001,7 +2176,7 @@
   // the top or bottom edge of the screen.
   function updateImmersive() {
     const f = wins.get(focusedId);
-    const on = !!(S.user && fullMax() && f && !f.min && f.max);
+    const on = !!(S.user && fullMax() && f && !f.min && (f.max || f.tile));
     root.classList.toggle('immersive', on);
     if (!on) root.classList.remove('peek-top', 'peek-bottom');
     if (!$('.edge-zone.top', root)) {
@@ -2124,44 +2299,30 @@
       /** Apps set their top-bar menus: [{ label, items: [{ label, icon, key, disabled, action } | 'sep'] }] */
       setMenus(id, menus) { const w = wins.get(id); if (w) { w.menus = Array.isArray(menus) ? menus : []; if (focusedId === id) renderBars(); } },
       setDirty(id, d) { const w = wins.get(id); if (w && w.dirty !== d) { w.dirty = d; setTitle(w, w.title); } },
-      // Custom title bars: the app reports pointer positions in screen coordinates while the
-      // user drags its own title area (its document keeps the pointer captured).
-      dragStart(id, sx, sy, frac) {
+      // Custom title bars: the app reports pointer positions in screen coordinates while the user drags its own title
+      // area (its document keeps the pointer captured). They become shell positions from where the drag started,
+      // then the drag is the same as on a shell title bar, edge snapping included.
+      dragStart(id, sx, sy, frac, fy) {
         const w = wins.get(id);
         if (!w) return;
         focus(w);
-        w.drag = { sx, sy, moved: false, frac: frac == null ? 0.5 : frac };
+        const r = w.el.getBoundingClientRect();
+        const px = r.left + r.width * (frac == null ? 0.5 : frac);
+        const py = r.top + (fy == null ? 18 : fy);
+        w.drag = { sx, sy, px, py, s: dragSession(w, px, py) };
       },
       dragMove(id, sx, sy) {
         const w = wins.get(id);
         if (!w || !w.drag) return;
         const d = w.drag;
-        if (!d.moved && Math.abs(sx - d.sx) + Math.abs(sy - d.sy) < 4) return;
-        if (!d.moved) {
-          d.moved = true;
-          root.classList.add('dragging');
-          if (w.max || w.snap) { // pull the window off the maximised / snapped position, under the pointer
-            const prev = w.prev || w.rect;
-            if (w.max) toggleMax(w);
-            w.snap = null;
-            const r = w.el.getBoundingClientRect();
-            w.rect = { x: Math.round(r.left + r.width * d.frac - prev.w * d.frac), y: w.rect.y, w: prev.w, h: prev.h };
-          }
-          d.ox = w.rect.x; d.oy = w.rect.y; d.sx = sx; d.sy = sy;
-        }
-        const a = workArea();
-        w.rect.x = Math.round(d.ox + (sx - d.sx));
-        w.rect.y = Math.round(Math.max(a.y, Math.min(d.oy + (sy - d.sy), a.y + a.h - 40)));
-        applyRect(w);
-        d.top = w.rect.y <= a.y;
+        d.s.move(d.px + (sx - d.sx), d.py + (sy - d.sy));
       },
       dragEnd(id) {
         const w = wins.get(id);
         if (!w || !w.drag) return;
         const d = w.drag;
         w.drag = null;
-        root.classList.remove('dragging');
-        if (d.moved && d.top && d.sy) { w.prev = Object.assign({}, w.rect); toggleMax(w); } // dropped at the top edge: maximise
+        d.s.end();
       },
       toggleMax(id) { const w = wins.get(id); if (w) toggleMax(w); },
       isMax(id) { const w = wins.get(id); return !!(w && w.max); },
