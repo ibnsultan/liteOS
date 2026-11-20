@@ -37,6 +37,8 @@ LiteOS.ready((OS) => {
   const pl = $('#pl');
   const stage = $('#stage');
   const v = $('#video');
+  // the taskbar preview: the video's current picture while one is showing; otherwise the shell's snapshot of the window
+  OS.win.preview(() => (v.videoWidth && v.readyState >= 2 && !v.closest('[hidden]') ? v : null));
   const seek = $('#seek');
   $$('[data-i]').forEach((el) => { el.outerHTML = ic(el.dataset.i, 17); });
   const setIcon = (sel, name, size) => { $(sel).innerHTML = ic(name, size); };

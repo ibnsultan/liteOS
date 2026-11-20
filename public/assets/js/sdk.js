@@ -152,6 +152,15 @@
      *   setMenus([{ label: 'File', items: [{ label: 'Save', key: 'Ctrl+S', icon: 'save', action }, 'sep', …] }])
      */
     setMenus(menus) { if (host && winId && host.win.setMenus) host.win.setMenus(winId, menus); },
+    /**
+     * The picture on this window's card in the taskbar previews, for apps that draw on a canvas: fn is called when
+     * the cards open and returns a canvas, video or image (or a list of them, drawn one over the other, all the size
+     * of the first), or null to let the shell show its own snapshot of the window. Keep it cheap: no drawing, just
+     * hand over what is already on screen.
+     *   LiteOS.win.preview(() => [bgCanvas, inkCanvas])
+     */
+    preview(fn) { win._preview = typeof fn === 'function' ? fn : null; },
+    _preview: null,
     /** Width (px) of the shell's window buttons in a custom title bar (apps with chrome: 'custom'). */
     controlsWidth: host && winId ? 132 : 0,
     /**

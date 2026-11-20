@@ -477,6 +477,9 @@ LiteOS.ready((OS) => {
     });
     return [Math.ceil(Math.min(mx, 8000)), Math.ceil(Math.min(my, 8000))];
   }
+  // the taskbar preview: the paper and the ink as they are on screen
+  OS.win.preview(() => ['bgCanvas', 'inkCanvas', 'liveCanvas'].map((id) => document.getElementById(id)).filter((c) => c && c.width));
+
   function exportBlob() {
     const [w, h] = contentBounds();
     const scale = Math.min(2, Math.max(1, S.dpr), 16000 / Math.max(w, h));

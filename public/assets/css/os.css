@@ -53,6 +53,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dock-btn:hover .dock-tip { opacity: 1; }
 .dock-hotzone { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; z-index: 599; }
 
+/* ------------------------------------------------------------ window previews (hovering a running app) */
+.win-previews {
+  position: absolute; z-index: 650; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px;
+  max-width: calc(100% - 16px); border-radius: 12px; border: 1px solid var(--glass-border); background: var(--glass-strong); box-shadow: 0 16px 40px rgba(10,30,70,.25);
+  animation: popIn .12s ease-out;
+}
+.pv-card { width: 196px; display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 8px; cursor: pointer; }
+.pv-card:hover { background: var(--hover); }
+.pv-card.on { background: var(--accent-soft); }
+.pv-head { display: flex; align-items: center; gap: 8px; height: 22px; padding-left: 2px; font-size: 12px; color: var(--text); }
+.pv-head img { width: 16px; height: 16px; flex: none; }
+.pv-head span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-x { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border: none; border-radius: 5px; background: transparent; color: var(--text-2); cursor: pointer; opacity: 0; }
+.pv-card:hover .pv-x { opacity: 1; }
+.pv-x:hover { background: #C42B1C; color: #fff; }
+.pv-body { width: 100%; max-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.pv-body { position: relative; overflow: hidden; }
+.pv-body img { width: 40px; height: 40px; }
+.pv-body small { font-size: 11px; color: var(--muted); }
+/* a picture of the window fills the card, from its top */
+.pv-body.pic .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.pv-body.pic small { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 4px; background: var(--glass-strong); color: var(--text-2); }
+.os-root.pv-showing .dock-tip { display: none; }
+/* peek: the hovered card's window shows where it is (even when minimised); the others fade out */
+.os-root.win-peek .win { transition: opacity .15s ease; }
+.os-root.win-peek .win:not(.peeked) { opacity: 0; }
+.os-root.win-peek .win.peeked { z-index: 590 !important; animation: none; }
+.os-root.win-peek .win.min.peeked { display: flex; }
+/* minimising while its picture is taken: gone from view, still laid out */
+.win.minimizing { opacity: 0; pointer-events: none; }
+.os-root.win-peek .win.minimizing.peeked { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .win-previews { animation: none; } .os-root.win-peek .win { transition: none; } }
+
 /* ------------------------------------------------------------ classic taskbar */
 .taskbar {
   position: absolute; left: 0; right: 0; bottom: 0; height: 50px; z-index: 600; display: flex; align-items: center; gap: 4px;

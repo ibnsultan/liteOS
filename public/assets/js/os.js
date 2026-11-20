@@ -875,7 +875,7 @@
       html += '<div class="taskbar glass' + (s.autohide ? ' hide' : '') + '">' +
         '<button class="start' + (UI.pop === 'launcher' ? ' open' : '') + '" data-act="launcher" aria-label="Open launcher" title="Launcher"><span class="tile"><img src="assets/img/kite-white.svg" alt=""></span></button>' +
         
-        '<div class="apps">' + apps.map((a) => '<button class="tb-btn' + (runningIds.has(a.id) ? ' running' : '') + (fApp === a.id ? ' focused' : '') + '" data-app="' + a.id + '" title="' + esc(a.name) + '" aria-label="' + esc(a.name) + '">' +
+        '<div class="apps">' + apps.map((a) => '<button class="tb-btn' + (runningIds.has(a.id) ? ' running' : '') + (fApp === a.id ? ' focused' : '') + '" data-app="' + a.id + '"' + (runningIds.has(a.id) ? '' : ' title="' + esc(a.name) + '"') + ' aria-label="' + esc(a.name) + '">' +
           '<img class="tile appicon" src="' + a.img + '" alt="" draggable="false"><span class="bar"></span></button>').join('') + '</div>' +
         '<div class="tray"><button class="clock' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><b data-clock="t"></b><span data-clock="ds"></span></button>' +
         '<button class="peek" data-act="peek" title="Show desktop" aria-label="Show desktop"></button></div></div>' +
@@ -1477,6 +1477,7 @@
     if (assistEl && !w.tile) hideSnapAssist(); // picking another window dismisses Snap Assist
     // a snapped window comes forward with the rest of its group
     if (w.tile) tiledWins().forEach((x) => { if (x !== w && !x.min) x.el.style.zIndex = String(++zTop); });
+    if (focusedId && focusedId !== w.id) snapLater(wins.get(focusedId)); // the window left behind: copy it while it shows
     w.el.style.zIndex = String(++zTop);
     w.lastFocus = Date.now();
     focusedId = w.id;
@@ -1497,13 +1498,20 @@
     hideSnapAssist();
     // a snapped window keeps its place in the group while minimised, and comes back to it
     w.min = true;
-    w.el.classList.add('min');
+    // a minimised window's card shows it as it was: if its copy is old, it is copied first, invisible but still laid
+    // out (a fraction of a second), and only then taken off the screen
+    if (Date.now() - (w.snapAt || 0) > SNAP_GAP && !w.snapNo && !appPreview(w) && snappable(w)) {
+      w.el.classList.add('minimizing');
+      const done = () => { w.el.classList.remove('minimizing'); if (w.min) w.el.classList.add('min'); };
+      w.snapAt = 0;
+      snapshot(w).then(done, done);
+    } else w.el.classList.add('min');
     if (focusedId === w.id) focusTopmost(); else renderBars();
   }
 
   function restore(w) {
     w.min = false;
-    w.el.classList.remove('min');
+    w.el.classList.remove('min', 'minimizing');
     focus(w);
   }
 
@@ -1524,6 +1532,10 @@
       if (!ok) return false;
     }
     w.el.classList.add('closing');
+    if (PV.peek === w) peekWin(null);
+    dropSnap(w);
+    const qi = snapQ.indexOf(w);
+    if (qi >= 0) snapQ.splice(qi, 1);
     wins.delete(w.id);
     if (w.tile) untile(w); // after leaving the list, so the closing window stays where it is while it fades
     if (assistEl) showSnapAssist(); // the closed window may have been one of its choices
@@ -1637,6 +1649,273 @@
     const top = list.sort((x, y) => +y.el.style.zIndex - +x.el.style.zIndex)[0];
     restore(top);
   }
+
+  // ------------------------------------------------------------------ window previews
+  // Resting the pointer on a running app in the dock or taskbar shows a card for each of its windows: its icon, title,
+  // shape and a close button. A card doesn't draw a copy of the window, which would mean rendering every app twice;
+  // hovering a card "peeks" at the real window instead (shown where it is, even when minimised, with the others
+  // faded out). Nothing runs until the pointer rests on a button, and the cards are removed once it leaves.
+  const PV = { el: null, app: null, showT: 0, hideT: 0, peek: null };
+
+  // The pictures on the cards. An app that draws on a canvas (Board, a playing video in Media) hands over what it
+  // shows through LiteOS.win.preview(fn), copied small on each hover (a few ms). Other windows get a snapshot taken
+  // when they are minimised or lose focus: in idle time, one at a time, at most once every few seconds a window,
+  // kept as a small JPEG (some 10 KB). A window holding another site's page (the Browser) or a very large page
+  // can't be copied cheaply, so its card keeps the icon.
+  const SNAP_W = 384;          // the card's picture at twice its size, for sharp screens
+  const SNAP_GAP = 4000;       // a window is copied at most this often (ms)
+  const SNAP_MAX_NODES = 5000; // bigger pages keep the icon
+  const snapQ = [];
+  let snapBusy = false;
+  const idle = window.requestIdleCallback ? (f) => window.requestIdleCallback(f, { timeout: 2000 }) : (f) => setTimeout(f, 200);
+  function appPreview(w) {
+    try {
+      const fn = w.iframe.contentWindow.LiteOS && w.iframe.contentWindow.LiteOS.win._preview;
+      const src = fn ? [].concat(fn() || []).filter(Boolean) : [];
+      if (!src.length) return null;
+      const sw = src[0].videoWidth || src[0].naturalWidth || src[0].width;
+      const sh = src[0].videoHeight || src[0].naturalHeight || src[0].height;
+      if (!sw || !sh) return null;
+      const c = document.createElement('canvas');
+      c.width = SNAP_W; c.height = Math.round(SNAP_W * sh / sw);
+      const x = c.getContext('2d');
+      src.forEach((s) => x.drawImage(s, 0, 0, c.width, c.height));
+      return c;
+    } catch (e) { return null; }
+  }
+  /** Whether a window's page can be copied: our own page, loaded, with no frames of other sites, not too large. */
+  function snappable(w) {
+    if (w.covered) return null; // still opening
+    try {
+      const doc = w.iframe.contentDocument;
+      if (!doc || !doc.body || doc.querySelector('iframe, frame, embed, object')) return null;
+      if (doc.getElementsByTagName('*').length > SNAP_MAX_NODES) return null;
+      return doc;
+    } catch (e) { return null; } // another origin
+  }
+  function snapLater(w) {
+    if (!w || w.snapNo || Date.now() - Math.max(w.snapAt || 0, w.snapTry || 0) < SNAP_GAP || snapQ.includes(w)) return;
+    snapQ.push(w);
+    pumpSnaps();
+  }
+  function pumpSnaps() {
+    if (snapBusy || !snapQ.length) return;
+    snapBusy = true;
+    idle(async () => {
+      const w = snapQ.shift();
+      try { if (wins.has(w.id) && !w.min) await snapshot(w); } finally { snapBusy = false; pumpSnaps(); }
+    });
+  }
+  async function snapshot(w) {
+    w.snapTry = Date.now();
+    const doc = snappable(w);
+    if (!doc) return;
+    const t0 = performance.now();
+    try {
+      const canvas = await drawPage(doc);
+      if (!canvas) return;
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.8));
+      if (!blob || !wins.has(w.id)) return;
+      if (w.snapUrl) URL.revokeObjectURL(w.snapUrl);
+      w.snapUrl = URL.createObjectURL(blob);
+      w.snapAt = Date.now();
+      w.snapMs = Math.round(performance.now() - t0);
+      w.snapKb = Math.round(blob.size / 1024);
+      // what each copy costs, for the browser's performance tools
+      try { performance.measure('liteos:window-snapshot', { start: t0, detail: { app: w.app.id, kb: w.snapKb } }); } catch (e) { /* older browsers */ }
+      if (PV.el && PV.app === w.app.id) previewShow(w.app.id); // the cards are open: show it
+    } catch (e) { w.snapNo = true; } // this page can't be copied: its card keeps the icon
+  }
+  // A page drawn as a picture: its HTML and its own stylesheets go into an SVG image, which the browser lays out and
+  // paints by itself. Nothing is worked out element by element; pictures the page shows are read once and kept for
+  // the next time (an SVG image can't fetch anything), and canvases are copied small.
+  const snapImgs = new Map(); // address -> data: URL
+  const snapCss = new WeakMap(); // page -> its styles as text
+  function pageCss(doc) {
+    const n = doc.styleSheets.length;
+    const known = snapCss.get(doc);
+    if (known && known.n === n) return known.text;
+    const out = [];
+    const walk = (sheet) => {
+      let rules;
+      try { rules = sheet.cssRules; } catch (e) { return; } // another site's stylesheet
+      for (const r of rules) { if (r.styleSheet) walk(r.styleSheet); else out.push(r.cssText); }
+    };
+    [...doc.styleSheets].forEach(walk);
+    // inside the image the page isn't the root, so :root rules (the theme's colours) go to its <html>; a frozen
+    // picture shows things where they end up, not where an animation starts
+    const text = out.join('\n').replace(/:root\b/g, 'html') +
+      '\n*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }';
+    snapCss.set(doc, { n, text });
+    return text;
+  }
+  async function inlineImg(src) {
+    if (!src || src.startsWith('data:')) return src;
+    if (snapImgs.has(src)) return snapImgs.get(src);
+    let url = '';
+    try {
+      const blob = await (await fetch(src, { credentials: 'same-origin' })).blob();
+      if (blob.size < 512 * 1024) url = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = () => r(''); fr.readAsDataURL(blob); });
+    } catch (e) { /* not ours, or gone */ }
+    if (snapImgs.size > 400) snapImgs.clear();
+    snapImgs.set(src, url);
+    return url;
+  }
+  async function drawPage(doc) {
+    const de = doc.documentElement;
+    const width = de.clientWidth;
+    const height = de.clientHeight;
+    if (!width || !height) return null;
+    const clone = de.cloneNode(true);
+    clone.querySelectorAll('script, style, link, iframe, video, audio, noscript').forEach((n) => n.remove());
+    // what the clone doesn't carry over: typed values, ticks, and canvas pictures
+    const live = doc.querySelectorAll('input, textarea, select, canvas');
+    const copy = clone.querySelectorAll('input, textarea, select, canvas');
+    live.forEach((el, i) => {
+      const c = copy[i];
+      if (!c || c.tagName !== el.tagName) return;
+      if (el.tagName === 'CANVAS') {
+        const img = doc.createElement('img');
+        img.setAttribute('style', c.getAttribute('style') || '');
+        img.className = c.className;
+        if (el.width && el.height) {
+          const k = Math.min(1, 600 / el.width);
+          const t = document.createElement('canvas');
+          t.width = Math.max(1, Math.round(el.width * k)); t.height = Math.max(1, Math.round(el.height * k));
+          try { t.getContext('2d').drawImage(el, 0, 0, t.width, t.height); img.src = t.toDataURL(); } catch (e) { /* tainted */ }
+        }
+        img.width = el.clientWidth; img.height = el.clientHeight;
+        c.replaceWith(img);
+      } else if (el.tagName === 'TEXTAREA') c.textContent = el.value;
+      else if (el.tagName === 'SELECT') { if (c.options[el.selectedIndex]) c.options[el.selectedIndex].setAttribute('selected', ''); }
+      else if (el.type === 'checkbox' || el.type === 'radio') { if (el.checked) c.setAttribute('checked', ''); else c.removeAttribute('checked'); }
+      else c.setAttribute('value', el.value);
+    });
+    await Promise.all([...clone.querySelectorAll('img')].map(async (im) => {
+      const src = im.getAttribute('src');
+      if (!src || src.startsWith('data:')) return;
+      const url = await inlineImg(new URL(src, doc.baseURI).href);
+      if (url) im.setAttribute('src', url); else im.removeAttribute('src');
+      im.removeAttribute('srcset');
+      im.removeAttribute('loading');
+    }));
+    const head = clone.querySelector('head') || clone.insertBefore(doc.createElement('head'), clone.firstChild);
+    const st = doc.createElement('style');
+    st.textContent = pageCss(doc);
+    head.appendChild(st);
+    clone.style.width = width + 'px';
+    clone.style.height = height + 'px';
+    const xml = new XMLSerializer().serializeToString(clone);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '"><foreignObject x="0" y="0" width="100%" height="100%">' + xml + '</foreignObject></svg>';
+    {
+      // a data: address, not a blob: one: Chrome won't let a canvas be read after drawing a blob: SVG with HTML in it
+      const img = new Image();
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = SNAP_W;
+      c.height = Math.round(SNAP_W * height / width);
+      const x = c.getContext('2d');
+      x.fillStyle = getComputedStyle(doc.body).backgroundColor || '#fff';
+      x.fillRect(0, 0, c.width, c.height);
+      x.drawImage(img, 0, 0, c.width, c.height);
+      return c;
+    }
+  }
+  function dropSnap(w) { if (w.snapUrl) URL.revokeObjectURL(w.snapUrl); w.snapUrl = null; }
+  const pvList = (appId) => [...wins.values()].filter((w) => w.app.id === appId);
+  function previewShow(appId) {
+    clearTimeout(PV.showT);
+    const btn = $('#bars [data-app="' + appId + '"]', root);
+    const list = pvList(appId);
+    if (!btn || !list.length || UI.pop || SW.open || root.classList.contains('dragging')) { previewHide(); return; }
+    if (!PV.el) {
+      PV.el = document.createElement('div');
+      PV.el.className = 'win-previews glass';
+      PV.el.setAttribute('role', 'listbox');
+      PV.el.setAttribute('aria-label', 'Open windows');
+      PV.el.addEventListener('mouseenter', () => clearTimeout(PV.hideT));
+      PV.el.addEventListener('mouseleave', previewLeave);
+      PV.el.addEventListener('mouseover', (e) => { const c = e.target.closest('[data-pv]'); peekWin(c ? wins.get(c.dataset.pv) : null); });
+      PV.el.addEventListener('mousedown', (e) => e.preventDefault());
+      PV.el.addEventListener('click', (e) => {
+        const x = e.target.closest('[data-pvx]');
+        const c = e.target.closest('[data-pv]');
+        if (x) { previewClose(wins.get(x.dataset.pvx)); return; }
+        const w = c && wins.get(c.dataset.pv);
+        previewHide();
+        if (w) { if (w.min) restore(w); else focus(w); }
+      });
+      // a middle click closes the window, as on the Windows taskbar
+      PV.el.addEventListener('auxclick', (e) => { const c = e.button === 1 && e.target.closest('[data-pv]'); if (c) previewClose(wins.get(c.dataset.pv)); });
+      root.appendChild(PV.el);
+    }
+    PV.app = appId;
+    root.classList.add('pv-showing');
+    PV.el.innerHTML = list.map((w) => {
+      const r = w.el.getBoundingClientRect();
+      const ratio = w.min || !r.width ? 1.6 : Math.max(1, Math.min(2.2, r.width / r.height)); // the card has the window's shape
+      return '<div class="pv-card' + (w.id === focusedId && !w.min ? ' on' : '') + '" data-pv="' + w.id + '" role="option" aria-label="' + esc(w.title || w.app.name) + '">' +
+        '<div class="pv-head"><img src="' + w.app.img + '" alt="" draggable="false"><span>' + esc(w.title || w.app.name) + '</span>' +
+        '<button class="pv-x" data-pvx="' + w.id + '" aria-label="Close window" title="Close">' + ICON('window.close', 11) + '</button></div>' +
+        '<div class="pv-body' + (w.snapUrl ? ' pic' : '') + '" data-pvb="' + w.id + '" style="aspect-ratio:' + ratio.toFixed(2) + '">' +
+        (w.snapUrl ? '<img class="shot" src="' + w.snapUrl + '" alt="" draggable="false">' : '<img src="' + w.app.img + '" alt="" draggable="false">') +
+        (w.min ? '<small>Minimised</small>' : w.dirty ? '<small>Unsaved changes</small>' : '') + '</div></div>';
+    }).join('');
+    list.forEach((w) => {
+      const c = appPreview(w);
+      const body = c && $('[data-pvb="' + w.id + '"]', PV.el);
+      if (body) { body.classList.add('pic'); c.className = 'shot'; const old = $('img', body); if (old) old.replaceWith(c); else body.prepend(c); }
+      // a window never copied yet (the one in use) gets its first snapshot now, in idle time
+      else if (!c && !w.snapUrl && !w.min) snapLater(w);
+    });
+    // above the button, kept on screen
+    const b = btn.getBoundingClientRect();
+    const rr = root.getBoundingClientRect();
+    const pw = PV.el.offsetWidth;
+    PV.el.style.left = Math.max(8, Math.min(rr.width - pw - 8, b.left - rr.left + b.width / 2 - pw / 2)) + 'px';
+    PV.el.style.bottom = (rr.bottom - b.top + 8) + 'px';
+  }
+  function previewLeave() { clearTimeout(PV.showT); clearTimeout(PV.hideT); PV.hideT = setTimeout(previewHide, 300); }
+  function previewHide() {
+    clearTimeout(PV.showT); clearTimeout(PV.hideT);
+    peekWin(null);
+    root.classList.remove('pv-showing');
+    if (PV.el) { PV.el.remove(); PV.el = null; }
+    PV.app = null;
+  }
+  async function previewClose(w) {
+    if (!w) return;
+    const appId = w.app.id;
+    peekWin(null);
+    if (w.dirty) previewHide(); // its question comes up over the window
+    const closed = await closeWin(w);
+    if (closed && PV.el && PV.app === appId) { if (pvList(appId).length) previewShow(appId); else previewHide(); }
+  }
+  function peekWin(w) {
+    if (PV.peek === w) return;
+    if (PV.peek) PV.peek.el.classList.remove('peeked');
+    PV.peek = w && wins.has(w.id) ? w : null;
+    root.classList.toggle('win-peek', !!PV.peek);
+    if (PV.peek) PV.peek.el.classList.add('peeked');
+  }
+  root.addEventListener('mouseover', (e) => {
+    const b = e.target.closest && e.target.closest('#bars [data-app]');
+    if (!b) return;
+    clearTimeout(PV.hideT);
+    if (PV.el && PV.app === b.dataset.app) return;
+    clearTimeout(PV.showT);
+    // a short rest before the first cards; moving along the bar while they show switches straight away
+    PV.showT = setTimeout(() => previewShow(b.dataset.app), PV.el ? 0 : 450);
+  });
+  root.addEventListener('mouseout', (e) => {
+    const b = e.target.closest && e.target.closest('#bars [data-app]');
+    if (!b || (e.relatedTarget && b.contains(e.relatedTarget))) return;
+    clearTimeout(PV.showT);
+    if (PV.el) previewLeave();
+  });
+  // pressing the button itself (open, cycle, its menu) puts the cards away
+  root.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('#bars [data-app]')) previewHide(); }, true);
 
   // Jump list for a dock / taskbar app: quick places, recent items, tasks, then window controls.
   let recentCache = { at: 0, list: [] };
@@ -2181,7 +2460,7 @@
 
   document.addEventListener('keydown', (e) => {
     if (switcherKey(e)) return;
-    if (e.key === 'Escape') { hideMenu(); if (UI.pop) closePops(); }
+    if (e.key === 'Escape') { hideMenu(); previewHide(); if (UI.pop) closePops(); }
     if (S.user && !UI.lockShown && e.altKey && e.code === 'Space') { e.preventDefault(); togglePop('launcher'); }
   });
 
