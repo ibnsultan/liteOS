@@ -184,8 +184,20 @@ LiteOS.ready((OS) => {
     t.loading = on;
     clearTimeout(t.loadTimer);
     if (on) t.loadTimer = setTimeout(() => setLoading(t, false), 15000); // never spin forever
+    else if (t.frame && t.frame.classList.contains('pending')) showPage(t, t.frame); // the tab stopped waiting: so does the page
     renderTabs();
     updateChrome();
+  }
+
+  // A new page loads hidden (the previous page, or a spinner, stays in front) and is swapped in: when its frame has
+  // loaded, when the tab stops waiting (a page that never finishes loading, or a link that turned out to be a file),
+  // or, in place of the spinner, as soon as the page reports itself. So the spinner never outlasts the tab's own.
+  function showPage(t, f) {
+    if (t.frame !== f || !f.classList.contains('pending')) return;
+    f.classList.remove('pending');
+    $$('.br-frame', t.pane).forEach((x) => { if (x !== f) x.remove(); });
+    const blank = $('.br-blank', t.pane);
+    if (blank) blank.remove();
   }
 
   // ------------------------------------------------------------ navigation
@@ -229,6 +241,14 @@ LiteOS.ready((OS) => {
     const url = safeUrl(m.url);
     if (!url) return;
     try { if (new URL(url).origin !== e.origin) return; } catch (err) { return; }
+    // The page reports itself as it starts, again once its HTML has been read, and at full load. Show it as soon as it
+    // has something to show, not after every script and picture has loaded: right away in place of the spinner, and
+    // over a previous page once it has its title (its head has been read and it's drawing) or shortly after it started.
+    if (t.frame && t.frame.classList.contains('pending')) {
+      const f = t.frame;
+      if ($('.br-blank', t.pane) || (typeof m.title === 'string' && m.title.trim())) showPage(t, f);
+      else { clearTimeout(t.showTimer); t.showTimer = setTimeout(() => showPage(t, f), 600); }
+    }
     // A page without a title (a video or picture on its own) shows the site, not the previous page's title.
     t.title = typeof m.title === 'string' && m.title.trim() ? m.title.trim().slice(0, 200) : hostOf(url);
     if (url !== t.url) {
@@ -334,12 +354,7 @@ LiteOS.ready((OS) => {
     f.addEventListener('load', () => {
       sendVolume(f);
       if (t.frame !== f) return;
-      if (f.classList.contains('pending')) {
-        f.classList.remove('pending');
-        $$('.br-frame', t.pane).forEach((x) => { if (x !== f) x.remove(); });
-        const blank = $('.br-blank', t.pane);
-        if (blank) blank.remove();
-      }
+      showPage(t, f);
       setLoading(t, false);
       // Pages from other sites hide their address and title; keep ours.
       try { const doc = f.contentDocument; if (doc && doc.title) { t.title = doc.title; renderTabs(); updateChrome(); } } catch (e) { /* cross-origin */ }
