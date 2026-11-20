@@ -275,6 +275,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .fdlg .ibtn:disabled { color: var(--disabled); cursor: default; background: transparent; }
 .fdlg-addr { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; margin-left: 6px; padding: 0 2px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface); color: var(--muted); }
 .fdlg-addr .ibtn { width: 28px; height: 26px; margin-left: auto; flex-shrink: 0; }
+/* a folder that takes a moment to open */
+.fdlg-addr { position: relative; overflow: hidden; }
+.dlg.loading, .dlg.loading * { cursor: progress !important; }
+.dlg.loading .fdlg-addr::after { content: ''; position: absolute; left: 0; bottom: 0; width: 30%; height: 2px; background: var(--accent); animation: fdlgBusy 1s ease-in-out infinite; }
+@keyframes fdlgBusy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .dlg.loading .fdlg-addr::after { animation: none; width: 100%; opacity: .5; } }
 .fdlg .crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; white-space: nowrap; font-size: var(--fs-m); }
 .fdlg .crumbs button { border: none; background: none; cursor: pointer; padding: 3px 5px; border-radius: var(--radius); color: var(--text); }
 .fdlg .crumbs button:hover { background: var(--hover); }

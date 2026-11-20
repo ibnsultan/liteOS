@@ -179,8 +179,16 @@ LiteOS.ready((OS) => {
     });
   }
 
+  // Opening a folder that takes a moment shows it's working, as Explorer does: after a short wait the pointer turns
+  // to "working" and a bar runs along the address bar. Only the latest request draws: a folder opened after another
+  // still loading wins. A refresh in the background (another window changed something) shows nothing.
+  let loadSeq = 0;
+  let busyTimer = 0;
+  const setBusy = (on) => { clearTimeout(busyTimer); if (on) busyTimer = setTimeout(() => document.body.classList.add('loading'), 150); else document.body.classList.remove('loading'); };
   async function load(path, opts) {
     opts = opts || {};
+    const seq = ++loadSeq;
+    if (!opts.quiet) setBusy(true);
     try {
       let entries;
       if (path === 'home:') entries = await homeEntries();
@@ -189,6 +197,7 @@ LiteOS.ready((OS) => {
       else if (path === 'recent:') entries = await fs.recent();
       else if (path === 'search:') entries = await fs.search(st.query, '', 300);
       else entries = await fs.list(path);
+      if (seq !== loadSeq) return; // another folder was asked for meanwhile
       if (!opts.keepHistory && path !== st.path) { st.back.push(st.path); st.fwd = []; }
       st.path = path;
       st.entries = entries;
@@ -197,12 +206,15 @@ LiteOS.ready((OS) => {
       else st.sel = new Set([...st.sel].filter((p) => entries.some((e) => e.path === p)));
       render();
     } catch (e) {
+      if (seq !== loadSeq) return;
       OS.notify(e.message, { type: 'error', title: 'Couldn’t open folder' });
       if (path !== '/' && !opts.fallback) load('/', { fallback: true });
+    } finally {
+      if (seq === loadSeq) setBusy(false);
     }
   }
 
-  const refresh = () => { load(st.path, { keepHistory: true, keepSel: true }); loadUsage(); loadTree(); };
+  const refresh = () => { load(st.path, { keepHistory: true, keepSel: true, quiet: true }); loadUsage(); loadTree(); };
   const loadUsage = () => fs.usage().then((u) => { st.usage = u; renderStatus(); }).catch(() => {});
   // Home: the pinned folders, then the files opened or saved lately
   async function homeEntries() {

@@ -1,5 +1,11 @@
 .toolbar.nav { height: 50px; background: var(--surface-2); gap: 6px; }
 .crumbs { flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-strong); overflow: hidden; white-space: nowrap; margin: 0 6px; }
+/* opening a folder that takes a moment: the pointer says it's working and a bar runs along the address bar */
+.crumbs { position: relative; }
+body.loading, body.loading * { cursor: progress !important; }
+body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 0; width: 30%; height: 2px; border-radius: 1px; background: var(--accent); animation: crumbsBusy 1s ease-in-out infinite; }
+@keyframes crumbsBusy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { body.loading .crumbs::after { animation: none; width: 100%; opacity: .5; } }
 .crumbs button { border: none; background: none; cursor: pointer; padding: 3px 6px; border-radius: 5px; color: var(--muted); }
 .crumbs button:hover { background: var(--hover); }
 .crumbs button:last-child { color: var(--text); font-weight: 600; }

@@ -2238,15 +2238,26 @@
       const accepts = (e) => e.type === 'dir' || !accept.length || accept.includes((e.ext || '').toLowerCase());
       const folderName = (p) => (p === '/' ? 'My drive' : baseName(p));
 
+      // a folder that takes a moment to open: the pointer says it's working and a bar runs along the address bar
+      let loadSeq = 0;
+      let busyTimer = 0;
       async function load(path, how) {
+        const seq = ++loadSeq;
+        clearTimeout(busyTimer);
+        busyTimer = setTimeout(() => box.classList.add('loading'), 150);
+        const idle = () => { if (seq === loadSeq) { clearTimeout(busyTimer); box.classList.remove('loading'); } };
         try {
           const r = await api('fs.list', undefined, { path });
+          idle();
+          if (seq !== loadSeq) return; // another folder was asked for meanwhile
           if (how === 'push' && path !== cwd) { back.push(cwd); fwd.length = 0; }
           cwd = path; entries = (r || []).filter((e) => !e.name.startsWith('.')); sel = null;
           query = ''; search.value = '';
           if (mode === 'folder') nameInput.value = folderName(cwd);
           draw();
         } catch (e) {
+          idle();
+          if (seq !== loadSeq) return;
           if (path !== '/') load('/', how); else list.innerHTML = '<div class="fdlg-empty">' + esc(e.message) + '</div>';
         }
       }
