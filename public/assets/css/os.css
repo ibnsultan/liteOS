@@ -211,6 +211,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .win-load .ld-mark .appicon:first-child { opacity: 1; }
   .win-load .ld-mark .appicon + .appicon { display: none; }
 }
+/* a window brought back after a reload that hasn't started yet: its icon, still (it starts when first shown) */
+.win.asleep .win-load { opacity: 1; visibility: visible; }
+.win.asleep .win-load .ld-mark .appicon:first-child { opacity: .6; }
+.win.asleep .win-load .ld-mark .appicon + .appicon { display: none; }
 .os-root.dragging .win-shield { display: block; }
 .os-root.dragging { cursor: default; }
 .rz { position: absolute; z-index: 2; }

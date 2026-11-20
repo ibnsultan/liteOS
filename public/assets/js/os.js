@@ -163,6 +163,7 @@
     ]), 6000);
     say('Setting up your desktop');
     startDesktop(false, true);
+    restoreDesk(); // after a reload: the windows that were open
     await capped(Promise.all([wall, imagesReady(root), document.fonts && document.fonts.ready]), 4000);
     await capped(nextFrame(), 120); // a hidden tab draws no frames
     bootDone();
@@ -1476,15 +1477,22 @@
     wins.forEach((w) => { if (!w.max) clampRect(w.rect); applyRect(w); });
   }
 
-  function openApp(appId, args) {
+  function openApp(appId, args, opts) {
     const app = window.LOS_app(appId);
     if (!app) { notify('That app isn’t installed.', { type: 'error', title: 'App not found' }); return null; }
     args = args || {};
+    opts = opts || {};
     closePops();
     if (app.single) {
       const existing = [...wins.values()].find((x) => x.app.id === appId);
       if (existing) {
-        if (Object.keys(args).length) winLoading(existing), existing.iframe.src = app.entry + '?' + new URLSearchParams(Object.assign({}, args, { win: existing.id }));
+        if (Object.keys(args).length) {
+          existing.args = args;
+          existing.asleep = false;
+          existing.el.classList.remove('asleep');
+          winLoading(existing);
+          existing.iframe.src = app.entry + '?' + new URLSearchParams(Object.assign({}, args, { win: existing.id }));
+        }
         restore(existing);
         return existing;
       }
@@ -1515,13 +1523,13 @@
       '<p class="ld-text" aria-live="polite"></p><span class="ld-bar" aria-hidden="true"><i></i></span></div>' +
       '<div class="win-shield"></div></div>' +
       ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => '<div class="rz ' + d + '" data-rz="' + d + '"></div>').join('');
-    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null };
+    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null, args, keep: opts.keep || null };
     wins.set(id, win);
     $('.windows', root).appendChild(el);
     win.iframe.addEventListener('load', () => winPaged(win));
-    winLoading(win);
-    win.iframe.src = app.entry + '?' + new URLSearchParams(Object.assign({}, args, { win: id }));
-    setTitle(win, app.name);
+    if (opts.sleep) { win.asleep = true; el.classList.add('asleep'); } // brought back after a reload: its app starts when it's first shown
+    else wakeWin(win, true);
+    setTitle(win, opts.title || app.name);
     applyRect(win);
     bindWindow(win);
     focus(win);
@@ -1586,6 +1594,15 @@
     return null;
   }
 
+  /** Start a window's app (a window brought back asleep after a reload starts it when it's first shown). */
+  function wakeWin(w, fresh) {
+    if (!fresh && !w.asleep) return;
+    w.asleep = false;
+    w.el.classList.remove('asleep');
+    winLoading(w);
+    w.iframe.src = w.app.entry + '?' + new URLSearchParams(Object.assign({}, w.args, { win: w.id }));
+  }
+
   function setTitle(w, title) {
     w.title = title || w.app.name;
     const t = $('.title', w.el);
@@ -1594,6 +1611,7 @@
 
   function focus(w) {
     if (!w) return;
+    if (w.asleep && !w.min && !deskRestoring) wakeWin(w);
     if (focusedId === w.id && !w.min && w.el.style.zIndex == zTop) return;
     if (assistEl && !w.tile) hideSnapAssist(); // picking another window dismisses Snap Assist
     // a snapped window comes forward with the rest of its group
@@ -1771,6 +1789,83 @@
     restore(top);
   }
 
+  // ------------------------------------------------------------------ the desktop across a reload
+  // A reload (F5 on the desktop, the browser's button, an accident) keeps the session but would lose every window.
+  // Just before the page goes, the shell writes down what is open: each window's app, what it was opened with, its
+  // place and size, maximised / snapped / minimised, the stacking order and the focus, plus whatever small state the
+  // app hands over (OS.win.keepState). It goes in sessionStorage: this tab only, gone when the tab closes, a couple
+  // of KB, written once at unload so it costs nothing while you work. Only references are kept, never file contents.
+  // After the reload the boot screen rebuilds the windows behind it. Every one reopens through the normal path, so the
+  // server checks each file again. The windows you can see start at once (the top few); the rest come back asleep
+  // (their frame and icon) and start when first shown, so a dozen windows don't all load together. The record belongs
+  // to the user who wrote it: another user signing in on this tab doesn't get it, and signing out clears it.
+  const DESK_KEY = 'los_desk';
+  const DESK_MAX_WINS = 20;
+  const DESK_EAGER = 3;         // windows that start straight away after a reload; the rest wait to be shown
+  const KEEP_MAX = 32 * 1024;   // an app's own state, as JSON
+  let deskRestoring = false;
+  let deskOff = false;
+  /** The state an app hands over through OS.win.keepState(fn), if it is small enough. */
+  function keepOf(w) {
+    if (w.asleep) return w.keep || null; // never started since the reload: what it had then
+    try {
+      const fn = w.iframe.contentWindow.LiteOS && w.iframe.contentWindow.LiteOS.win._keep;
+      if (!fn) return null;
+      const json = JSON.stringify(fn());
+      return json && json.length <= KEEP_MAX ? JSON.parse(json) : null;
+    } catch (e) { return null; }
+  }
+  function saveDesk() {
+    if (deskOff || !S.user || !$('.windows', root)) return;
+    const list = [...wins.values()].sort((a, b) => +a.el.style.zIndex - +b.el.style.zIndex).slice(-DESK_MAX_WINS);
+    const rec = {
+      v: 1, user: S.user.username, at: Date.now(),
+      tiles: { x: T.x, l: T.l.r, r: T.r.r },
+      focused: list.findIndex((w) => w.id === focusedId),
+      wins: list.map((w) => ({ app: w.app.id, args: w.args || {}, title: w.title, rect: w.rect, max: w.max, min: w.min, tile: w.tile, keep: keepOf(w) })),
+    };
+    try { if (rec.wins.length) sessionStorage.setItem(DESK_KEY, JSON.stringify(rec)); else sessionStorage.removeItem(DESK_KEY); } catch (e) { /* storage full or blocked */ }
+  }
+  function forgetDesk() { deskOff = true; try { sessionStorage.removeItem(DESK_KEY); } catch (e) { /* blocked */ } }
+  // at unload (every frame is still alive, so apps can hand over their state) and when the tab goes to the background
+  // (a browser may discard a background tab and reload it later)
+  window.addEventListener('beforeunload', saveDesk);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveDesk(); });
+
+  function restoreDesk() {
+    let rec = null;
+    try { rec = JSON.parse(sessionStorage.getItem(DESK_KEY) || 'null'); } catch (e) { rec = null; }
+    if (!rec || rec.v !== 1 || rec.user !== S.user.username || !Array.isArray(rec.wins) || !rec.wins.length) return;
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    const cleanArgs = (a) => Object.fromEntries(Object.entries(a && typeof a === 'object' ? a : {})
+      .filter(([k, v]) => k !== 'win' && typeof v === 'string' && k.length < 40 && v.length < 2048).slice(0, 20));
+    const list = rec.wins.slice(-DESK_MAX_WINS);
+    // the top few windows that aren't minimised start now; the rest start when first shown
+    const eager = new Set(list.map((s, i) => (s && !s.min ? i : -1)).filter((i) => i >= 0).slice(-DESK_EAGER));
+    const made = [];
+    deskRestoring = true;
+    try {
+      list.forEach((s, i) => {
+        if (!s || !window.LOS_app(s.app)) return;
+        const w = openApp(s.app, cleanArgs(s.args), { sleep: !eager.has(i), keep: s.keep && typeof s.keep === 'object' ? s.keep : null, title: typeof s.title === 'string' ? s.title.slice(0, 200) : '' });
+        if (!w || made.some(([x]) => x === w)) return; // a single-window app listed twice
+        if (s.rect) w.rect = clampRect({ x: num(s.rect.x, w.rect.x), y: num(s.rect.y, w.rect.y), w: Math.max(360, num(s.rect.w, w.rect.w)), h: Math.max(240, num(s.rect.h, w.rect.h)) });
+        if (s.max && !w.max) toggleMax(w); else applyRect(w);
+        made.push([w, s, i]);
+      });
+      // the snap layout: its edges, then each window back in its zone
+      if (rec.tiles) {
+        const r = (v) => Math.max(0.15, Math.min(0.85, num(v, 0.5)));
+        T.x = r(rec.tiles.x); T.l.r = r(rec.tiles.l); T.r.r = r(rec.tiles.r);
+      }
+      made.forEach(([w, s]) => { if (s.tile && ZONES[s.tile] && !w.max) { const [side, slot] = ZONES[s.tile]; T[side][slot] = w.id; } });
+      syncTiles();
+      made.forEach(([w, s]) => { if (s.min) { w.min = true; w.el.classList.add('min'); } });
+    } finally { deskRestoring = false; }
+    const f = made.find(([, , i]) => i === rec.focused);
+    if (f && !f[0].min) focus(f[0]); else focusTopmost();
+  }
+
   // ------------------------------------------------------------------ window previews
   // Resting the pointer on a running app in the dock or taskbar shows a card for each of its windows: its icon, title,
   // shape and a close button. A card doesn't draw a copy of the window, which would mean rendering every app twice;
@@ -1806,7 +1901,7 @@
   }
   /** Whether a window's page can be copied: our own page, loaded, with no frames of other sites, not too large. */
   function snappable(w) {
-    if (w.covered) return null; // still opening
+    if (w.covered || w.asleep) return null; // still opening, or not started yet
     try {
       const doc = w.iframe.contentDocument;
       if (!doc || !doc.body || doc.querySelector('iframe, frame, embed, object')) return null;
@@ -2549,6 +2644,7 @@
       const ok = await confirmDialog({ title: 'Sign out?', message: dirty.length + ' window(s) have unsaved changes. They will be lost.', okLabel: 'Sign out', danger: true });
       if (!ok) return;
     }
+    forgetDesk();
     showBoot('Signing out…');
     let next = window.LOS_BASE + 'login';
     try { next = (await api('auth.logout', {})).next || next; } catch (e) { /* ignore */ }
@@ -2804,6 +2900,22 @@
       },
       /** The app is ready to be seen: the cover goes. */
       loaded(id) { const w = wins.get(id); if (w && w.covered) winLoaded(w); },
+      /** What the app handed over before a reload (OS.win.keepState), given back once. */
+      restored(id) { const w = wins.get(id); if (!w || !w.keep) return null; const k = w.keep; w.keep = null; return k; },
+      /** F5 / Ctrl+R in an app: reload that app only, keeping its state. */
+      async reload(id) {
+        const w = wins.get(id);
+        if (!w) return;
+        if (w.dirty) {
+          const ok = await confirmDialog({ title: 'Reload ' + w.app.name + '?', message: 'You have unsaved changes in “' + w.title.replace(/ — .*$/, '') + '”. They will be lost.', okLabel: 'Reload without saving', danger: true });
+          if (!ok || !wins.has(id)) return;
+          w.dirty = false;
+          setTitle(w, w.title);
+        }
+        w.keep = keepOf(w);
+        winLoading(w);
+        w.iframe.src = w.app.entry + '?' + new URLSearchParams(Object.assign({}, w.args, { win: w.id }));
+      },
       // Custom title bars: the app reports pointer positions in screen coordinates while the user drags its own title
       // area (its document keeps the pointer captured). They become shell positions from where the drag started,
       // then the drag is the same as on a shell title bar, edge snapping included.

@@ -31,8 +31,10 @@ LiteOS.ready((OS) => {
   const pref = (k, d) => { try { return localStorage.getItem('files.' + k) || d; } catch (e) { return d; } };
   const savePref = (k, v) => { try { localStorage.setItem('files.' + k, v); } catch (e) { /* ignore */ } };
 
+  // after a reload: the folder that was open (OS.win.keepState below)
+  const kept = OS.win.restored || {};
   const st = {
-    path: OS.args.path || 'home:',
+    path: (typeof kept.path === 'string' && kept.path) || OS.args.path || 'home:',
     entries: [],
     sel: new Set(),
     anchor: null,
@@ -984,7 +986,9 @@ LiteOS.ready((OS) => {
   });
 
   // Theme changes don't need a re-render (CSS variables), but settings like wallpaper don't affect Files.
+  OS.win.keepState(() => ({ path: st.path === 'search:' ? (st.back[st.back.length - 1] || 'home:') : st.path, scroll: $('#content').scrollTop }));
   load(['home:', 'device:', 'trash:', 'recent:'].includes(st.path) || st.path.startsWith('/') ? st.path : 'home:', { keepHistory: true }).then(() => {
+    if (kept.scroll > 0) $('#content').scrollTop = kept.scroll;
     // Other apps can ask Files to highlight a file: LiteOS.open('files', { path: dir, select: file })
     if (OS.args.select && st.entries.some((e) => e.path === OS.args.select)) select([OS.args.select]);
   });

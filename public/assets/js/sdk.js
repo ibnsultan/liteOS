@@ -161,6 +161,20 @@
      */
     preview(fn) { win._preview = typeof fn === 'function' ? fn : null; },
     _preview: null,
+    /**
+     * Keep a little of the app's state across a reload of the desktop (or F5 in the app): fn returns something
+     * JSON-able, at most 32 KB (the folder shown, a scroll position, the selected tab), which the next start of this
+     * window reads from OS.win.restored. Called as the page goes, so keep it quick. Never put file contents in it:
+     * save those to the drive.
+     *   OS.win.keepState(() => ({ path: current, scroll: list.scrollTop }));
+     */
+    keepState(fn) { win._keep = typeof fn === 'function' ? fn : null; },
+    _keep: null,
+    /** What keepState handed over before this window was reloaded, or null (a fresh window). */
+    get restored() {
+      if (!('_restored' in win)) win._restored = host && winId && host.win.restored ? host.win.restored(winId) : null;
+      return win._restored;
+    },
     /** Width (px) of the shell's window buttons in a custom title bar (apps with chrome: 'custom'). */
     controlsWidth: host && winId ? 132 : 0,
     /**
@@ -201,6 +215,21 @@
   }
   document.addEventListener('play', (e) => { if (e.target && 'volume' in e.target) applyVolume(e.target); }, true);
   const applyAllVolumes = () => document.querySelectorAll('audio, video').forEach(applyVolume);
+
+  // ------------------------------------------------------------------ reload keys
+  // F5 and Ctrl+R inside an app reload that app (keeping what it hands to keepState), not the whole desktop. An app
+  // that uses the keys itself (Files refreshes the folder) cancels the event and keeps them. Ctrl+F5 and Ctrl+Shift+R
+  // still reload everything.
+  if (host && winId && host.win.reload) {
+    window.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented || e.shiftKey || e.altKey) return;
+      const f5 = e.key === 'F5' && !e.ctrlKey && !e.metaKey;
+      const ctrlR = (e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R');
+      if (!f5 && !ctrlR) return;
+      e.preventDefault();
+      host.win.reload(winId);
+    });
+  }
 
   // ------------------------------------------------------------------ app switcher keys
   // Alt+` / Alt+Tab pressed inside an app go to the shell's window switcher.
