@@ -1,9 +1,9 @@
 {
   "id": "code",
   "name": "Code",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "sdk": "^1.0",
-  "summary": "Edit code and text files with a live preview.",
+  "summary": "Edit code and text files, with a live preview, a console and a terminal.",
   "author": "LiteOS",
   "category": "Developer",
   "entry": "index.html",
@@ -15,37 +15,49 @@
   ],
   "opens": [
     "txt",
+    "log",
     "md",
+    "markdown",
     "html",
     "htm",
+    "xhtml",
     "css",
     "js",
     "mjs",
+    "cjs",
+    "jsx",
+    "ts",
+    "mts",
+    "cts",
+    "tsx",
     "json",
     "php",
     "py",
+    "sql",
     "xml",
-    "ini",
-    "log",
-    "sh",
-    "ts",
     "yml",
     "yaml",
-    "sql",
+    "sh",
+    "bash",
     "c",
-    "cpp",
     "h",
-    "java"
+    "cpp",
+    "hpp",
+    "cc",
+    "java",
+    "ini",
+    "conf",
+    "properties"
   ],
   "window": {
     "size": [
       1100,
       700
     ],
-    "chrome": "standard",
+    "chrome": "custom",
     "single": false
   },
   "permissions": [
-    "files.pick"
+    "files.drive"
   ]
 }
