@@ -155,3 +155,34 @@ body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 
 .drive-bar i { display: block; height: 100%; background: var(--accent); }
 .drive-bar.full i { background: var(--danger); }
 .drive-txt small { font-size: 12px; color: var(--muted); }
+
+/* A drive's properties (propsDialog): like Explorer's General page. Groups split by hairlines, the used and free
+   colours keyed to the ring (the same accent and track as the drive bar in This PC). */
+.pr-tabs { display: flex; gap: 2px; padding: 12px 24px 0; border-bottom: 1px solid var(--dlg-line); }
+.pr-tab { padding: 5px 10px; margin-bottom: -1px; border: 1px solid transparent; border-radius: 4px 4px 0 0; background: none; color: var(--text); font: inherit; font-size: 12px; cursor: default; }
+.pr-tab[aria-selected="true"] { border-color: var(--dlg-line); border-bottom-color: var(--dlg-bg); background: var(--dlg-bg); }
+.pr-tab:disabled { color: var(--muted); opacity: .55; }
+.pr-dlg .dlg-body { gap: 0; padding-top: 14px; }
+.pr-head { display: grid; grid-template-columns: 72px 1fr; align-items: center; padding-bottom: 12px; }
+.pr-head img { object-fit: contain; }
+.pr-name { height: 28px; font-size: 13px; }
+.pr-grid { display: grid; grid-template-columns: 14px 10px auto 1fr auto; align-items: center; row-gap: 6px; padding: 10px 0; border-top: 1px solid var(--dlg-line); }
+.pr-sw { width: 14px; height: 14px; grid-column: 1; }
+.pr-k { grid-column: 3; color: var(--text); white-space: nowrap; }
+.pr-v { grid-column: 4; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.pr-s { grid-column: 5; color: var(--text); text-align: right; min-width: 76px; font-variant-numeric: tabular-nums; }
+/* Type and File system start at the edge with their values left-aligned; Capacity lines up with Used and Free, as in Explorer */
+.pr-info .pr-sw, .pr-info .pr-s { display: none; }
+.pr-info .pr-k { grid-column: 1 / 4; }
+.pr-info .pr-v { grid-column: 4 / 6; text-align: left; padding-left: 40px; }
+.pr-sw.used { background: var(--accent); }
+.pr-sw.used.full { background: var(--danger); }
+.pr-sw.free { background: var(--line-strong); }
+.pr-chart { display: flex; flex-direction: column; align-items: center; padding: 4px 0 0; }
+.pr-foot { position: relative; display: flex; justify-content: center; align-items: center; width: 100%; min-height: 32px; margin-top: 8px; color: var(--text); }
+.pr-foot .btn { position: absolute; right: 0; min-width: 88px; height: 28px; background: var(--dlg-btn); }
+.pr-ring { margin-top: 4px; }
+.pr-ring circle { fill: none; stroke-width: 14; }
+.pr-ring .pr-free { stroke: var(--line-strong); }
+.pr-ring .pr-used { stroke: var(--accent); }
+.pr-ring .pr-used.full { stroke: var(--danger); }

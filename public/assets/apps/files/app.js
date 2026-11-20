@@ -556,10 +556,57 @@ LiteOS.ready((OS) => {
 
   // ---- This PC: a drive's menu and the background's, like Explorer's "This PC"
   function driveProps(e) {
-    const free = Math.max(0, e.quota - e.used);
-    const pct = e.quota ? Math.round((e.used / e.quota) * 100) : 0;
-    OS.dialog.alert({ title: e.name + ' properties', message: 'Used space: ' + util.formatSize(e.used) + ' (' + pct + '%)\n' +
-      'Free space: ' + util.formatSize(free) + '\nCapacity: ' + util.formatSize(e.quota) });
+    propsDialog({ name: e.name, icon: e.icon ? fs.rawUrl(e.icon) : DISK, type: 'LiteOS Drive', capacity: e.quota, free: Math.max(0, e.quota - e.used) });
+  }
+  // A drive's properties, as in Explorer: what it is, used and free space (in bytes and short, with their colours),
+  // the capacity, and a ring showing how full it is. My drive and USB drives share it; a USB drive also has Eject.
+  // Its own dialog (not OS.dialog.alert) because it needs the layout; it follows the system dialog look (dialog.css).
+  function propsDialog(o) {
+    const bytes = (v) => Number(v || 0).toLocaleString('en-US') + ' bytes';
+    // three significant figures, as Explorer shows them: 68.0 KB, 7.48 GB, 512 MB
+    const short = (v) => {
+      v = Number(v || 0);
+      if (v < 1024) return v + ' bytes';
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let i = -1;
+      do { v /= 1024; i++; } while (v >= 1000 && i < units.length - 1);
+      return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
+    };
+    const known = o.free != null && o.capacity > 0;
+    const used = known ? Math.max(0, o.capacity - o.free) : 0;
+    const pct = known ? Math.min(1, used / o.capacity) : 0;
+    const full = pct >= 0.9;
+    const C = 2 * Math.PI * 34;
+    const ring = '<svg class="pr-ring" viewBox="0 0 88 88" width="88" height="88" aria-hidden="true"><circle class="pr-free" cx="44" cy="44" r="34"/>' +
+      (pct > 0 ? '<circle class="pr-used' + (full ? ' full' : '') + '" cx="44" cy="44" r="34" stroke-dasharray="' + Math.max(1.5, C * pct).toFixed(2) + ' ' + C.toFixed(2) + '" transform="rotate(-90 44 44)"/>' : '') + '</svg>';
+    // Laid out like Explorer's General page: the icon and name, Type and File system, Used and Free space with their
+    // colours, Capacity, then the ring with the drive's name under it and Eject where Explorer has Details
+    const row = (k, v, s, sw) => '<span class="pr-sw' + (sw ? ' ' + sw : '') + '"></span><span class="pr-k">' + esc(k) + ':</span><span class="pr-v">' + esc(v) + '</span><span class="pr-s">' + esc(s || '') + '</span>';
+    const dlg = document.createElement('dialog');
+    dlg.className = 'dlg pr-dlg';
+    dlg.setAttribute('aria-labelledby', 'pr-title');
+    dlg.innerHTML = '<h2 class="dlg-title" id="pr-title">' + esc(o.name) + ' Properties</h2>' +
+      // Explorer's tabs; only General has anything yet, the others show but can't be chosen
+      '<div class="pr-tabs" role="tablist"><button class="pr-tab" role="tab" aria-selected="true">General</button>' +
+        ['Tools', 'Hardware', 'Sharing', 'Customize'].map((t) => '<button class="pr-tab" role="tab" aria-selected="false" disabled title="Not available yet">' + t + '</button>').join('') +
+      '</div><div class="dlg-body">' +
+      '<div class="pr-head"><img src="' + esc(o.icon) + '" width="36" height="36" alt="" draggable="false"><input class="input pr-name" value="' + esc(o.name) + '" readonly aria-label="Name"></div>' +
+      '<div class="pr-grid pr-info">' + row('Type', o.type) + (o.fs ? row('File system', o.fs) : '') + '</div>' +
+      '<div class="pr-grid">' + (known ? row('Used space', bytes(used), short(used), 'used' + (full ? ' full' : '')) + row('Free space', bytes(o.free), short(o.free), 'free')
+        : row('Used space', 'Open the drive to see it')) + '</div>' +
+      '<div class="pr-grid pr-cap">' + row('Capacity', bytes(o.capacity), short(o.capacity)) + '</div>' +
+      '<div class="pr-chart">' + (known ? ring : '') + '<div class="pr-foot"><span class="pr-cap-name">' + esc(o.label || o.name) + '</span>' +
+        (o.eject ? '<button class="btn" data-a="eject">Eject</button>' : '') + '</div></div></div>' +
+      '<div class="dlg-actions"><button class="btn is-default" data-a="ok" autofocus>OK</button><button class="btn" data-a="cancel">Cancel</button></div>';
+    dlg.addEventListener('click', (ev) => {
+      const a = ev.target.closest('[data-a]');
+      if (!a) return;
+      dlg.close(); // OK and Cancel both just close: nothing here can be changed yet
+      if (a.dataset.a === 'eject') o.eject();
+    });
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.appendChild(dlg);
+    dlg.showModal();
   }
   function driveMenu(e, at) {
     OS.menu([
