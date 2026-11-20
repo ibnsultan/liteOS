@@ -86,6 +86,15 @@ class SettingsTest extends TestCase
             ->assertJsonPath('result.deskLayout', ['desk:files' => [2, 3], 'file:/Desktop/a.txt' => [0, 200]]);
     }
 
+    public function test_quick_access_keeps_only_drive_folders_once(): void
+    {
+        $this->actingAs($this->amina)->postJson('/os/settings/save', ['settings' => ['quickAccess' => [
+            '/Documents', '/Documents/Work/', '/Documents', '/', 'relative', '/a/../b', 5,
+        ]]])
+            ->assertOk()
+            ->assertJsonPath('result.quickAccess', ['/Documents', '/Documents/Work']);
+    }
+
     public function test_a_user_changes_their_display_name(): void
     {
         $this->actingAs($this->amina)->postJson('/os/account/update', ['name' => 'Amina Juma'])

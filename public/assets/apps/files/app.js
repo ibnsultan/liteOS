@@ -10,10 +10,17 @@ LiteOS.ready((OS) => {
   // the generic disk for a drive with no .ico of its own
   const DISK = OS.sysIcon('place.drive');
 
-  const PLACES = [
-    ['This device', 'device:', 'device.computer'], ['Recent', 'recent:', 'place.recent'], ['Desktop', '/Desktop', 'place.desktop'], ['Documents', '/Documents', 'place.documents'],
-    ['Downloads', '/Downloads', 'place.downloads'], ['Pictures', '/Pictures', 'place.pictures'], ['Music', '/Music', 'place.music'], ['Videos', '/Videos', 'place.videos'],
-  ];
+  // The navigation pane, as in Explorer: Home, the folders pinned to Quick access, then This PC as a tree (its drives
+  // and their folders, opened with the arrows) and the Trash. The pins are a user setting, so every Files window and
+  // every device sees the same list.
+  const SPECIAL = { '/Desktop': 'place.desktop', '/Documents': 'place.documents', '/Downloads': 'place.downloads', '/Pictures': 'place.pictures', '/Music': 'place.music', '/Videos': 'place.videos' };
+  const DEFAULT_PINS = ['/Desktop', '/Downloads', '/Documents', '/Pictures', '/Music', '/Videos'];
+  const pins = () => (Array.isArray(OS.settings.quickAccess) ? OS.settings.quickAccess : DEFAULT_PINS);
+  const isPinned = (p) => pins().includes(p);
+  const setPinned = (p, on) => OS.saveSettings({ quickAccess: pins().filter((x) => x !== p).concat(on ? [p] : []) });
+  const folderIcon = (p) => SPECIAL[p] || 'place.folder';
+  // where a folder is, for Home's Quick access: "My drive", "My drive › Documents"
+  const where = (p) => { const d = util.dirname(p); return d === '/' ? 'My drive' : 'My drive' + d.replace(/\//g, ' › '); };
   const NEW_TYPES = [
     { label: 'Document', ext: 'ldoc', name: 'Untitled document', app: 'documents' },
     { label: 'Spreadsheet', ext: 'lsheet', name: 'Untitled spreadsheet', app: 'sheets' },
@@ -25,7 +32,7 @@ LiteOS.ready((OS) => {
   const savePref = (k, v) => { try { localStorage.setItem('files.' + k, v); } catch (e) { /* ignore */ } };
 
   const st = {
-    path: OS.args.path || 'device:',
+    path: OS.args.path || 'home:',
     entries: [],
     sel: new Set(),
     anchor: null,
@@ -38,6 +45,9 @@ LiteOS.ready((OS) => {
     query: '',
     usage: null,
     renaming: null,
+    // the This PC tree: which branches are open, and the folders found under each one
+    tree: { open: new Set((() => { try { return JSON.parse(pref('tree', '["device:","/"]')); } catch (e) { return ['device:', '/']; } })()), kids: new Map() },
+    fold: new Set(pref('fold', '').split(',').filter(Boolean)), // Home sections the user folded away
   };
 
   // Clipboard shared between Files windows (same origin parent).
@@ -46,7 +56,7 @@ LiteOS.ready((OS) => {
     set(v) { try { window.parent.__losClipboard = v; } catch (e) { clip._local = v; } },
   };
 
-  const mode = () => (st.path === 'device:' ? 'device' : st.path === 'trash:' ? 'trash' : st.path === 'recent:' ? 'recent' : st.path === 'search:' ? 'search' : 'folder');
+  const mode = () => (st.path === 'home:' ? 'home' : st.path === 'device:' ? 'device' : st.path === 'trash:' ? 'trash' : st.path === 'recent:' ? 'recent' : st.path === 'search:' ? 'search' : 'folder');
   const isFolder = () => mode() === 'folder';
 
   // ------------------------------------------------------------------ chrome
@@ -64,41 +74,87 @@ LiteOS.ready((OS) => {
         '<button class="btn" data-c="purge"' + (has ? '' : ' disabled') + '>Delete permanently</button>' +
         '<span class="spacer"></span><button class="btn btn-danger" data-c="empty">Empty Trash</button>';
     } else {
-      const files = has && m !== 'device'; // a drive can't be cut, copied, renamed or trashed
+      const files = has && m !== 'device' && !selEntries().some((e) => e.pin); // a drive (or a pin on Home) can't be cut, copied, renamed or trashed
+      const fixed = m === 'home' ? ' disabled' : '';
       h += '<button class="btn btn-primary" data-c="new"' + (isFolder() ? '' : ' disabled') + '>New' + I('down', 12) + '</button>' +
         '<button class="btn btn-ghost" data-c="upload"' + (isFolder() ? '' : ' disabled') + '>Upload</button><span class="sep"></span>' +
         [['cut', 'Cut', 'cut', files], ['copy', 'Copy', 'copy', files], ['paste', 'Paste', 'paste', !!clip.get() && isFolder()], ['rename', 'Rename', 'rename', files && st.sel.size === 1],
           ['download', 'Download', 'download', st.sel.size === 1 && selEntries()[0] && selEntries()[0].type === 'file'], ['delete', 'Move to Trash', 'trash', files]]
           .map(([c, l, ic, en]) => '<button class="icon-btn" data-c="' + c + '" title="' + l + '" aria-label="' + l + '"' + (en ? '' : ' disabled') + (c === 'delete' ? ' style="color:var(--danger)"' : '') + '>' + I(ic) + '</button>').join('') +
         '<span class="spacer"></span>' +
-        '<button class="btn btn-ghost" data-c="sort">Sort: ' + ({ name: 'Name', mtime: 'Modified', size: 'Size', type: 'Type' })[st.sort] + '</button>' +
-        '<div class="seg"><button data-c="view-list" class="' + (st.view === 'list' ? 'active' : '') + '" aria-label="List view">' + I('list', 15) + '</button>' +
-        '<button data-c="view-grid" class="' + (st.view === 'grid' ? 'active' : '') + '" aria-label="Grid view">' + I('grid', 15) + '</button></div>' +
+        '<button class="btn btn-ghost" data-c="sort"' + fixed + '>Sort: ' + ({ name: 'Name', mtime: 'Modified', size: 'Size', type: 'Type' })[st.sort] + '</button>' +
+        '<button class="btn btn-ghost" data-c="view"' + fixed + '>View: ' + viewLabel() + '</button>' +
         '<button class="icon-btn' + (st.details ? ' active' : '') + '" data-c="details" aria-label="Details pane" title="Details pane">' + I('panel') + '</button>';
     }
     $('#cmdbar').innerHTML = h;
   }
 
-  function renderSide() {
-    const used = st.usage;
-    const pct = used ? Math.min(100, Math.round((used.used / used.quota) * 100)) : 0;
-    $('#side').innerHTML = '<div class="nav-head">Places</div>' +
-      PLACES.map(([n, p, ic]) => '<button class="nav-item' + (st.path === p ? ' active' : '') + '" data-go="' + p + '"' + (p.startsWith('/') ? ' data-dropdir="' + p + '"' : '') + '>' + S(ic) + n + '</button>').join('') +
-      '<div class="nav-head">Other</div><button class="nav-item' + (st.path === 'trash:' ? ' active' : '') + '" data-go="trash:" data-droptrash="1">' + S('shell.trash') + 'Trash</button>' +
-      '<div class="side-meter"><div class="top"><b>My drive</b><span style="color:var(--muted)">' + (used ? util.formatSize(used.used) + ' of ' + util.formatSize(used.quota) : '…') + '</span></div>' +
-      '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+  // One row of the pane. Every row has the arrow's slot, so the icons line up; tree rows (depth set) fill it.
+  function sideRow(path, label, role, o) {
+    o = o || {};
+    const tree = o.depth != null;
+    const kids = st.tree.kids.get(path);
+    const leaf = o.leaf || (kids && !kids.length);
+    const tw = '<span class="tw' + (tree && !leaf ? (st.tree.open.has(path) ? ' open' : '') : ' none') + '"' + (tree && !leaf ? ' data-tw="' + esc(path) + '"' : '') + '>' + (tree ? I('forward', 12) : '') + '</span>';
+    const drop = path === 'trash:' ? ' data-droptrash="1"' : path.startsWith('/') ? ' data-dropdir="' + esc(path) + '"' : '';
+    return '<button class="nav-item tv' + (st.path === path ? ' active' : '') + '" data-go="' + esc(path) + '"' + drop + (tree ? ' style="--d:' + o.depth + '"' : '') + ' title="' + esc(label) + '">' +
+      tw + S(role) + '<span class="nm">' + esc(label) + '</span>' + (o.pin ? '<span class="pinmark">' + I('pin', 12) + '</span>' : '') + '</button>';
   }
+  function treeRows(path, depth) {
+    const kids = st.tree.open.has(path) && st.tree.kids.get(path);
+    if (!kids) return '';
+    return kids.map((k) => sideRow(k.path, k.name, k.type === 'drive' ? 'place.drive' : folderIcon(k.path), { depth, leaf: k.type === 'dir' && k.count === 0 }) + treeRows(k.path, depth + 1)).join('');
+  }
+  function renderSide() {
+    const side = $('#side');
+    const top = side.scrollTop;
+    side.innerHTML = sideRow('home:', 'Home', 'place.home') + '<div class="side-sep"></div>' +
+      pins().map((p) => sideRow(p, util.basename(p), folderIcon(p), { pin: true })).join('') + (pins().length ? '<div class="side-sep"></div>' : '') +
+      sideRow('device:', 'This PC', 'device.computer', { depth: 0 }) + treeRows('device:', 1) +
+      sideRow('trash:', 'Trash', 'place.trash', { depth: 0, leaf: true });
+    side.scrollTop = top;
+  }
+  // The folders under a branch of the tree (the drives, under This PC), fetched when it is opened.
+  async function loadKids(path) {
+    try {
+      const list = path === 'device:' ? (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' }))
+        : (await fs.list(path)).filter((e) => e.type === 'dir' && !e.name.startsWith('.'))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      st.tree.kids.set(path, list);
+    } catch (e) { st.tree.kids.set(path, []); } // gone, or can't be read: nothing to open
+  }
+  async function toggleTree(path) {
+    if (st.tree.open.has(path)) st.tree.open.delete(path);
+    else {
+      st.tree.open.add(path);
+      if (!st.tree.kids.has(path)) await loadKids(path);
+    }
+    savePref('tree', JSON.stringify([...st.tree.open]));
+    renderSide();
+  }
+  // a folder just listed: its branch in the tree and its count in its parent's (so its arrow shows) are known now
+  function syncTree(path, entries) {
+    st.tree.kids.set(path, entries.filter((e) => e.type === 'dir' && !e.name.startsWith('.'))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })));
+    const up = st.tree.kids.get(path === '/' ? 'device:' : util.dirname(path));
+    const me = up && up.find((k) => k.path === path);
+    if (me && me.type === 'dir') me.count = entries.length;
+  }
+  // after a change on the drive: fetch the open branches again
+  const loadTree = () => Promise.all([...st.tree.open].map(loadKids)).then(renderSide);
 
   function renderCrumbs() {
     const m = mode();
     let h;
-    if (m === 'device') {
-      h = '<button>This device</button>';
+    if (m === 'home') {
+      h = '<button>Home</button>';
+    } else if (m === 'device') {
+      h = '<button>This PC</button>';
     } else if (m !== 'folder') {
-      h = '<button data-go="device:">This device</button><span class="sepc">›</span><button>' + ({ trash: 'Trash', recent: 'Recent', search: 'Search results' })[m] + '</button>';
+      h = '<button data-go="device:">This PC</button><span class="sepc">›</span><button>' + ({ trash: 'Trash', recent: 'Recent', search: 'Search results' })[m] + '</button>';
     } else {
       const parts = st.path.split('/').filter(Boolean);
-      h = '<button data-go="device:">This device</button><span class="sepc">›</span><button data-go="/">My drive</button>' +
+      h = '<button data-go="device:">This PC</button><span class="sepc">›</span><button data-go="/">My drive</button>' +
         parts.map((p, i) => '<span class="sepc">›</span><button data-go="/' + esc(parts.slice(0, i + 1).join('/')) + '">' + esc(p) + '</button>').join('');
     }
     $('#crumbs').innerHTML = h;
@@ -109,6 +165,7 @@ LiteOS.ready((OS) => {
 
   // ------------------------------------------------------------------ data
   function sorted(list) {
+    if (mode() === 'home') return list.slice(); // Quick access in pin order, then Recent, newest first
     const k = st.sort;
     const d = st.dir === 'asc' ? 1 : -1;
     return list.slice().sort((a, b) => {
@@ -126,7 +183,8 @@ LiteOS.ready((OS) => {
     opts = opts || {};
     try {
       let entries;
-      if (path === 'device:') entries = (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' }));
+      if (path === 'home:') entries = await homeEntries();
+      else if (path === 'device:') entries = (await fs.drives()).map((d) => Object.assign({}, d, { type: 'drive' }));
       else if (path === 'trash:') entries = (await fs.trash.list()).map((t) => Object.assign({}, t, { path: 'trash:' + t.id, ext: util.ext(t.name) }));
       else if (path === 'recent:') entries = await fs.recent();
       else if (path === 'search:') entries = await fs.search(st.query, '', 300);
@@ -134,6 +192,7 @@ LiteOS.ready((OS) => {
       if (!opts.keepHistory && path !== st.path) { st.back.push(st.path); st.fwd = []; }
       st.path = path;
       st.entries = entries;
+      if (path.startsWith('/')) syncTree(path, entries);
       if (!opts.keepSel) st.sel.clear();
       else st.sel = new Set([...st.sel].filter((p) => entries.some((e) => e.path === p)));
       render();
@@ -143,9 +202,16 @@ LiteOS.ready((OS) => {
     }
   }
 
-  const refresh = () => { load(st.path, { keepHistory: true, keepSel: true }); loadUsage(); };
-  const loadUsage = () => fs.usage().then((u) => { st.usage = u; renderSide(); }).catch(() => {});
+  const refresh = () => { load(st.path, { keepHistory: true, keepSel: true }); loadUsage(); loadTree(); };
+  const loadUsage = () => fs.usage().then((u) => { st.usage = u; renderStatus(); }).catch(() => {});
+  // Home: the pinned folders, then the files opened or saved lately
+  async function homeEntries() {
+    const recent = await fs.recent().catch(() => []);
+    return pins().map((p) => ({ name: util.basename(p), path: p, type: 'dir', pin: true })).concat((recent || []).slice(0, 40));
+  }
   const selEntries = () => st.entries.filter((e) => st.sel.has(e.path));
+  // what Delete acts on: a pin on Home is a shortcut to its folder, so it isn't trashed from there
+  const selPaths = () => selEntries().filter((e) => !e.pin).map((e) => e.path);
 
   // ------------------------------------------------------------------ render
   function kindOf(e) {
@@ -170,18 +236,27 @@ LiteOS.ready((OS) => {
     renderSide();
     renderCrumbs();
     const m = mode();
-    const title = m === 'folder' ? (st.path === '/' ? 'My drive' : util.basename(st.path)) : ({ device: 'This device', trash: 'Trash', recent: 'Recent', search: 'Search' })[m];
+    const title = m === 'folder' ? (st.path === '/' ? 'My drive' : util.basename(st.path)) : ({ home: 'Home', device: 'This PC', trash: 'Trash', recent: 'Recent', search: 'Search' })[m];
     // no page heading: the window title and the path bar say where you are; a note shows only when there is one
     const note = m === 'search' ? 'Results for “' + st.query + '”' : m === 'trash' ? 'Items here still use storage until you empty the Trash.' : '';
     $('#infobar').textContent = note;
     $('#infobar').hidden = !note;
     OS.win.setTitle(title + ' — Files');
     const content = $('#content');
-    content.className = 'content' + (m === 'trash' ? ' trash-mode' : '') + (m === 'search' || m === 'recent' ? ' search-mode' : '');
+    content.className = 'content' + (m === 'trash' ? ' trash-mode' : '') + (m === 'search' || m === 'recent' || m === 'home' ? ' search-mode' : '');
     const list = sorted(st.entries);
     const cutSet = (() => { const c = clip.get(); return c && c.mode === 'cut' ? new Set(c.paths) : new Set(); })();
 
-    if (m === 'device') {
+    if (m === 'home') {
+      // Home, as in Explorer: the pinned folders as tiles (where each one is, and its pin), then the recent files
+      const sec = (key, label, body) => '<section class="home-sec"><button class="home-head" data-fold="' + key + '" aria-expanded="' + !st.fold.has(key) + '">' + I('down', 12) + label + '</button>' + (st.fold.has(key) ? '' : body) + '</section>';
+      const qa = list.filter((e) => e.pin);
+      const rec = list.filter((e) => !e.pin);
+      content.innerHTML = sec('qa', 'Quick access', qa.length ? '<div class="items v-qa">' + qa.map((e) => '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + '" data-path="' + esc(e.path) + '" data-dropdir="' + esc(e.path) + '">' +
+          '<span class="ic">' + tile(e, 48) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + esc(e.name) + '</span><small>' + esc(where(e.path)) + '</small><small class="pinmark">' + I('pin', 12) + '</small></span></div>').join('') + '</div>'
+        : '<div class="home-note">Pin folders here from their menu: Pin to Quick access.</div>') +
+        sec('recent', 'Recent', rec.length ? listHtml(rec, 'recent', cutSet, true) : '<div class="home-note">Files you open or save show up here.</div>');
+    } else if (m === 'device') {
       // devices and drives, like Explorer's "This PC": the drive's picture (its own .ico, or the generic disk),
       // its name, how full it is and how much is free
       content.innerHTML = '<div class="dev-head">' + I('down', 12) + 'Devices and drives</div><div class="drives">' + list.map((e) => {
@@ -198,27 +273,24 @@ LiteOS.ready((OS) => {
       content.innerHTML = '<div class="empty">' + S(m === 'trash' ? 'shell.trash' : m === 'search' ? 'shell.search' : 'place.folder', 40) +
         '<div style="font-weight:600;color:var(--text)">' + (m === 'trash' ? 'Trash is empty' : m === 'search' ? 'No files found' : m === 'recent' ? 'Nothing here yet' : 'This folder is empty') + '</div>' +
         '<div>' + (m === 'folder' ? 'Drop files here, or use New and Upload.' : m === 'recent' ? 'Files you open or save show up here.' : '') + '</div></div>';
-    } else if (st.view === 'grid' && m !== 'trash') {
-      content.innerHTML = '<div class="grid">' + list.map((e) => {
-        const isImg = e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
-        return '<div class="gtile' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '" draggable="true"' + (e.type === 'dir' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' +
-          '<span class="thumb">' + (isImg ? '<img loading="lazy" alt="" src="' + esc(fs.rawUrl(e.path)) + '">' : tile(e, 44, 12)) + '</span>' +
-          '<span class="lbl" title="' + esc(e.name) + '">' + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : esc(e.name)) + '</span></div>';
+    } else if (curView() !== 'list') {
+      const v = curView();
+      const isImg = (e) => e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
+      const name = (e) => (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : esc(e.name));
+      const size = (e) => (e.type === 'dir' ? (e.count != null ? e.count + (e.count === 1 ? ' item' : ' items') : '') : util.formatSize(e.size));
+      // the picture: a big icon view shows an image's own thumbnail; everything else is the bare file icon, no plate behind it
+      const pic = (e, px) => (px >= 48 && isImg(e) ? '<img class="pic" loading="lazy" alt="" draggable="false" src="' + esc(fs.rawUrl(e.path)) + '" style="max-width:' + px + 'px;max-height:' + px + 'px">' : tile(e, px));
+      const px = ICON_VIEWS[v] || (v === 'tiles' ? 48 : v === 'content' ? 40 : 20);
+      content.innerHTML = '<div class="items v-' + v + '">' + list.map((e) => {
+        let inner;
+        if (v === 'tiles') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(kindOf(e)) + '</small><small>' + esc(size(e)) + '</small></span>';
+        else if (v === 'content') inner = '<span class="ic">' + pic(e, px) + '</span><span class="tx"><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span><small>' + esc(m === 'folder' ? kindOf(e) : util.dirname(e.path)) + '</small></span>' +
+          '<span class="tx r"><small>Date modified: ' + esc(util.formatDate(e.mtime)) + '</small><small>' + (e.type === 'dir' ? '' : 'Size: ' + esc(size(e))) + '</small></span>';
+        else inner = '<span class="ic">' + pic(e, px) + '</span><span class="lbl" title="' + esc(e.name) + '">' + name(e) + '</span>';
+        return '<div class="it' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '" draggable="true"' + (e.type === 'dir' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + inner + '</div>';
       }).join('') + '</div>';
     } else {
-      const arrow = (k) => (st.sort === k ? (st.dir === 'asc' ? ' ↑' : ' ↓') : '');
-      let head;
-      if (m === 'trash') head = '<div class="thead"><button data-sort="name">Name' + arrow('name') + '</button><span>Original location</span><button data-sort="mtime">Deleted' + arrow('mtime') + '</button><button data-sort="size">Size' + arrow('size') + '</button></div>';
-      else if (m === 'folder') head = '<div class="thead"><button data-sort="name">Name' + arrow('name') + '</button><button data-sort="mtime">Modified' + arrow('mtime') + '</button><button data-sort="size">Size' + arrow('size') + '</button><button data-sort="type">Type' + arrow('type') + '</button></div>';
-      else head = '<div class="thead"><button data-sort="name">Name' + arrow('name') + '</button><span>Location</span><button data-sort="mtime">Modified' + arrow('mtime') + '</button><button data-sort="size">Size' + arrow('size') + '</button></div>';
-      content.innerHTML = head + list.map((e) => {
-        const nm = '<span class="nm">' + tile(e, 26, 7) + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : '<span>' + esc(e.name) + '</span>') + '</span>';
-        let cols;
-        if (m === 'trash') cols = '<span class="c">' + esc(util.dirname(e.original)) + '</span><span class="c m">' + esc(util.formatDate(e.deletedAt)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
-        else if (m === 'folder') cols = '<span class="c">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? e.count + ' items' : esc(util.formatSize(e.size))) + '</span><span class="c m">' + esc(kindOf(e)) + '</span>';
-        else cols = '<span class="c">' + esc(util.dirname(e.path)) + '</span><span class="c m">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
-        return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' ? ' draggable="true"' : '') + (e.type === 'dir' && m === 'folder' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
-      }).join('');
+      content.innerHTML = listHtml(list, m, cutSet);
     }
     const ri = content.querySelector('.rename-input');
     if (ri) {
@@ -232,6 +304,24 @@ LiteOS.ready((OS) => {
     }
     renderDetails();
     renderStatus();
+  }
+
+  // Details: a header (its buttons sort, except on Home) and one row per item
+  function listHtml(list, m, cutSet, plain) {
+    const arrow = (k) => (st.sort === k ? (st.dir === 'asc' ? ' ↑' : ' ↓') : '');
+    const hb = (k, label) => (plain ? '<span>' + label + '</span>' : '<button data-sort="' + k + '">' + label + arrow(k) + '</button>');
+    let head;
+    if (m === 'trash') head = '<div class="thead">' + hb('name', 'Name') + '<span>Original location</span>' + hb('mtime', 'Deleted') + hb('size', 'Size') + '</div>';
+    else if (m === 'folder') head = '<div class="thead">' + hb('name', 'Name') + hb('mtime', 'Modified') + hb('size', 'Size') + hb('type', 'Type') + '</div>';
+    else head = '<div class="thead">' + hb('name', 'Name') + '<span>Location</span>' + hb('mtime', 'Modified') + hb('size', 'Size') + '</div>';
+    return head + list.map((e) => {
+      const nm = '<span class="nm">' + tile(e, 26, 7) + (st.renaming === e.path ? '<input class="input rename-input" value="' + esc(e.name) + '">' : '<span>' + esc(e.name) + '</span>') + '</span>';
+      let cols;
+      if (m === 'trash') cols = '<span class="c">' + esc(util.dirname(e.original)) + '</span><span class="c m">' + esc(util.formatDate(e.deletedAt)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
+      else if (m === 'folder') cols = '<span class="c">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? e.count + ' items' : esc(util.formatSize(e.size))) + '</span><span class="c m">' + esc(kindOf(e)) + '</span>';
+      else cols = '<span class="c">' + esc(where(e.path)) + '</span><span class="c m">' + esc(util.formatDate(e.mtime)) + '</span><span class="c m">' + (e.type === 'dir' ? '—' : esc(util.formatSize(e.size))) + '</span>';
+      return '<div class="frow' + (st.sel.has(e.path) ? ' sel' : '') + (cutSet.has(e.path) ? ' cut' : '') + '" data-path="' + esc(e.path) + '"' + (m !== 'trash' ? ' draggable="true"' : '') + (e.type === 'dir' && m === 'folder' ? ' data-dropdir="' + esc(e.path) + '"' : '') + '>' + nm + cols + '</div>';
+    }).join('');
   }
 
   function renderStatus() {
@@ -258,7 +348,7 @@ LiteOS.ready((OS) => {
       '<div><div class="name">' + esc(e.name) + '</div><div class="hint">' + esc(kindOf(e)) + '</div></div>' +
       '<div class="row"><button class="btn btn-primary grow" data-c="open">Open</button>' + (e.type === 'file' ? '<button class="btn grow" data-c="download">Download</button>' : '') +
       '<button class="icon-btn" data-c="more" aria-label="More actions" style="border:1px solid var(--line-strong);width:32px;height:32px">' + I('more') + '</button></div>' +
-      '<dl>' + (e.type === 'file' ? '<dt>Size</dt><dd>' + esc(util.formatSize(e.size)) + '</dd>' : '<dt>Contains</dt><dd>' + e.count + ' items</dd>') +
+      '<dl>' + (e.type === 'file' ? '<dt>Size</dt><dd>' + esc(util.formatSize(e.size)) + '</dd>' : (e.count != null ? '<dt>Contains</dt><dd>' + e.count + ' items</dd>' : '')) +
       '<dt>Modified</dt><dd>' + esc(util.formatDate(e.mtime)) + '</dd><dt>Location</dt><dd>' + esc(util.dirname(e.path) === '/' ? 'My drive' : 'My drive' + util.dirname(e.path).replace(/\//g, ' › ')) + '</dd></dl>';
   }
 
@@ -387,7 +477,8 @@ LiteOS.ready((OS) => {
     const isImg = e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
     const items = [{ label: 'Open', icon: 'forward', key: 'Enter', action: () => selEntries().forEach(openEntry) }];
     if (e.type === 'file' && !multi) items.push({ label: 'Open with…', icon: 'apps', action: () => openWithMenu(e, at) });
-    if (e.type === 'dir' && !multi) items.push({ label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) });
+    if (e.pin) { folderMenu(e.path, at); return; }
+    if (e.type === 'dir' && !multi) items.push({ label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) }, pinItem(e.path));
     if (mode() !== 'folder') items.push({ label: 'Show in folder', icon: 'folder', action: async () => { await load(util.dirname(e.path)); select([e.path]); } });
     items.push('sep',
       { label: 'Cut', icon: 'cut', key: 'Ctrl+X', action: () => { clip.set({ mode: 'cut', paths: [...st.sel] }); render(); } },
@@ -400,7 +491,17 @@ LiteOS.ready((OS) => {
     OS.menu(items, at);
   }
 
-  // ---- This device: a drive's menu and the background's, like Explorer's "This PC"
+  // a folder in the pane or a pin on Home: open it, or pin and unpin it
+  function pinItem(p) {
+    return isPinned(p) ? { label: 'Unpin from Quick access', icon: 'unpin', action: () => setPinned(p, false) } : { label: 'Pin to Quick access', icon: 'pin', action: () => setPinned(p, true) };
+  }
+  function folderMenu(p, at) {
+    const items = [{ label: 'Open', icon: 'open', action: () => go(p) }, { label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: p }) }];
+    if (p !== '/') items.push('sep', pinItem(p));
+    OS.menu(items, at);
+  }
+
+  // ---- This PC: a drive's menu and the background's, like Explorer's "This PC"
   function driveProps(e) {
     const free = Math.max(0, e.quota - e.used);
     const pct = e.quota ? Math.round((e.used / e.quota) * 100) : 0;
@@ -446,13 +547,20 @@ LiteOS.ready((OS) => {
   }
 
   // View and Sort by, as submenus (the background menu) and on their own (toolbar buttons)
-  const VIEWS = [['grid', 'Icons', 'grid', 'Ctrl+Shift+2'], ['list', 'Details', 'list', 'Ctrl+Shift+6']];
+  // the Explorer set; 'grid' (medium icons) and 'list' (details) keep their old names so saved choices still apply
+  const VIEWS = [['xl', 'Extra large icons', 'square'], ['lg', 'Large icons', 'square'], ['grid', 'Medium icons', 'grid'], ['sm', 'Small icons', 'grid'],
+    ['compact', 'List', 'ul'], ['list', 'Details', 'list'], ['tiles', 'Tiles', 'grid'], ['content', 'Content', 'table']]
+    .map(([v, label, icon], i) => [v, label, icon, 'Ctrl+Shift+' + (i + 1)]);
+  const ICON_VIEWS = { xl: 96, lg: 64, grid: 48, sm: 20 };
+  // the Trash only has a details view (it needs the original location and deleted columns)
+  const curView = () => (mode() === 'trash' || !VIEWS.some(([v]) => v === st.view) ? 'list' : st.view);
+  const viewLabel = () => VIEWS.find(([v]) => v === curView())[1];
   const SORTS = [['name', 'Name'], ['mtime', 'Date modified'], ['size', 'Size'], ['type', 'Type']];
   function setView(v) { st.view = v; savePref('view', v); render(); }
   function toggleDetails() { st.details = !st.details; savePref('details', st.details ? '1' : '0'); render(); }
   function viewItems() {
     return [
-      ...VIEWS.map(([v, label, icon, key]) => ({ label, icon, key, checked: st.view === v, action: () => setView(v) })),
+      ...VIEWS.map(([v, label, icon, key]) => ({ label, icon, key, checked: curView() === v, disabled: mode() === 'trash' && v !== 'list', action: () => setView(v) })),
       'sep',
       { label: 'Details pane', icon: 'panel', key: 'Alt+Shift+P', checked: st.details, action: toggleDetails },
     ];
@@ -498,6 +606,16 @@ LiteOS.ready((OS) => {
 
   // ------------------------------------------------------------------ events
   document.addEventListener('click', (ev) => {
+    const tw = ev.target.closest('[data-tw]');
+    if (tw) { toggleTree(tw.dataset.tw); return; }
+    const fold = ev.target.closest('[data-fold]');
+    if (fold) {
+      const k = fold.dataset.fold;
+      if (st.fold.has(k)) st.fold.delete(k); else st.fold.add(k);
+      savePref('fold', [...st.fold].join(','));
+      render();
+      return;
+    }
     const b = ev.target.closest('[data-c],[data-go],[data-sort]');
     if (!b || b.disabled) return;
     if (b.dataset.go) { go(b.dataset.go); return; }
@@ -516,10 +634,9 @@ LiteOS.ready((OS) => {
       case 'paste': paste(st.path); break;
       case 'rename': if (sel[0]) { st.renaming = sel[0].path; render(); } break;
       case 'download': if (sel[0]) download(sel[0]); break;
-      case 'delete': del([...st.sel]); break;
+      case 'delete': del(selPaths()); break;
       case 'sort': sortMenu(at); break;
-      case 'view-list': setView('list'); break;
-      case 'view-grid': setView('grid'); break;
+      case 'view': OS.menu(viewItems(), at); break;
       case 'details': toggleDetails(); break;
       case 'open': if (sel[0]) openEntry(sel[0]); break;
       case 'more': if (sel[0]) itemMenu(sel[0], at); break;
@@ -534,10 +651,12 @@ LiteOS.ready((OS) => {
   content.addEventListener('mousedown', (ev) => {
     const row = ev.target.closest('[data-path]');
     if (!row) {
-      if (ev.button === 0 && !ev.target.closest('.thead')) { st.sel.clear(); render(); }
+      if (ev.button === 0 && !ev.target.closest('.thead, .home-head, input') && ev.clientX < content.getBoundingClientRect().left + content.clientWidth) marquee(ev); // not on the scrollbar
       return;
     }
     const p = row.dataset.path;
+    // in Details, a press beside the name (not on it) draws a selection rectangle, as in Explorer
+    if (ev.button === 0 && row.classList.contains('frow') && !ev.target.closest('.nm > *, input') && !ev.shiftKey) { ev.preventDefault(); marquee(ev, p); return; }
     if (ev.button === 2) { if (!st.sel.has(p)) select([p]); return; }
     if (ev.shiftKey && st.anchor) {
       const list = sorted(st.entries).map((e) => e.path);
@@ -553,6 +672,54 @@ LiteOS.ready((OS) => {
       if (!st.sel.has(p)) select([p]);
     }
   });
+  // Drag on empty space to draw a selection rectangle: it selects every item it touches, in any view (Ctrl keeps
+  // what was selected), and scrolls the list when the pointer goes past its top or bottom edge.
+  function marquee(ev, clickPath) { // clickPath: a Details row pressed beside its name; a plain click there selects it
+    const keep = ev.ctrlKey || ev.metaKey ? new Set(st.sel) : new Set();
+    const cr = () => content.getBoundingClientRect();
+    const toContent = (x, y) => { const r = cr(); return { x: x - r.left + content.scrollLeft, y: y - r.top + content.scrollTop }; };
+    const start = toContent(ev.clientX, ev.clientY);
+    let last = { x: ev.clientX, y: ev.clientY };
+    let mq = null;
+    let raf = 0;
+    if (!keep.size && st.sel.size) { st.sel.clear(); render(); }
+    const draw = () => {
+      const p = toContent(last.x, last.y);
+      if (!mq && Math.abs(p.x - start.x) + Math.abs(p.y - start.y) < 4) return;
+      if (!mq) { mq = document.createElement('div'); mq.className = 'marquee'; content.appendChild(mq); }
+      const x = Math.min(start.x, p.x); const y = Math.min(start.y, p.y);
+      const w = Math.abs(p.x - start.x); const h = Math.abs(p.y - start.y);
+      Object.assign(mq.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      const r0 = cr();
+      st.sel = new Set(keep);
+      content.querySelectorAll('[data-path]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const t = r.top - r0.top + content.scrollTop; const l = r.left - r0.left + content.scrollLeft;
+        const hit = l < x + w && l + r.width > x && t < y + h && t + r.height > y;
+        if (hit) st.sel.add(el.dataset.path);
+        el.classList.toggle('sel', st.sel.has(el.dataset.path));
+      });
+    };
+    // keep scrolling while the pointer is held past the edge
+    const tick = () => {
+      const r = cr();
+      const dy = last.y < r.top + 8 ? -Math.min(30, r.top + 8 - last.y) : last.y > r.bottom - 8 ? Math.min(30, last.y - r.bottom + 8) : 0;
+      if (dy) { content.scrollTop += dy; draw(); }
+      raf = requestAnimationFrame(tick);
+    };
+    const move = (e) => { last = { x: e.clientX, y: e.clientY }; draw(); };
+    const up = () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      if (mq) { mq.remove(); st.anchor = [...st.sel][0] || null; render(); }
+      else if (clickPath) { if (keep.size) { if (keep.has(clickPath)) keep.delete(clickPath); else keep.add(clickPath); st.sel = keep; st.anchor = clickPath; render(); } else select([clickPath]); }
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    raf = requestAnimationFrame(tick);
+  }
+
   content.addEventListener('click', (ev) => {
     const row = ev.target.closest('[data-path]');
     if (row && !ev.shiftKey && !ev.ctrlKey && !ev.metaKey && st.sel.size > 1) select([row.dataset.path]);
@@ -562,6 +729,16 @@ LiteOS.ready((OS) => {
     if (!row) return;
     const e = st.entries.find((x) => x.path === row.dataset.path);
     if (e) openEntry(e);
+  });
+  $('#side').addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    const b = ev.target.closest('[data-go]');
+    if (!b) return;
+    const p = b.dataset.go;
+    if (p === 'device:') deviceMenu(ev);
+    else if (p === 'trash:') OS.menu([{ label: 'Open', icon: 'open', action: () => go(p) }, 'sep', { label: 'Empty Trash', icon: 'trash', danger: true, action: () => trashAction('purge') }], ev);
+    else if (p.startsWith('/')) folderMenu(p, ev);
+    else OS.menu([{ label: 'Open', icon: 'open', action: () => go(p) }], ev);
   });
   $('#main').addEventListener('contextmenu', (ev) => {
     if (ev.target.closest('input')) return;
@@ -583,11 +760,11 @@ LiteOS.ready((OS) => {
     const sel = selEntries();
     const ctrl = ev.ctrlKey || ev.metaKey;
     if (ev.key === 'F5' || (ctrl && ev.key.toLowerCase() === 'r')) { ev.preventDefault(); refresh(); return; }
-    if (ctrl && ev.shiftKey && (ev.code === 'Digit2' || ev.code === 'Digit6')) { ev.preventDefault(); setView(ev.code === 'Digit2' ? 'grid' : 'list'); return; }
+    if (ctrl && ev.shiftKey && /^Digit[1-8]$/.test(ev.code)) { ev.preventDefault(); if (mode() !== 'trash') setView(VIEWS[+ev.code.slice(5) - 1][0]); return; }
     if (ev.altKey && ev.shiftKey && ev.code === 'KeyP') { ev.preventDefault(); toggleDetails(); return; }
     if (mode() === 'device') { if (ev.key === 'Enter' && sel.length) { ev.preventDefault(); sel.forEach(openEntry); } return; }
-    if (ev.key === 'Delete' && sel.length) { ev.preventDefault(); if (mode() === 'trash') trashAction('purge', trashIds()); else del([...st.sel]); }
-    else if (ev.key === 'F2' && sel.length === 1 && mode() !== 'trash') { ev.preventDefault(); st.renaming = sel[0].path; render(); }
+    if (ev.key === 'Delete' && sel.length) { ev.preventDefault(); if (mode() === 'trash') trashAction('purge', trashIds()); else del(selPaths()); }
+    else if (ev.key === 'F2' && sel.length === 1 && mode() !== 'trash' && !sel[0].pin) { ev.preventDefault(); st.renaming = sel[0].path; render(); }
     else if (ev.key === 'Enter' && sel.length) { ev.preventDefault(); sel.forEach(openEntry); }
     else if (ev.key === 'Backspace' && isFolder()) { ev.preventDefault(); go(st.path === '/' ? 'device:' : util.dirname(st.path)); }
     else if (ctrl && ev.key.toLowerCase() === 'a') { ev.preventDefault(); select(st.entries.map((e) => e.path)); }
@@ -706,9 +883,19 @@ LiteOS.ready((OS) => {
   });
 
   // Theme changes don't need a re-render (CSS variables), but settings like wallpaper don't affect Files.
-  load(st.path === 'trash:' || st.path === 'device:' || st.path.startsWith('/') ? st.path : 'device:', { keepHistory: true }).then(() => {
+  load(['home:', 'device:', 'trash:', 'recent:'].includes(st.path) || st.path.startsWith('/') ? st.path : 'home:', { keepHistory: true }).then(() => {
     // Other apps can ask Files to highlight a file: LiteOS.open('files', { path: dir, select: file })
     if (OS.args.select && st.entries.some((e) => e.path === OS.args.select)) select([OS.args.select]);
   });
   loadUsage();
+  loadTree();
+  // pins changed (here, in another Files window or on another device): the pane and Home follow
+  let pinKey = JSON.stringify(pins());
+  OS.onSettings(() => {
+    const k = JSON.stringify(pins());
+    if (k === pinKey) return;
+    pinKey = k;
+    renderSide();
+    if (mode() === 'home') load('home:', { keepHistory: true, keepSel: true });
+  });
 });

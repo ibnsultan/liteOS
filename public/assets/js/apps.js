@@ -56,7 +56,9 @@
   };
 
   /** A file entry's icon from the system icon set: a folder, or the file type by extension. */
-  window.LOS_fileRole = (entry) => (entry.type === 'dir' ? 'place.folder' : window.LOS_fileIcon(entry.name));
+  // the drive's own top-level folders have their own pictures, as in Explorer
+  const SPECIAL_DIRS = { '/Desktop': 'place.desktop', '/Documents': 'place.documents', '/Downloads': 'place.downloads', '/Pictures': 'place.pictures', '/Music': 'place.music', '/Videos': 'place.videos' };
+  window.LOS_fileRole = (entry) => (entry.type === 'dir' ? (SPECIAL_DIRS[entry.path] || 'place.folder') : window.LOS_fileIcon(entry.name));
   /** A file entry's icon as an <img class="tile filetile">, size × size. */
   window.LOS_fileTile = function (entry, size, cls) {
     return '<img class="tile filetile ' + (cls || '') + '" src="' + window.LOS_sysIcon(window.LOS_fileRole(entry)) + '" width="' + size + '" height="' + size + '" alt="" draggable="false">';

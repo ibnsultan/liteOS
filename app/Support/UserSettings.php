@@ -79,6 +79,7 @@ class UserSettings
             'deskIconSize' => 'medium',
             'deskSort' => 'name',           // how the Desktop folder's items are ordered (folders first)
             'deskLayout' => [],             // icons the user dragged: { "desk:files" | "file:/Desktop/a.txt": [column, row] }
+            'quickAccess' => ['/Desktop', '/Downloads', '/Documents', '/Pictures', '/Music', '/Videos'], // folders pinned in Files
             'homepage' => 'https://www.wikipedia.org',
         ];
     }
@@ -156,6 +157,10 @@ class UserSettings
                 if (is_array($value)) {
                     $out[$key] = self::deskLayout($value);
                 }
+            } elseif ($key === 'quickAccess') {
+                if (is_array($value)) {
+                    $out[$key] = self::folderList($value);
+                }
             } elseif ($key === 'homepage') {
                 if (is_string($value) && preg_match('#^https?://#i', $value) && strlen($value) < 2048) {
                     $out[$key] = $value;
@@ -186,6 +191,29 @@ class UserSettings
                 continue;
             }
             $out[$key] = [max(0, min(200, (int) $cell[0])), max(0, min(200, (int) $cell[1]))];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Folders pinned to Quick access: absolute drive paths ("/Documents/Work"), each once, in the order given.
+     *
+     * @param  array<mixed>  $in
+     * @return list<string>
+     */
+    private static function folderList(array $in): array
+    {
+        $out = [];
+        foreach ($in as $path) {
+            if (count($out) >= 50) {
+                break;
+            }
+            if (! is_string($path) || strlen($path) > 600 || ! str_starts_with($path, '/') || $path === '/'
+                || preg_match('#(^|/)\.\.?(/|$)|//|[ -]#', $path) || in_array($path, $out, true)) {
+                continue;
+            }
+            $out[] = rtrim($path, '/');
         }
 
         return $out;
