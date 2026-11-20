@@ -24,6 +24,7 @@
 <x-boot :label="'Starting '.$instanceName" />
 <div id="os" class="os-root"></div>
 <noscript><p style="position:fixed;bottom:24px;left:0;right:0;text-align:center;color:#fff;font-family:sans-serif;z-index:100000">LiteOS needs JavaScript to run.</p></noscript>
+<script src="@versioned('assets/js/greeting.js')"></script>
 <script src="@versioned('assets/js/icons.js')"></script>
 <script src="@versioned('assets/js/apps.js')"></script>
 <script src="@versioned('assets/js/menu.js')"></script>

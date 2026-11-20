@@ -29,6 +29,7 @@
 <div id="os" class="os-root">
 {{ $slot }}
 </div>
+<script src="@versioned('assets/js/greeting.js')"></script>
 <script src="@versioned('assets/js/icons.js')"></script>
 <script src="@versioned('assets/js/apps.js')"></script>
 <script src="@versioned('assets/js/menu.js')"></script>
