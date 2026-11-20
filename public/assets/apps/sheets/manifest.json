@@ -27,7 +27,8 @@
       700
     ],
     "chrome": "custom",
-    "single": false
+    "single": false,
+    "reportsReady": true
   },
   "permissions": [
     "files.pick"
