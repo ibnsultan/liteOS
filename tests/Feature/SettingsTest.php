@@ -74,6 +74,18 @@ class SettingsTest extends TestCase
             ->assertJsonMissingPath('result.secret');
     }
 
+    public function test_desktop_icon_cells_keep_only_valid_entries(): void
+    {
+        $this->actingAs($this->amina)->postJson('/os/settings/save', ['settings' => ['deskLayout' => [
+            'desk:files' => [2, 3],
+            'file:/Desktop/a.txt' => [0, 999],
+            'nope' => [1, 1],
+            'desk:trash' => 'x',
+        ]]])
+            ->assertOk()
+            ->assertJsonPath('result.deskLayout', ['desk:files' => [2, 3], 'file:/Desktop/a.txt' => [0, 200]]);
+    }
+
     public function test_a_user_changes_their_display_name(): void
     {
         $this->actingAs($this->amina)->postJson('/os/account/update', ['name' => 'Amina Juma'])

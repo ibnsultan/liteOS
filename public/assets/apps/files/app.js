@@ -627,6 +627,19 @@ LiteOS.ready((OS) => {
   const isInternal = (ev) => typesOf(ev).includes(DND);
   const isExternalFiles = (ev) => !isInternal(ev) && typesOf(ev).includes('Files');
 
+  // Desktop icons are dragged by the shell (not HTML drag and drop): it asks this window what is under the pointer, in
+  // this window's coordinates. Returns a folder path, 'trash:', or null; 'hover' marks the target, 'leave' clears it.
+  window.__losDropAt = (x, y, phase) => {
+    document.querySelectorAll('.drop').forEach((n) => n.classList.remove('drop'));
+    main.classList.remove('dragover');
+    if (phase === 'leave') return null;
+    const el = document.elementFromPoint(x, y);
+    const target = el && el.closest('[data-dropdir],[data-droptrash]');
+    if (target) { target.classList.add('drop'); return target.dataset.droptrash ? 'trash:' : target.dataset.dropdir; }
+    if (isFolder() && el && main.contains(el)) { main.classList.add('dragover'); return st.path; }
+    return null;
+  };
+
   // All Files windows refresh when any of them moves, copies or uploads.
   const sync = ('BroadcastChannel' in window) ? new BroadcastChannel('liteos-files') : null;
   if (sync) sync.onmessage = () => refresh();

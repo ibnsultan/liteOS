@@ -78,6 +78,7 @@ class UserSettings
             'deskIcons' => true,            // show the desktop icons at all (desktop menu > View)
             'deskIconSize' => 'medium',
             'deskSort' => 'name',           // how the Desktop folder's items are ordered (folders first)
+            'deskLayout' => [],             // icons the user dragged: { "desk:files" | "file:/Desktop/a.txt": [column, row] }
             'homepage' => 'https://www.wikipedia.org',
         ];
     }
@@ -151,11 +152,40 @@ class UserSettings
                     }
                     $out[$key] = array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && in_array($id, $allowed, true))));
                 }
+            } elseif ($key === 'deskLayout') {
+                if (is_array($value)) {
+                    $out[$key] = self::deskLayout($value);
+                }
             } elseif ($key === 'homepage') {
                 if (is_string($value) && preg_match('#^https?://#i', $value) && strlen($value) < 2048) {
                     $out[$key] = $value;
                 }
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Desktop icon cells: keys are "desk:<id>" or "file:/path", values a [column, row] pair of small whole numbers.
+     *
+     * @param  array<mixed>  $in
+     * @return array<string, array{int, int}>
+     */
+    private static function deskLayout(array $in): array
+    {
+        $out = [];
+        foreach ($in as $key => $cell) {
+            if (count($out) >= 500) {
+                break;
+            }
+            if (! is_string($key) || strlen($key) > 600 || ! preg_match('#^(desk:[a-z0-9-]{1,32}|file:/.+)$#', $key)) {
+                continue;
+            }
+            if (! is_array($cell) || count($cell) !== 2 || ! is_numeric($cell[0] ?? null) || ! is_numeric($cell[1] ?? null)) {
+                continue;
+            }
+            $out[$key] = [max(0, min(200, (int) $cell[0])), max(0, min(200, (int) $cell[1]))];
         }
 
         return $out;

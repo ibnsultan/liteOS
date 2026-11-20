@@ -24,7 +24,7 @@
     theme: 'light', accent: '#2F6FD6', wallpaper: 'siamese', wallpaperFit: 'cover', taskbar: 'floating', align: 'center',
     iconSize: 'medium', autohide: false, labels: false, topbar: true, magnify: true, transparency: true, nightLight: false,
     dnd: false, textSize: 'default', clock24: true, pinned: ['files', 'documents', 'sheets', 'slides', 'code', 'media', 'browser', 'board'], desktopIcons: ['files', 'trash'],
-    deskIcons: true, deskIconSize: 'medium', deskSort: 'name',
+    deskIcons: true, deskIconSize: 'medium', deskSort: 'name', deskLayout: {},
   };
 
   // ================================================================== api
@@ -438,7 +438,7 @@
         { label: s.deskIcons === false ? 'Show desktop icons' : 'Hide desktop icons', action: () => saveSettings({ deskIcons: s.deskIcons === false }) },
       ] },
       { label: 'Sort by', icon: 'filter', items: [['name', 'Name'], ['size', 'Size'], ['type', 'Item type'], ['mtime', 'Date modified']]
-        .map(([k, label]) => ({ label, checked: sort === k, action: () => saveSettings({ deskSort: k }) })) },
+        .map(([k, label]) => ({ label, checked: sort === k, action: () => saveSettings({ deskSort: k, deskLayout: {} }) })) },
       { label: 'Refresh', icon: 'reload', action: () => { deskFiles = []; deskFilesChanged(); } },
       'sep',
       { label: 'Next desktop background', icon: 'image', disabled: !(window.LOS_WALLPAPERS || []).length, action: nextWallpaper },
@@ -463,16 +463,307 @@
     box.hidden = s.deskIcons === false;
     box.dataset.size = s.deskIconSize || 'medium';
     const tileSize = ({ small: 32, medium: 44, large: 60 })[box.dataset.size] || 44;
-    box.innerHTML = deskItems().map((it) => '<button class="desk-icon" role="listitem" data-desk="' + it.id + '" title="' + esc(it.label) + '">' +
+    box.innerHTML = deskItems().map((it) => '<button class="desk-icon" role="listitem" data-key="desk:' + it.id + '" data-desk="' + it.id + '" title="' + esc(it.label) + '">' +
       '<img src="' + esc(it.img) + '" alt="" draggable="false"><span>' + esc(it.label) + '</span></button>').join('') +
-      sortedDeskFiles().map((f) => '<button class="desk-icon desk-file" role="listitem" data-file="' + esc(f.path) + '" data-type="' + esc(f.type) + '" title="' + esc(f.name) + '">' +
+      sortedDeskFiles().map((f) => '<button class="desk-icon desk-file" role="listitem" data-key="file:' + esc(f.path) + '" data-file="' + esc(f.path) + '" data-type="' + esc(f.type) + '" title="' + esc(f.name) + '">' +
         fileTile(f, tileSize, Math.round(tileSize / 4)) + '<span>' + esc(f.name) + '</span></button>').join('');
+    layoutDeskIcons();
   }
+
+  // Desktop icons sit on a grid, filled down then across like Explorer. An icon the user dragged keeps its cell
+  // (settings deskLayout: { "desk:files" | "file:/Desktop/a.txt": [column, row] }); the rest fill the free cells in order.
+  function deskGrid() {
+    const box = $('.desk-icons', root);
+    const first = box && $('.desk-icon', box);
+    if (!first || box.hidden) return null;
+    const cw = first.offsetWidth + 6;
+    const ch = Math.max(...$$('.desk-icon', box).map((b) => b.offsetHeight)) + 6;
+    return { box, cw, ch, rows: Math.max(1, Math.floor((box.clientHeight + 6) / ch)), cols: Math.max(1, Math.floor((window.innerWidth - 20) / cw)) };
+  }
+  function layoutDeskIcons() {
+    const g = deskGrid();
+    if (!g) return;
+    const saved = set().deskLayout || {};
+    const taken = new Set();
+    const icons = $$('.desk-icon', g.box);
+    const place = (b, c, r) => { b.dataset.col = c; b.dataset.row = r; taken.add(c + ',' + r); b.style.left = c * g.cw + 'px'; b.style.top = r * g.ch + 'px'; };
+    const rest = [];
+    icons.forEach((b) => {
+      const at = saved[b.dataset.key];
+      if (Array.isArray(at) && at[0] < g.cols && at[1] < g.rows && !taken.has(at[0] + ',' + at[1])) place(b, at[0], at[1]);
+      else rest.push(b);
+    });
+    let i = 0;
+    rest.forEach((b) => {
+      while (taken.has(Math.floor(i / g.rows) + ',' + (i % g.rows))) i++;
+      place(b, Math.floor(i / g.rows), i % g.rows);
+    });
+  }
+  window.addEventListener('resize', debounce(layoutDeskIcons, 80));
+
+  /** The nearest free cell to (c, r), or (c, r) itself. */
+  function freeCell(c, r, taken, g) {
+    for (let d = 0; d < g.cols + g.rows; d++) {
+      for (let dc = -d; dc <= d; dc++) {
+        for (let dr = -d; dr <= d; dr++) {
+          if (Math.max(Math.abs(dc), Math.abs(dr)) !== d) continue;
+          const x = c + dc; const y = r + dr;
+          if (x >= 0 && y >= 0 && x < g.cols && y < g.rows && !taken.has(x + ',' + y)) return [x, y];
+        }
+      }
+    }
+    return [c, r];
+  }
+
+  // Dragging icons: the selected icons move together, shown as a drag image above the windows. Dropped on a folder they
+  // move into it, on the Trash they go to the Trash, on a Files window into the folder under the pointer there;
+  // anywhere else on the desktop they take the nearest free cells and keep them.
+  let deskDragEnded = 0;
+  const filesSync = 'BroadcastChannel' in window ? new BroadcastChannel('liteos-files') : null; // open Files windows refresh
+  const filesChanged = () => { if (filesSync) filesSync.postMessage('changed'); };
+  /** The drop helper of an app window under the pointer (Files exposes window.__losDropAt), or null. */
+  function frameDropAt(t) {
+    if (!t || t.tagName !== 'IFRAME') return null;
+    try { const fn = t.contentWindow && t.contentWindow.__losDropAt; return typeof fn === 'function' ? { frame: t, fn } : null; } catch (e) { return null; }
+  }
+  root.addEventListener('pointerdown', (e) => {
+    const b = e.button === 0 && e.target.closest && e.target.closest('.desk-icon');
+    if (!b) return;
+    const g = deskGrid();
+    if (!g) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let drag = null;
+    let over = null;
+    let layer = null;
+    let inFrame = null; // { frame, fn, dest } while over a Files window
+    b.setPointerCapture(e.pointerId);
+    const leaveFrame = () => { if (inFrame) { try { inFrame.fn(0, 0, 'leave'); } catch (err) { /* frame gone */ } inFrame = null; } };
+    const move = (ev) => {
+      if (!drag) {
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5) return;
+        if (!b.classList.contains('sel')) selectDeskIcon(b);
+        drag = deskSel();
+        // the drag image: copies of the icons in a layer above the windows; the icons themselves stay, faded
+        layer = document.createElement('div');
+        layer.className = 'desk-drag-layer';
+        drag.forEach((x) => {
+          const r = x.getBoundingClientRect();
+          const c = x.cloneNode(true);
+          c.classList.remove('lifted');
+          Object.assign(c.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', transform: '' });
+          layer.appendChild(c);
+        });
+        root.appendChild(layer);
+        drag.forEach((x) => x.classList.add('lifted'));
+        root.classList.add('desk-dragging');
+      }
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      layer.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      // what's under the pointer (the drag image and the faded icons let the pointer through)
+      const t = document.elementFromPoint(ev.clientX, ev.clientY);
+      const fr = drag.some((x) => x.dataset.file) ? frameDropAt(t) : null;
+      if (!fr || (inFrame && fr.frame !== inFrame.frame)) leaveFrame();
+      if (fr) {
+        const r = fr.frame.getBoundingClientRect();
+        let dest = null;
+        try { dest = fr.fn(ev.clientX - r.left, ev.clientY - r.top, 'hover'); } catch (err) { dest = null; }
+        inFrame = Object.assign(fr, { dest });
+      }
+      const ic = !fr && t && t.closest && t.closest('.desk-icon');
+      const target = ic && !drag.includes(ic) && (ic.dataset.type === 'dir' || ic.dataset.desk === 'trash') && drag.some((x) => x.dataset.file) ? ic : null;
+      if (target !== over) { if (over) over.classList.remove('drop'); over = target; if (over) over.classList.add('drop'); }
+    };
+    const up = async (ev) => {
+      b.removeEventListener('pointermove', move);
+      b.removeEventListener('pointerup', up);
+      b.removeEventListener('pointercancel', up);
+      if (!drag) return;
+      deskDragEnded = Date.now();
+      root.classList.remove('desk-dragging');
+      if (layer) layer.remove();
+      drag.forEach((x) => { x.classList.remove('lifted'); x.style.transform = ''; });
+      if (over) over.classList.remove('drop');
+      const files = drag.filter((x) => x.dataset.file).map((x) => x.dataset.file);
+      if (inFrame) {
+        const dest = ev.type === 'pointercancel' ? null : inFrame.dest;
+        leaveFrame();
+        if (dest === 'trash:') { await trashDeskFiles(drag); filesChanged(); }
+        else if (dest && dest !== '/Desktop') {
+          try { await api('fs.move', { paths: files, dest }); filesChanged(); }
+          catch (err) { notify(err.message, { type: 'error', title: 'Couldn’t move' }); }
+        }
+        return;
+      }
+      if (over && over.dataset.desk === 'trash') { await trashDeskFiles(drag); filesChanged(); return; }
+      if (over) {
+        try { await api('fs.move', { paths: files, dest: over.dataset.file }); filesChanged(); }
+        catch (err) { notify(err.message, { type: 'error', title: 'Couldn’t move' }); }
+        return;
+      }
+      if (ev.type === 'pointercancel') return;
+      // new cells: the same offset for each icon, the nearest free cell where that one is taken
+      const dc = Math.round((ev.clientX - sx) / g.cw);
+      const dr = Math.round((ev.clientY - sy) / g.ch);
+      if (!dc && !dr) return;
+      const taken = new Set($$('.desk-icon', g.box).filter((x) => !drag.includes(x)).map((x) => x.dataset.col + ',' + x.dataset.row));
+      const layout = {};
+      $$('.desk-icon', g.box).forEach((x) => { if (!drag.includes(x)) layout[x.dataset.key] = [+x.dataset.col, +x.dataset.row]; });
+      drag.forEach((x) => {
+        const c = Math.max(0, Math.min(g.cols - 1, +x.dataset.col + dc));
+        const r = Math.max(0, Math.min(g.rows - 1, +x.dataset.row + dr));
+        const at = freeCell(c, r, taken, g);
+        taken.add(at[0] + ',' + at[1]);
+        layout[x.dataset.key] = at;
+      });
+      S.settings = Object.assign({}, set(), { deskLayout: layout });
+      layoutDeskIcons();
+      saveSettings({ deskLayout: layout });
+    };
+    b.addEventListener('pointermove', move);
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up);
+  });
+
+  // Items dragged out of a Files window (their paths travel in the drag data) can be dropped on the desktop: on a
+  // folder or the Trash icon, or on empty desktop, where they move to the Desktop folder and land where they were
+  // dropped. Ctrl copies instead of moving, as in Files.
+  const DND = 'application/x-liteos-paths';
+  const hasPaths = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes(DND);
+  const onDesktop = (t) => !!(t && t.closest && t.closest('.wall, .desk-icons'));
+  let dndOver = null;
+  const dndTarget = (t) => { const ic = t.closest && t.closest('.desk-icon'); return ic && (ic.dataset.type === 'dir' || ic.dataset.desk === 'trash') ? ic : null; };
+  const dndMark = (ic) => { if (ic !== dndOver) { if (dndOver) dndOver.classList.remove('drop'); dndOver = ic; if (ic) ic.classList.add('drop'); } };
+  root.addEventListener('dragover', (e) => {
+    if (!hasPaths(e) || !onDesktop(e.target)) { dndMark(null); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+    dndMark(dndTarget(e.target));
+  });
+  root.addEventListener('dragleave', (e) => { if (!e.relatedTarget || !root.contains(e.relatedTarget)) dndMark(null); });
+  root.addEventListener('drop', async (e) => {
+    if (!hasPaths(e) || !onDesktop(e.target)) return;
+    e.preventDefault();
+    const target = dndTarget(e.target);
+    dndMark(null);
+    let paths = [];
+    try { paths = JSON.parse(e.dataTransfer.getData(DND) || '[]'); } catch (err) { paths = []; }
+    paths = paths.filter((x) => typeof x === 'string' && x.startsWith('/'));
+    if (!paths.length) return;
+    const copy = e.ctrlKey;
+    const done = (n, where) => notify((copy ? 'Copied ' : 'Moved ') + n + (n === 1 ? ' item' : ' items') + ' to ' + where + '.', { type: 'success', title: copy ? 'Items copied' : 'Items moved' });
+    try {
+      if (target && target.dataset.desk === 'trash') {
+        await api('fs.delete', { paths });
+        notify('You can restore ' + (paths.length === 1 ? 'it' : 'them') + ' from the Trash if you need ' + (paths.length === 1 ? 'it' : 'them') + '.', { type: 'success', title: 'Moved to Trash' });
+      } else if (target) {
+        const dest = target.dataset.file;
+        const list = paths.filter((x) => x !== dest && parent(x) !== dest);
+        if (!list.length) return;
+        await api(copy ? 'fs.copy' : 'fs.move', { paths: list, dest });
+        done(list.length, baseName(dest));
+      } else {
+        // onto empty desktop: into the Desktop folder, each in the free cell nearest to where it was dropped
+        const list = paths.filter((x) => parent(x) !== '/Desktop' || copy);
+        if (!list.length) return;
+        const g = deskGrid();
+        if (g) {
+          const br = g.box.getBoundingClientRect();
+          const c0 = Math.max(0, Math.min(g.cols - 1, Math.floor((e.clientX - br.left) / g.cw)));
+          const r0 = Math.max(0, Math.min(g.rows - 1, Math.floor((e.clientY - br.top) / g.ch)));
+          const layout = {};
+          $$('.desk-icon', g.box).forEach((x) => { layout[x.dataset.key] = [+x.dataset.col, +x.dataset.row]; });
+          const taken = new Set(Object.values(layout).map((v) => v[0] + ',' + v[1]));
+          list.forEach((x, i) => {
+            const at = freeCell(c0, Math.min(g.rows - 1, r0 + i), taken, g);
+            taken.add(at[0] + ',' + at[1]);
+            layout['file:/Desktop/' + baseName(x)] = at;
+          });
+          S.settings = Object.assign({}, set(), { deskLayout: layout });
+          saveSettings({ deskLayout: layout });
+        }
+        await api(copy ? 'fs.copy' : 'fs.move', { paths: list, dest: '/Desktop' });
+      }
+      filesChanged();
+    } catch (err) { notify(err.message, { type: 'error', title: copy ? 'Couldn’t copy' : 'Couldn’t move' }); }
+  });
 
   function selectDeskIcon(btn) {
     $$('.desk-icon.sel', root).forEach((b) => b.classList.remove('sel'));
     if (btn) { btn.classList.add('sel'); btn.focus({ preventScroll: true }); }
+    deskAnchor = btn;
   }
+  // Several icons can be selected: Ctrl+click adds or removes one, Shift+click takes the run from the last one
+  // clicked, and dragging on empty desktop draws a selection rectangle.
+  let deskAnchor = null;
+  const deskSel = () => $$('.desk-icon.sel', root);
+  function deskClickSelect(b, e) {
+    const all = $$('.desk-icon', root);
+    if (e.shiftKey && deskAnchor && all.includes(deskAnchor)) {
+      const [i, j] = [all.indexOf(deskAnchor), all.indexOf(b)].sort((x, y) => x - y);
+      if (!(e.ctrlKey || e.metaKey)) all.forEach((x) => x.classList.remove('sel'));
+      all.slice(i, j + 1).forEach((x) => x.classList.add('sel'));
+      b.focus({ preventScroll: true });
+    } else if (e.ctrlKey || e.metaKey) {
+      b.classList.toggle('sel');
+      b.focus({ preventScroll: true });
+      deskAnchor = b;
+    } else selectDeskIcon(b);
+  }
+  /** Move the selected files to the Trash (the shortcuts aren't files, so they stay). */
+  async function trashDeskFiles(btns) {
+    const paths = btns.filter((b) => b.dataset.file).map((b) => b.dataset.file);
+    if (!paths.length) return;
+    try {
+      await api('fs.delete', { paths });
+      notify('You can restore ' + (paths.length === 1 ? 'it' : 'them') + ' from the Trash if you need ' + (paths.length === 1 ? 'it' : 'them') + '.', { type: 'success', title: paths.length === 1 ? 'Moved to Trash' : paths.length + ' items moved to Trash' });
+    } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t move to Trash' }); }
+  }
+
+  // The selection rectangle: drawn from a press on empty desktop; it selects every icon it touches (Ctrl keeps
+  // what was already selected). The click that ends the drag must not clear the selection again.
+  let deskMarqueeEnded = 0;
+  root.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !(e.target.classList.contains('wall') || e.target.classList.contains('desk-icons'))) return;
+    const box = $('.desk-icons', root);
+    if (!box || box.hidden) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const keep = e.ctrlKey || e.metaKey ? new Set(deskSel()) : new Set();
+    const icons = $$('.desk-icon', root).map((b) => [b, b.getBoundingClientRect()]);
+    let mq = null;
+    const target = e.target;
+    target.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      if (!mq && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return;
+      if (!mq) { mq = document.createElement('div'); mq.className = 'desk-marquee'; root.appendChild(mq); closePops(); hideMenu(); }
+      const x = Math.min(sx, ev.clientX);
+      const y = Math.min(sy, ev.clientY);
+      const w = Math.abs(ev.clientX - sx);
+      const h = Math.abs(ev.clientY - sy);
+      Object.assign(mq.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      icons.forEach(([b, r]) => {
+        const hit = r.left < x + w && r.right > x && r.top < y + h && r.bottom > y;
+        b.classList.toggle('sel', keep.has(b) || hit);
+      });
+    };
+    const up = () => {
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+      target.removeEventListener('pointercancel', up);
+      if (mq) {
+        mq.remove();
+        deskMarqueeEnded = Date.now();
+        const sel = deskSel();
+        deskAnchor = sel[0] || null;
+        if (sel.length) sel[sel.length - 1].focus({ preventScroll: true });
+      }
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', up);
+    target.addEventListener('pointercancel', up);
+  });
 
   function openDeskIcon(btn) {
     if (btn.dataset.file) { selectDeskIcon(null); openFile(btn.dataset.file, btn.dataset.type === 'dir'); return; }
@@ -500,6 +791,16 @@
   }
 
   function deskIconMenu(btn, at) {
+    const sel = deskSel();
+    if (sel.length > 1 && sel.includes(btn)) {
+      const files = sel.filter((b) => b.dataset.file);
+      showMenu([
+        { label: 'Open ' + sel.length + ' items', icon: 'forward', action: () => sel.forEach(openDeskIcon) },
+        'sep',
+        { label: files.length === sel.length ? 'Move to Trash' : 'Move ' + files.length + ' files to Trash', icon: 'trash', danger: true, disabled: !files.length, action: () => trashDeskFiles(files) },
+      ], at);
+      return;
+    }
     if (btn.dataset.file) { deskFileMenu(btn, at); return; }
     selectDeskIcon(btn);
     const id = btn.dataset.desk;
@@ -517,14 +818,20 @@
 
   root.addEventListener('click', (e) => {
     const b = e.target.closest('.desk-icon');
-    if (b) selectDeskIcon(b);
-    else if (e.target.classList.contains('wall') || e.target.classList.contains('desk-icons')) { selectDeskIcon(null); blurWindows(); }
+    if (b) { if (Date.now() - deskDragEnded > 300) deskClickSelect(b, e); }
+    else if (e.target.classList.contains('wall') || e.target.classList.contains('desk-icons')) {
+      if (Date.now() - deskMarqueeEnded > 300) selectDeskIcon(null);
+      blurWindows();
+    }
   });
   root.addEventListener('dblclick', (e) => { const b = e.target.closest('.desk-icon'); if (b) openDeskIcon(b); });
   root.addEventListener('keydown', (e) => {
     const b = e.target.closest && e.target.closest('.desk-icon');
     if (!b) return;
-    if (e.key === 'Enter') { e.preventDefault(); openDeskIcon(b); }
+    if (e.key === 'Enter') { e.preventDefault(); (deskSel().length ? deskSel() : [b]).forEach(openDeskIcon); }
+    if (e.key === 'Delete') { e.preventDefault(); trashDeskFiles(deskSel()); }
+    if (e.key === 'Escape') selectDeskIcon(null);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); $$('.desk-icon', root).forEach((x) => x.classList.add('sel')); }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const all = $$('.desk-icon', root);
