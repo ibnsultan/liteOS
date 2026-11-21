@@ -1,0 +1,27 @@
+{
+  "id": "calculator",
+  "name": "Calculator",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Standard, scientific and programmer calculations, dates and unit conversions.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "grid",
+  "colors": [
+    "#5E6B7E",
+    "#3B4555"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      400,
+      600
+    ],
+    "chrome": "standard",
+    "material": "mica",
+    "single": false
+  },
+  "permissions": []
+}

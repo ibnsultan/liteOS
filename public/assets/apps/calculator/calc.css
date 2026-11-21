@@ -1,0 +1,233 @@
+/* Calculator */
+body { background: var(--surface-2); user-select: none; }
+.calc { height: 100vh; }
+
+.calc-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.mode-btn {
+  height: 34px; padding: 0 8px 0 10px; border: none; border-radius: var(--radius); background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; color: var(--text); min-width: 0;
+}
+.mode-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mode-btn:hover { background: var(--hover); }
+.mode-btn .ico { color: var(--muted); }
+.mode-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* the mode drop-down: over the mode's name, scrolling when it's taller than the window */
+.mode-fly { width: 248px; overscroll-behavior: contain; }
+.mode-head { padding: 10px 12px 4px; font-size: 12px; font-weight: 600; color: var(--faint); flex-shrink: 0; }
+.mode-row {
+  height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; font-size: var(--fs-l);
+}
+.mode-row .ico { color: var(--text-2); }
+.mode-row:hover { background: var(--nav-hover); }
+.mode-row.on { background: var(--nav-on); font-weight: 600; }
+.mode-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.calc-body { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
+.calc-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; padding: 0 4px 4px; }
+body.pane-docked .calc-main { max-width: 520px; }
+
+/* display */
+.display { flex: 1 1 auto; min-height: 92px; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 12px 6px; overflow: hidden; }
+.expr { min-height: 20px; font-size: 14px; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; unicode-bidi: plaintext; }
+.value {
+  font-size: 46px; font-weight: 600; line-height: 1.15; text-align: right; white-space: nowrap; overflow: hidden;
+  font-variant-numeric: tabular-nums; outline: none; user-select: text; letter-spacing: -0.01em;
+}
+.value.error { font-weight: 500; }
+body[data-mode="scientific"] .display, body[data-mode="programmer"] .display { min-height: 76px; }
+
+/* the row of memory keys and the bars of the scientific and programmer modes */
+.mem-row, .sci-bar { display: flex; align-items: center; gap: 2px; padding: 2px 0; flex-shrink: 0; }
+.mem-key, .bar-btn {
+  height: 30px; padding: 0 10px; border: none; border-radius: var(--radius); background: transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
+.mem-key { flex: 1 1 0; }
+.mem-key:hover, .bar-btn:hover { background: var(--hover); }
+.mem-key:disabled, .bar-btn:disabled { color: var(--disabled); background: transparent; cursor: default; }
+.bar-btn.on { background: var(--accent-soft); color: var(--accent-ink); }
+.bar-btn .ico { color: var(--muted); }
+
+/* keypad */
+.keypad { flex: 0 0 auto; display: grid; gap: 2px; height: 62%; min-height: 240px; }
+.keypad.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.keypad.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.keypad.cols-5 { grid-template-columns: repeat(5, 1fr); }
+body[data-mode="scientific"] .keypad { height: 66%; }
+body[data-mode="programmer"] .keypad, body[data-mode="programmer"] .bitpad { height: 52%; }
+.key {
+  border: none; border-radius: var(--radius); background: var(--surface-3); color: var(--text); cursor: pointer;
+  font-size: 15px; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+.key sup { font-size: 0.62em; position: relative; top: -0.45em; vertical-align: baseline; }
+.key sub { font-size: 0.62em; }
+.key.num { background: var(--surface); font-size: 18px; font-weight: 600; }
+.key.op { font-size: 20px; }
+.key:hover, .key.down { background: color-mix(in srgb, var(--surface-3) 70%, var(--text) 8%); }
+.key.num:hover, .key.num.down { background: color-mix(in srgb, var(--surface) 88%, var(--text) 6%); }
+.key:active { opacity: 0.85; }
+.key.eq { background: var(--accent); color: var(--on-accent); font-size: 22px; }
+.key.eq:hover, .key.eq.down { background: var(--accent-ink); }
+.key.toggle.on { background: var(--accent-soft); color: var(--accent-ink); }
+.key:disabled { color: var(--disabled); cursor: default; }
+.key:disabled:hover { background: var(--surface-3); }
+.key.num:disabled:hover { background: var(--surface); }
+.key.blank { visibility: hidden; }
+.key:focus-visible, .mem-key:focus-visible, .bar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+:root[data-theme="dark"] .key.num { background: color-mix(in srgb, var(--surface-3) 70%, #fff 10%); }
+:root[data-theme="dark"] .key.num:hover, :root[data-theme="dark"] .key.num.down { background: color-mix(in srgb, var(--surface-3) 60%, #fff 16%); }
+:root[data-theme="dark"] .key.num:disabled:hover { background: color-mix(in srgb, var(--surface-3) 70%, #fff 10%); }
+
+/* programmer: the number in each base, and the bit pad */
+.radix { display: flex; flex-direction: column; padding: 0 0 4px; flex-shrink: 0; }
+.radix-row {
+  display: flex; align-items: baseline; gap: 12px; height: 28px; padding: 0 12px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; text-align: left; min-width: 0;
+}
+.radix-row:hover { background: var(--hover); }
+.radix-row.on { background: var(--nav-on); }
+.radix-row.on .radix-name { color: var(--accent-ink); }
+.radix-name { width: 32px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.radix-val { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; }
+.bitpad { display: flex; flex-direction: column; justify-content: space-around; padding: 6px 4px; }
+.bit-row { display: flex; justify-content: space-between; gap: 6px; }
+.nibble { display: grid; grid-template-columns: repeat(4, 1fr); flex: 1 1 0; position: relative; padding-bottom: 14px; }
+.bit { height: 28px; border: none; border-radius: var(--radius); background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; font-variant-numeric: tabular-nums; }
+.bit.on { color: var(--text); font-weight: 700; }
+.bit:hover { background: var(--hover); }
+.bit:disabled { color: var(--disabled); cursor: default; background: transparent; }
+.bit-num { position: absolute; right: 4px; bottom: 0; font-size: 10px; color: var(--faint); }
+
+/* converter */
+.conv { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 4px 8px 10px; min-height: 0; }
+.conv-side { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.conv-value {
+  width: 100%; border: none; background: transparent; color: var(--muted); cursor: pointer; text-align: left; padding: 0 4px;
+  font-size: 34px; font-weight: 500; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; border-radius: var(--radius);
+}
+.conv-side.on .conv-value { color: var(--text); font-weight: 600; }
+.conv-value:hover { background: var(--hover); }
+.conv-swap { padding: 2px 0; }
+.conv-swap .icon-btn { width: auto; padding: 0 6px; gap: 0; }
+.conv-keys { height: 52%; }
+
+/* combo box and its flyout (as Settings) */
+.combo {
+  height: 32px; min-width: 160px; max-width: 100%; padding: 0 10px 0 12px; border: 1px solid var(--field-line); border-radius: var(--radius);
+  background: var(--field); color: var(--text); display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer;
+}
+.combo span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo .ico { color: var(--muted); }
+.combo:hover { background: var(--card-hover); }
+.combo:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.combo[aria-expanded="true"] { border-bottom: 2px solid var(--accent); }
+.st-flyout {
+  position: fixed; z-index: 2000; max-height: 340px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--flyout); border: 1px solid var(--flyout-line); border-radius: var(--radius-l); box-shadow: var(--flyout-shadow);
+  animation: calc-fly var(--dur) var(--ease-out);
+}
+.st-flyout.up { animation-name: calc-fly-up; }
+.st-opt { height: 32px; flex-shrink: 0; padding: 0 12px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+.st-opt:hover { background: var(--nav-hover); }
+.st-opt.on { background: var(--nav-on); font-weight: 600; }
+.st-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@keyframes calc-fly { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes calc-fly-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+:root[data-motion="reduce"] .st-flyout { animation: none; }
+
+/* date calculation */
+.datec { flex: 1 1 auto; display: flex; flex-direction: column; gap: 16px; padding: 8px 12px 16px; overflow-y: auto; }
+.datec > .combo { align-self: flex-start; }
+.date-btn {
+  height: 34px; width: 100%; max-width: 320px; padding: 0 10px 0 12px; border: 1px solid var(--field-line); border-radius: var(--radius);
+  background: var(--field); color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; text-align: left;
+}
+.date-btn:hover { background: var(--card-hover); }
+.date-btn .ico { color: var(--muted); }
+.date-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.date-out { display: flex; flex-direction: column; gap: 4px; }
+.date-big { font-size: 22px; font-weight: 600; line-height: 1.3; user-select: text; }
+.date-sign { align-self: flex-start; }
+.date-nums { display: flex; gap: 10px; }
+.date-num { width: 84px; }
+.date-num .input { width: 100%; background: var(--field); border-color: var(--field-line); }
+.date-num .input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.date-fly { width: 272px; padding: 8px; gap: 4px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 4px; }
+.cal-title { font-weight: 600; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dow { height: 28px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--faint); }
+.day { height: 32px; border: none; border-radius: var(--radius-full); background: transparent; color: var(--text); cursor: pointer; font-variant-numeric: tabular-nums; }
+.day:hover { background: var(--nav-hover); }
+.day.today { color: var(--accent-ink); font-weight: 700; }
+.day.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.day:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal-foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+
+/* history and memory */
+.calc-pane { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; padding: 0 6px 6px 2px; }
+.calc-pane.over {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; top: 0; width: auto; z-index: 10; padding: 10px 4px 0;
+  border-radius: var(--radius); background: transparent;
+  animation: calc-pane-up var(--dur) var(--ease-out);
+}
+.calc-pane.over .pane-head { display: none; }
+/* under it the keys fade to a trace, so the pane is the window's own colour (Mica or solid) */
+body.pane-over .keypad { opacity: 0.12; pointer-events: none; transition: opacity var(--dur) var(--ease-out); }
+body.pane-over .keypad .key.eq, :root.in-shell body.pane-over .keypad .key.eq { background: var(--surface-3); color: var(--text); }
+@keyframes calc-pane-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+:root[data-motion="reduce"] .calc-pane.over { animation: none; }
+.pane-head { padding: 0 4px 8px; }
+.pane-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.pane-foot { display: flex; justify-content: flex-end; padding-top: 4px; min-height: 34px; }
+#paneClear:hover { color: var(--danger-ink); background: var(--danger-soft); }
+.pane-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; }
+.h-row {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 8px 10px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; text-align: right; min-width: 0;
+}
+.h-row:hover, .m-row:hover { background: var(--hover); }
+.h-expr { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-val, .m-val { font-size: 20px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.m-row { display: flex; flex-direction: column; align-items: flex-end; padding: 6px 10px; border-radius: var(--radius); }
+.m-val { border: none; background: transparent; color: var(--text); cursor: pointer; padding: 0; text-align: right; }
+.m-acts { display: flex; gap: 2px; visibility: hidden; }
+.m-row:hover .m-acts, .m-row:focus-within .m-acts { visibility: visible; }
+.m-act { height: 24px; padding: 0 8px; border: none; border-radius: var(--radius); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer; }
+.m-act:hover { background: var(--hover); }
+.m-act.danger:hover { color: var(--danger-ink); background: var(--danger-soft); }
+.h-row:focus-visible, .m-val:focus-visible, .m-act:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+@media (max-height: 520px) {
+  .display { min-height: 64px; }
+  .value { font-size: 34px; }
+}
+
+/* Mica, as Calculator in Windows 11: inside the desktop with Transparency effects on, the window is frosted glass
+   (os.css) and the keys are see-through layers on it; the pane over the keypad blurs what's under it. */
+:root.in-shell:not([data-glass="off"]),
+:root.in-shell:not([data-glass="off"]) body,
+:root.in-shell:not([data-glass="off"]) .app { background: transparent; }
+:root.in-shell:not([data-glass="off"]) .key { background: var(--mica-card-sub); }
+:root.in-shell:not([data-glass="off"]) .key.num { background: var(--mica-card); }
+:root.in-shell:not([data-glass="off"]) .key:hover, :root.in-shell:not([data-glass="off"]) .key.down,
+:root.in-shell:not([data-glass="off"]) .key.num:hover, :root.in-shell:not([data-glass="off"]) .key.num.down { background: var(--mica-card-hover); }
+:root.in-shell:not([data-glass="off"]) .key:disabled:hover { background: var(--mica-card-sub); }
+:root.in-shell:not([data-glass="off"]) .key.num:disabled:hover { background: var(--mica-card); }
+:root.in-shell:not([data-glass="off"]) .key.eq { background: var(--accent); }
+:root.in-shell:not([data-glass="off"]) .key.eq:hover, :root.in-shell:not([data-glass="off"]) .key.eq.down { background: var(--accent-ink); }
+:root.in-shell:not([data-glass="off"]) .key.toggle.on { background: var(--accent-soft); }
+:root.in-shell:not([data-glass="off"]) .combo,
+:root.in-shell:not([data-glass="off"]) .date-btn,
+:root.in-shell:not([data-glass="off"]) .date-num .input { background: var(--mica-field); }
+
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.num { background: rgba(255, 255, 255, 0.09); }
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key { background: rgba(255, 255, 255, 0.04); }
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key:hover, :root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.down,
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.num:hover, :root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.num.down { background: rgba(255, 255, 255, 0.14); }
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.eq { background: var(--accent); }
+:root.in-shell[data-theme="dark"]:not([data-glass="off"]) .key.eq:hover { background: var(--accent-ink); }
