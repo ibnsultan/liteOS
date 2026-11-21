@@ -45,12 +45,12 @@ LiteOS.ready((OS) => {
     view: pref('view', 'list'),
     sort: pref('sort', 'name'),
     dir: pref('dir', 'asc'),
-    details: pref('details', '1') === '1',
+    details: pref('details', '0') === '1',          // the Details pane: closed until the user opens it
     query: '',
     usage: null,
     renaming: null,
-    // the This PC tree: which branches are open, and the folders found under each one
-    tree: { open: new Set((() => { try { return JSON.parse(pref('tree', '["device:","/"]')); } catch (e) { return ['device:', '/']; } })()), kids: new Map() },
+    // the This PC tree: which branches are open (This PC shows its drives; each drive stays folded until opened), and the folders under each
+    tree: { open: new Set((() => { try { return JSON.parse(pref('tree', '["device:"]')); } catch (e) { return ['device:']; } })()), kids: new Map() },
     fold: new Set(pref('fold', '').split(',').filter(Boolean)), // Home sections the user folded away
   };
 
