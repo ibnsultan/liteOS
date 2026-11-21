@@ -5,6 +5,8 @@ body { font-family: var(--font); font-size: var(--fs-m); color: var(--text); bac
 button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* no focus ring on fields and selects: the caret, or the open flyout, shows where you are */
+input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-visible, .select:focus-visible { outline: none; }
 
 .os-root { position: fixed; inset: 0; overflow: hidden; user-select: none; }
 .ico { width: 16px; height: 16px; flex-shrink: 0; }
@@ -262,7 +264,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
 .input { height: 38px; padding: 0 12px; border-radius: var(--radius-l); border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); outline: none; width: 100%; }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { font-size: var(--fs-m); font-weight: 500; color: var(--text-2); }
 .err { color: var(--danger-ink); font-size: var(--fs-m); min-height: 18px; }
@@ -290,7 +291,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .fdlg .crumbs button:hover { background: var(--hover); }
 .fdlg .crumbs .sepc { color: var(--muted); }
 .fdlg-search { width: 220px; height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface); color: var(--muted); }
-.fdlg-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.fdlg-search:focus-within { border-color: var(--accent); }
 .fdlg-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--fs-m); }
 .fdlg-search input::-webkit-search-cancel-button { display: none; }
 .fdlg-cmd { display: flex; align-items: center; gap: 4px; padding: 0 12px 6px; border-bottom: 1px solid var(--line); flex-shrink: 0; }

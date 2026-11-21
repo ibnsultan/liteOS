@@ -42,7 +42,6 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
   background: linear-gradient(90deg, var(--accent) 0 var(--v, 50%), var(--surface-3) var(--v, 50%) 100%); }
 .qrange::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: var(--radius-full); background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
 .qrange::-moz-range-thumb { width: 18px; height: 18px; border-radius: var(--radius-full); background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-.qrange:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
 
 /* ------------------------------------------------------------ greeter */
 .lock { transition: opacity .22s ease; }
@@ -69,7 +68,6 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
   -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
 }
 .g-input::placeholder { color: #6B717C; }
-.g-input:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.55), 0 8px 24px rgba(10,30,70,.2); }
 .g-go {
   position: absolute; right: 5px; top: 5px; width: 36px; height: 36px; border-radius: var(--radius-full); border: none; background: var(--accent); color: #fff;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;

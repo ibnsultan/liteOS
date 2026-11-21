@@ -201,7 +201,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border: 1px soli
 /* CodeMirror's find panel, in the app's controls */
 .cm-panel.cm-search { padding: 6px 8px; font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cm-panel.cm-search .cm-textfield { height: 26px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); color: var(--text); font: inherit; font-size: 12px; outline: none; margin: 0; }
-.cm-panel.cm-search .cm-textfield:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.cm-panel.cm-search .cm-textfield:focus { border-color: var(--accent); }
 .cm-panel.cm-search .cm-button { height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); background-image: none; color: var(--text); font: inherit; font-size: 12px; margin: 0; }
 .cm-panel.cm-search .cm-button:hover { background: var(--hover); }
 .cm-panel.cm-search label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }

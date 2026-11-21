@@ -63,7 +63,7 @@ a { color: var(--accent); }
   background: var(--surface); color: var(--text); outline: none; min-width: 0;
 }
 textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
-.input:focus, .select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
 .search { position: relative; display: flex; align-items: center; }
 .search .ico { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
 .search .input { padding-left: 32px; width: 100%; }
@@ -153,7 +153,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 
 /* Focus */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.input:focus-visible, .select:focus-visible { outline: none; }
+/* no focus ring on fields and selects: the caret, or the open flyout, shows where you are */
+input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-visible, .select:focus-visible { outline: none; }
 
 /* system icons from the icon set (OS.sysGlyph, OS.fileTile): pictures, not glyphs, so no tile background or shadow */
 img.tile.filetile { background: none; box-shadow: none; border-radius: 0; object-fit: contain; }
