@@ -380,6 +380,11 @@
       o.win = winId;
       if (host) host.notify(message, o); else console.log('[notify]', o.title || '', message);
     },
+    /** The signed-in session: lock the screen, or sign out (the shell asks first about unsaved changes). */
+    session: {
+      lock() { if (host && host.lock) host.lock(); },
+      signOut() { if (host && host.signOut) host.signOut(); },
+    },
     /** Save user settings (partial). */
     saveSettings(changes) { return host ? host.saveSettings(changes) : api('settings.save', { settings: changes }); },
     onSettings(fn) { listeners.push(fn); },

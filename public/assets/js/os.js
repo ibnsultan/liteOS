@@ -2956,6 +2956,9 @@
     /** Admin/user changes made in Settings (e.g. display name) refresh shell state. */
     refreshUser(user) { if (user) { S.user = Object.assign({}, S.user, user); renderBars(); } },
     refreshSystem(sys) { if (sys) { S.system = Object.assign({}, S.system, sys); renderBars(); } },
+    /** Settings › System › Power: lock the screen, or sign out (asks first when windows have unsaved changes). */
+    lock() { lockScreen(); },
+    signOut() { signOut(); },
   };
 
   boot();

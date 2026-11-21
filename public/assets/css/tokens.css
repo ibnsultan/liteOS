@@ -42,6 +42,27 @@
   /* Mica windows (os.css): solid when in the background, frosted when focused */
   --mica: #EEF0F4;
   --mica-glass: rgba(238, 240, 244, 0.78);
+
+  /* Windows-style app surfaces (Settings, Files): a page, setting cards on it, fields, navigation, flyouts */
+  --page: #F3F4F7;
+  --card: #FFFFFF;
+  --card-hover: #F9FAFB;
+  --card-sub: #FBFBFC;                                      /* rows inside an expanded card */
+  --card-sep: #EDEFF2;
+  --field: #FFFFFF;
+  --field-line: #DADDE3;
+  --nav-hover: rgba(16, 32, 64, 0.05);
+  --nav-on: rgba(16, 32, 64, 0.08);
+  --flyout: #FFFFFF;
+  --flyout-line: rgba(16, 32, 64, 0.12);
+  --flyout-shadow: 0 8px 24px rgba(16, 32, 64, 0.18);
+  --frame: #1D2027;                                         /* the dark bezel around desktop previews */
+  /* the same surfaces on a Mica window: half see-through over the frosted glass */
+  --mica-card: rgba(255, 255, 255, 0.62);
+  --mica-card-hover: rgba(255, 255, 255, 0.80);
+  --mica-card-sub: rgba(255, 255, 255, 0.38);
+  --mica-card-sep: rgba(16, 32, 64, 0.07);
+  --mica-field: rgba(255, 255, 255, 0.70);
   --mica-layer: rgba(255, 255, 255, 0.66);                  /* one layer under a whole area (Files' list) */
   --mica-pane: rgba(255, 255, 255, 0.40);                   /* a side pane on that layer */
   --glass-border: rgba(255, 255, 255, 0.65);
@@ -115,6 +136,24 @@
   --glass: rgba(30, 34, 42, 0.74);
   --mica: #1F232B;
   --mica-glass: rgba(24, 28, 36, 0.80);
+
+  --page: #1B1F27;
+  --card: #242932;
+  --card-hover: #2A2F39;
+  --card-sub: #20242C;
+  --card-sep: #1B1F27;
+  --field: #2C313B;
+  --field-line: #3A414E;
+  --nav-hover: rgba(255, 255, 255, 0.05);
+  --nav-on: rgba(255, 255, 255, 0.08);
+  --flyout: #2C313B;
+  --flyout-line: rgba(255, 255, 255, 0.10);
+  --flyout-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --mica-card: rgba(255, 255, 255, 0.05);
+  --mica-card-hover: rgba(255, 255, 255, 0.08);
+  --mica-card-sub: rgba(0, 0, 0, 0.14);
+  --mica-card-sep: rgba(0, 0, 0, 0.22);
+  --mica-field: rgba(255, 255, 255, 0.06);
   --mica-layer: rgba(18, 21, 27, 0.42);
   --mica-pane: rgba(255, 255, 255, 0.03);
   --glass-strong: rgba(30, 34, 42, 0.97);
