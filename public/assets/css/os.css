@@ -190,6 +190,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .win-body { flex: 1; position: relative; min-height: 0; background: var(--surface); }
 .win-body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: var(--surface); }
 .win-shield { position: absolute; inset: 0; display: none; }
+/* Mica (an app's manifest "window": { "material": "mica" }), as in Windows 11: while Transparency effects is on, the
+   focused window is frosted glass tinted by the wallpaper, title bar included, and the app's page is transparent over
+   it (the app draws its own cards, half see-through). A window in the background turns solid, as Windows does. */
+:root:not([data-glass="off"]) .win.win-mica { background: var(--mica); }
+:root:not([data-glass="off"]) .win.win-mica.focused { background: var(--mica-glass); -webkit-backdrop-filter: blur(70px) saturate(1.8); backdrop-filter: blur(70px) saturate(1.8); }
+:root:not([data-glass="off"]) .win.win-mica .win-bar { background: transparent; border-bottom-color: transparent; }
+:root:not([data-glass="off"]) .win.win-mica .win-body,
+:root:not([data-glass="off"]) .win.win-mica .win-body iframe { background: transparent; }
 /* Loading cover while the app's page loads (os.js winLoading). */
 .win-load { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: var(--surface); transition: opacity var(--dur) var(--ease), visibility 0s; }
 .win-load.done { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--dur) var(--ease), visibility 0s var(--dur); }

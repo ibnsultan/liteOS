@@ -1511,7 +1511,8 @@
     });
     const el = document.createElement('section');
     // chrome: 'custom' — the app draws its own title bar (e.g. Browser tabs); the shell keeps only the controls.
-    el.className = 'win' + (app.chrome === 'custom' ? ' win-custom' : '');
+    // material: 'mica' — a frosted window over the wallpaper while Transparency effects is on (os.css).
+    el.className = 'win' + (app.chrome === 'custom' ? ' win-custom' : '') + (app.material === 'mica' ? ' win-mica' : '');
     el.dataset.id = id;
     el.setAttribute('aria-label', app.name);
     el.innerHTML = '<div class="win-bar">' + appTile(app, 20, 6, 12) + '<span class="title"></span>' +

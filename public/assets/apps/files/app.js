@@ -1,6 +1,8 @@
 /* LiteOS Files — file manager */
 LiteOS.ready((OS) => {
   'use strict';
+  // inside the desktop, the window is Mica (os.css) and files.css lets it through
+  if (OS.inShell) document.documentElement.classList.add('in-shell');
   const { util, fs } = OS;
   const I = (n, s) => OS.icon(n, s || 16);
   // system icons (places, the drive, file types) come from the icon set; the toolbar keeps its glyphs

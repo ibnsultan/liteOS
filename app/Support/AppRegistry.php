@@ -66,7 +66,7 @@ class AppRegistry
     /**
      * The apps as the shell's registry needs them (what the MVP's LOS_APPS held), printed into the desktop page.
      *
-     * @return list<array{id: string, name: string, icon: string, c: list<string>, img: string, role: ?string, entry: string, exts: list<string>, size: list<int>, chrome: string, single: bool, system: bool}>
+     * @return list<array{id: string, name: string, icon: string, c: list<string>, img: string, role: ?string, entry: string, exts: list<string>, size: list<int>, chrome: string, material: string, single: bool, reports: bool, system: bool}>
      */
     public function forClient(): array
     {
@@ -81,6 +81,9 @@ class AppRegistry
             'exts' => array_values($app['opens'] ?? []),
             'size' => $app['window']['size'] ?? [960, 640],
             'chrome' => $app['window']['chrome'] ?? 'standard',
+            // "mica": a frosted window over the wallpaper while Transparency effects is on (the app paints its page
+            // transparent); anything else is a solid window
+            'material' => ($app['window']['material'] ?? '') === 'mica' ? 'mica' : 'solid',
             'single' => (bool) ($app['window']['single'] ?? false),
             // the app says when it's ready to be seen (OS.win.loaded): its window stays covered until then
             'reports' => (bool) ($app['window']['reportsReady'] ?? false),

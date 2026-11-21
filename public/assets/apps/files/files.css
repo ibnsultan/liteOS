@@ -186,3 +186,23 @@ body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 
 .pr-ring .pr-free { stroke: var(--line-strong); }
 .pr-ring .pr-used { stroke: var(--accent); }
 .pr-ring .pr-used.full { stroke: var(--danger); }
+
+/* Mica, as File Explorer in Windows 11: inside the desktop with Transparency effects on, the window is frosted glass
+   (os.css). The address bar, command bar and status bar sit on it; the sidebar, the list and the details pane share
+   one half see-through layer so names stay easy to read; the list header blurs what scrolls under it. */
+:root.in-shell:not([data-glass="off"]),
+:root.in-shell:not([data-glass="off"]) body,
+:root.in-shell:not([data-glass="off"]) .app,
+:root.in-shell:not([data-glass="off"]) .toolbar,
+:root.in-shell:not([data-glass="off"]) .toolbar.nav,
+:root.in-shell:not([data-glass="off"]) .statusbar { background: transparent; }
+:root.in-shell:not([data-glass="off"]) .toolbar.cmd { border-bottom-color: transparent; }
+:root.in-shell:not([data-glass="off"]) .crumbs,
+:root.in-shell:not([data-glass="off"]) .search .input { background: var(--mica-layer); }
+:root.in-shell:not([data-glass="off"]) .split { background: var(--mica-layer); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+:root.in-shell:not([data-glass="off"]) .sidebar,
+:root.in-shell:not([data-glass="off"]) .details { background: var(--mica-pane); }
+:root.in-shell:not([data-glass="off"]) .infobar { background: var(--mica-pane); }
+:root.in-shell:not([data-glass="off"]) .thead { background: var(--mica-layer); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
+:root.in-shell:not([data-glass="off"]) .details .preview { background: var(--mica-layer); }
+:root.in-shell:not([data-glass="off"]) .statusbar { border-top-color: transparent; }
