@@ -1,0 +1,33 @@
+{
+  "id": "database",
+  "name": "Database",
+  "version": "0.1.0",
+  "sdk": "^1.0",
+  "summary": "Databases you design and fill in: tables now, then relationships, queries, forms and reports. Opens SQLite files.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "storage",
+  "colors": [
+    "#C9474B",
+    "#A4373A"
+  ],
+  "opens": [
+    "db",
+    "sqlite",
+    "sqlite3"
+  ],
+  "window": {
+    "size": [
+      1120,
+      720
+    ],
+    "chrome": "custom",
+    "single": false,
+    "reportsReady": true
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}
