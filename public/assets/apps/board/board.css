@@ -35,12 +35,12 @@
 .wb-props::-webkit-scrollbar { display: none; }
 .wb-swatches { display: flex; gap: 4px; }
 .wb-swatch {
-  width: 24px; height: 24px; border-radius: 12px; border: 2px solid var(--surface); cursor: pointer; padding: 0; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: var(--radius-full); border: 2px solid var(--surface); cursor: pointer; padding: 0; flex-shrink: 0;
   box-shadow: 0 0 0 1px var(--line-strong);
 }
 .wb-swatch.active { box-shadow: 0 0 0 2px var(--accent); }
 .wb-custom {
-  width: 26px; height: 26px; border-radius: 13px; overflow: hidden; position: relative; flex-shrink: 0; cursor: pointer;
+  width: 26px; height: 26px; border-radius: var(--radius-full); overflow: hidden; position: relative; flex-shrink: 0; cursor: pointer;
   box-shadow: 0 0 0 1px var(--line-strong);
   background: conic-gradient(from 0deg, #F05252, #F2C94C, #3DBB7E, #3FB3D1, #5B6CF0, #C34FD6, #F05252);
 }
@@ -57,7 +57,7 @@
 /* Text entry */
 .wb-text {
   position: absolute; z-index: 6; min-width: 40px; padding: 0 2px; margin: 0; border: 1px dashed var(--accent);
-  background: transparent; outline: none; font-family: var(--font); line-height: 1.2; border-radius: 2px;
+  background: transparent; outline: none; font-family: var(--font); line-height: 1.2; border-radius: var(--radius-s);
 }
 
 @media (max-width: 700px) {

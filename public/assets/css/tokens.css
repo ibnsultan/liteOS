@@ -53,14 +53,10 @@
   --tip-bg: #16171A;
   --tip-text: #FFFFFF;
 
-  /* corners: small controls → panels; full makes a pill or a circle */
+  /* corners: the only sizes, for the native feel; full is for feature shapes (circles, pills, switches, dots) */
   --radius-s: 2px;
   --radius: 4px;
-  --radius-m: 6px;
-  --radius-l: 8px;
-  --radius-xl: 10px;
-  --radius-2xl: 12px;
-  --radius-3xl: 14px;
+  --radius-l: 6px;
   --radius-full: 999px;
 
   /* type sizes */

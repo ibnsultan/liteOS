@@ -1160,7 +1160,7 @@ LiteOS.ready((OS) => {
     const css = 'body{font-family:' + v('--font') + ';color:' + v('--text') + ';background:' + v('--surface') + ';font-size:14px;line-height:1.65;margin:0;padding:20px 24px;max-width:780px}' +
       'h1,h2,h3{line-height:1.25;margin:1.2em 0 .5em}h1{font-size:1.8em}h2{font-size:1.4em;border-bottom:1px solid ' + v('--line') + ';padding-bottom:.2em}h3{font-size:1.15em}' +
       'a{color:' + v('--accent') + '}code{font-family:' + v('--mono') + ';font-size:.9em;background:' + v('--surface-3') + ';padding:1px 5px;border-radius:4px}' +
-      'pre{background:' + v('--surface-2') + ';border:1px solid ' + v('--line') + ';border-radius:8px;padding:10px 12px;overflow:auto}pre code{background:none;padding:0}' +
+      'pre{background:' + v('--surface-2') + ';border:1px solid ' + v('--line') + ';border-radius:6px;padding:10px 12px;overflow:auto}pre code{background:none;padding:0}' +
       'blockquote{margin:0 0 1em;padding:2px 14px;color:' + v('--muted') + ';background:' + v('--surface-2') + ';border-radius:6px}hr{border:none;border-top:1px solid ' + v('--line-strong') + '}img{max-width:100%}' +
       'body>:first-child{margin-top:0}';
     return '<!doctype html><html><head><meta charset="utf-8">' + cspMeta(MD_CSP) + '<style>' + css.replace(/<\//g, '') + '</style></head><body>' + window.CodeMarkdown.markdown(textOf(t)) + '</body></html>';

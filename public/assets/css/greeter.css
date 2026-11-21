@@ -6,9 +6,9 @@
 span.brand { cursor: default; }
 span.brand:hover { background: none !important; }
 .topbar .menus { display: flex; align-items: center; gap: 2px; margin-left: -6px; min-width: 0; overflow: hidden; }
-.topbar .mbtn { height: 26px; padding: 0 9px; border: none; background: transparent; border-radius: 6px; cursor: default; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.topbar .mbtn { height: 26px; padding: 0 9px; border: none; background: transparent; border-radius: var(--radius-l); cursor: default; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .topbar .mbtn:hover, .topbar .mbtn.open { background: var(--hover); color: var(--text); }
-.topbar .tb-icon { width: 30px; height: 26px; border: none; background: transparent; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; padding: 0; flex-shrink: 0; }
+.topbar .tb-icon { width: 30px; height: 26px; border: none; background: transparent; border-radius: var(--radius-l); display: inline-flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; padding: 0; flex-shrink: 0; }
 .topbar .tb-icon:hover { background: var(--hover); }
 .topbar .status { white-space: nowrap; }
 .topbar .status.static { cursor: default; padding: 0 6px; }
@@ -33,15 +33,15 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .menu-item:disabled { opacity: .45; cursor: default; background: transparent !important; color: var(--text) !important; }
 
 /* ------------------------------------------------------------ volume */
-.volpop { width: 260px; padding: 14px 16px; border-radius: 14px; display: flex; flex-direction: column; gap: 8px; }
+.volpop { width: 260px; padding: 14px 16px; border-radius: var(--radius-l); display: flex; flex-direction: column; gap: 8px; }
 .vol-hint { font-size: 11px; color: var(--faint); }
 .qvol { display: flex; align-items: center; gap: 10px; }
 .qvol .ibtn { width: 32px; height: 32px; flex-shrink: 0; }
 .qpct { width: 36px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.qrange { -webkit-appearance: none; appearance: none; flex: 1; height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+.qrange { -webkit-appearance: none; appearance: none; flex: 1; height: 6px; border-radius: var(--radius-full); outline: none; cursor: pointer;
   background: linear-gradient(90deg, var(--accent) 0 var(--v, 50%), var(--surface-3) var(--v, 50%) 100%); }
-.qrange::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 9px; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-.qrange::-moz-range-thumb { width: 18px; height: 18px; border-radius: 9px; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.qrange::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: var(--radius-full); background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.qrange::-moz-range-thumb { width: 18px; height: 18px; border-radius: var(--radius-full); background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
 .qrange:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); }
 
 /* ------------------------------------------------------------ greeter */
@@ -64,14 +64,14 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .g-sub .ico { width: 12px; height: 12px; }
 .g-field { position: relative; width: 100%; }
 .g-input {
-  width: 100%; height: 46px; border-radius: 23px; border: 1px solid rgba(255,255,255,.7); background: rgba(255,255,255,.9);
+  width: 100%; height: 46px; border-radius: var(--radius-l); border: 1px solid rgba(255,255,255,.7); background: rgba(255,255,255,.9);
   padding: 0 54px 0 20px; font-size: 15px; color: #16171A; outline: none; box-shadow: 0 8px 24px rgba(10,30,70,.2);
   -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
 }
 .g-input::placeholder { color: #6B717C; }
 .g-input:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.55), 0 8px 24px rgba(10,30,70,.2); }
 .g-go {
-  position: absolute; right: 5px; top: 5px; width: 36px; height: 36px; border-radius: 18px; border: none; background: var(--accent); color: #fff;
+  position: absolute; right: 5px; top: 5px; width: 36px; height: 36px; border-radius: var(--radius-full); border: none; background: var(--accent); color: #fff;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .g-go:hover { filter: brightness(1.08); }
@@ -81,7 +81,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 /* the sign-in error: red text straight on the wallpaper, with a soft light halo so it reads on any picture */
 .g-err { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; color: #C8102E; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 0 2px rgba(255,255,255,.9), 0 0 8px rgba(255,255,255,.75); }
 .g-err .ico { width: 14px; height: 14px; flex-shrink: 0; filter: drop-shadow(0 0 2px rgba(255,255,255,.9)); }
-.g-link { margin-top: 12px; border: none; background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: 8px; text-shadow: 0 1px 6px rgba(10,30,70,.4); opacity: .92; }
+.g-link { margin-top: 12px; border: none; background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: var(--radius-l); text-shadow: 0 1px 6px rgba(10,30,70,.4); opacity: .92; }
 .g-link:hover { background: rgba(255,255,255,.14); opacity: 1; }
 .shake { animation: gShake .36s ease; }
 @keyframes gShake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
@@ -90,7 +90,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .auth-actions { position: absolute; right: 24px; bottom: 22px; z-index: 3; display: flex; gap: 8px; }
 /* dark frosted glass with a light edge: readable over light and dark wallpapers alike */
 .aa-btn {
-  height: 40px; min-width: 40px; padding: 0 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,.24);
+  height: 40px; min-width: 40px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,.24);
   background: rgba(16,22,34,.44); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
   box-shadow: 0 4px 14px rgba(8,14,28,.22);
   color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .04em;
@@ -168,7 +168,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .desk-icon.drop { background: rgba(255,255,255,.3); border-color: rgba(255,255,255,.6); }
 .os-root.desk-dragging, .os-root.desk-dragging * { cursor: default !important; }
 .desk-icon {
-  pointer-events: auto; width: 86px; padding: 8px 4px 6px; border-radius: 10px; border: 1px solid transparent; background: transparent;
+  pointer-events: auto; width: 86px; padding: 8px 4px 6px; border-radius: var(--radius-l); border: 1px solid transparent; background: transparent;
   display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: default; color: #fff;
 }
 .desk-icon img { width: 48px; height: 48px; filter: drop-shadow(0 3px 6px rgba(10,30,70,.35)); }
@@ -186,7 +186,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 @media (prefers-reduced-motion: reduce) { .desk-icon.pending img { animation: none; -webkit-mask: none; mask: none; opacity: .6; } }
 /* renaming an icon in place: an edit box over its label */
 .desk-rename {
-  position: fixed; z-index: 70; min-height: 20px; padding: 1px 3px; resize: none; overflow: hidden; border: 1px solid var(--accent); border-radius: 2px;
+  position: fixed; z-index: 70; min-height: 20px; padding: 1px 3px; resize: none; overflow: hidden; border: 1px solid var(--accent); border-radius: var(--radius-s);
   background: var(--surface); color: var(--text); font: 500 12px/1.25 var(--font); text-align: center; overflow-wrap: anywhere; outline: none;
 }
 .desk-icon span { font-size: 12px; font-weight: 500; line-height: 1.25; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,.65), 0 0 1px rgba(0,0,0,.5); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -203,10 +203,10 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 
 /* ------------------------------------------------------------ quick settings toggles */
 .qs .tiles { gap: 10px; }
-.qs .qtile { height: auto; padding: 14px 6px 10px; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font-weight: 600; transition: background .15s, border-color .15s; }
+.qs .qtile { height: auto; padding: 14px 6px 10px; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; border-radius: var(--radius-l); background: var(--surface); border: 1px solid var(--line); color: var(--text); font-weight: 600; transition: background .15s, border-color .15s; }
 .qs .qtile:hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--surface) 92%, var(--text)); }
 .qs .qtile.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
-.qs .qi { width: 40px; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-2); transition: background .15s, color .15s; }
+.qs .qi { width: 40px; height: 40px; border-radius: var(--radius-full); display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-2); transition: background .15s, color .15s; }
 .qs .qi .ico { width: 20px; height: 20px; stroke-width: 2.2; }
 .qs .qtile.on .qi { background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
 .qs .ql { font-size: 12px; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -221,7 +221,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .qs.w11 .qgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px; padding: 18px 18px 14px; }
 .qs.w11 .qt { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; }
 .qs.w11 .qtile {
-  width: 100%; height: 48px; padding: 0; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface);
+  width: 100%; height: 48px; padding: 0; border-radius: var(--radius-l); border: 1px solid var(--line-strong); background: var(--surface);
   display: flex; flex-direction: row; align-items: stretch; justify-content: center; color: var(--text); cursor: pointer; overflow: hidden; gap: 0;
 }
 .qs.w11 .qtile:hover { background: color-mix(in srgb, var(--surface) 90%, var(--text)); }
@@ -246,7 +246,7 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .toasts { right: 14px; bottom: 96px; gap: 10px; }
 .os-root.classic .toasts { bottom: 60px; }
 .toast {
-  width: 360px; max-width: calc(100vw - 28px); display: block; padding: 0; border-radius: 12px; overflow: hidden;
+  width: 360px; max-width: calc(100vw - 28px); display: block; padding: 0; border-radius: var(--radius-l); overflow: hidden;
   background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(10,30,70,.22);
   -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); animation: ntIn .26s cubic-bezier(.2, .9, .25, 1) both;
 }
@@ -256,12 +256,12 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .nt-head { display: flex; align-items: center; gap: 8px; padding: 8px 6px 0 16px; font-size: 12px; color: var(--text-2); }
 .nt-head img { width: 16px; height: 16px; }
 .nt-head span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nt-x { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.nt-x { width: 26px; height: 26px; border: none; background: transparent; border-radius: var(--radius-l); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .nt-more { opacity: 0; transition: opacity .12s; }
 .toast:hover .nt-more, .nt-more:focus-visible { opacity: 1; }
 .nt-x:hover { background: var(--hover); color: var(--text); }
 .nt-body { display: flex; gap: 14px; padding: 10px 18px 16px 16px; align-items: flex-start; }
-.nt-img { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--surface-3); }
+.nt-img { width: 52px; height: 52px; border-radius: var(--radius-l); object-fit: cover; flex-shrink: 0; background: var(--surface-3); }
 .nt-img.round { border-radius: 50%; }
 .nt-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .nt-text b { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; }
@@ -290,8 +290,8 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 /* ------------------------------------------------------------ app switcher */
 .switcher { position: absolute; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(8,14,28,.18); animation: swIn .12s ease-out; }
 @keyframes swIn { from { opacity: 0; } to { opacity: 1; } }
-.sw-card { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: min(860px, calc(100vw - 48px)); padding: 14px; border-radius: 16px; background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(10,30,70,.28); }
-.sw-item { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 10px 12px; border: 2px solid transparent; border-radius: 12px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.sw-card { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: min(860px, calc(100vw - 48px)); padding: 14px; border-radius: var(--radius-l); background: var(--glass-strong); border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(10,30,70,.28); }
+.sw-item { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 10px 12px; border: 2px solid transparent; border-radius: var(--radius-l); background: transparent; color: var(--text); cursor: pointer; font: inherit; }
 .sw-item:hover { background: var(--hover); }
 .sw-item.on { border-color: var(--accent); background: var(--accent-soft); }
 .sw-item img { width: 48px; height: 48px; }
@@ -301,6 +301,6 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 @media (prefers-reduced-motion: reduce) { .os-root .topbar, .switcher { transition: none; animation: none; } }
 
 /* a short message on the setup, sign-in and lock pages (public/assets/js/auth.js), e.g. "Restart isn't available" */
-.auth-note { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px; background: rgba(16, 18, 23, .82); color: #fff; font-size: 13px; animation: fadeIn .16s; }
+.auth-note { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: var(--radius-l); background: rgba(16, 18, 23, .82); color: #fff; font-size: 13px; animation: fadeIn .16s; }
 a.g-link { text-decoration: none; }
 body.embedded { background: transparent; }
