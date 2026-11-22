@@ -1056,15 +1056,21 @@
     } else {
       html += '<div class="taskbar glass' + (s.autohide ? ' hide' : '') + '">' +
         '<button class="start' + (UI.pop === 'launcher' ? ' open' : '') + '" data-act="launcher" aria-label="Open launcher" title="Launcher"><span class="tile"><img src="assets/img/kite-white.svg" alt=""></span></button>' +
-        
+        // the apps take the room the launcher, tray and clock leave; when they don't fit, the strip scrolls (tbStrip)
+        '<div class="tb-apps"><button class="tb-scroll prev" data-act="tb-prev" aria-label="Earlier apps" tabindex="-1">' + ICON('back', 14) + '</button>' +
         '<div class="apps">' + apps.map((a) => '<button class="tb-btn' + (runningIds.has(a.id) ? ' running' : '') + (fApp === a.id ? ' focused' : '') + '" data-app="' + a.id + '"' + (runningIds.has(a.id) ? '' : ' title="' + esc(a.name) + '"') + ' aria-label="' + esc(a.name) + '">' +
           '<img class="tile appicon" src="' + a.img + '" alt="" draggable="false"><span class="bar"></span></button>').join('') + '</div>' +
-        '<div class="tray"><button class="clock' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><b data-clock="t"></b><span data-clock="ds"></span></button>' +
+        '<button class="tb-scroll next" data-act="tb-next" aria-label="More apps" tabindex="-1">' + ICON('forward', 14) + '</button></div>' +
+        '<div class="tray">' + netButton('tb-icon tray-ico') + '<button class="tb-icon tray-ico" data-act="volume" aria-label="Volume" title="Volume">' + ICON(volIconName(), 16) + '</button>' +
+        '<button class="clock' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><b data-clock="t"></b><span data-clock="ds"></span></button>' +
         '<button class="peek" data-act="peek" title="Show desktop" aria-label="Show desktop"></button></div></div>' +
         (s.autohide ? '<div class="dock-hotzone"></div>' : '');
     }
+    const oldStrip = $('.taskbar .apps', bars);
+    const keepScroll = oldStrip ? oldStrip.scrollLeft : 0; // the bar is redrawn on every focus change: stay where it was
     bars.innerHTML = html;
     tickClock(bars);
+    tbStrip(keepScroll); // after the clock has its text: that sets how much room the apps get
     updateImmersive();
     if (s.autohide) {
       const zone = $('.dock-hotzone', bars);
@@ -1075,6 +1081,46 @@
       bar.addEventListener('mouseleave', hide);
       bar.addEventListener('mouseenter', show);
     }
+  }
+
+  /** The classic taskbar's app strip, when its apps overflow: arrows at its ends (only where there's more to see), the
+   *  mouse wheel scrolls it sideways, and the focused app is kept in view. */
+  let tbObserver = null;
+  function tbStrip(scroll) {
+    if (tbObserver) { tbObserver.disconnect(); tbObserver = null; }
+    const wrap = $('#bars .taskbar .tb-apps', root);
+    if (!wrap) return;
+    const strip = $('.apps', wrap);
+    const sync = () => {
+      const max = strip.scrollWidth - strip.clientWidth;
+      wrap.classList.toggle('overflow', max > 1);
+      wrap.classList.toggle('can-prev', strip.scrollLeft > 1);
+      wrap.classList.toggle('can-next', strip.scrollLeft < max - 1);
+    };
+    strip.scrollLeft = scroll || 0;
+    sync(); // the arrows first: showing them narrows the strip
+    const f = $('.tb-btn.focused', strip);
+    if (f) {
+      const s = strip.getBoundingClientRect();
+      const b = f.getBoundingClientRect();
+      if (b.left < s.left) strip.scrollLeft -= s.left - b.left;
+      else if (b.right > s.right) strip.scrollLeft += b.right - s.right;
+    }
+    strip.addEventListener('scroll', sync, { passive: true });
+    strip.addEventListener('wheel', (e) => {
+      if (strip.scrollWidth <= strip.clientWidth) return;
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (!d) return;
+      e.preventDefault();
+      strip.scrollLeft += d;
+    }, { passive: false });
+    if ('ResizeObserver' in window) { tbObserver = new ResizeObserver(sync); tbObserver.observe(strip); }
+    sync();
+  }
+  /** One page of apps along, from an arrow. */
+  function tbPage(dir) {
+    const strip = $('#bars .taskbar .apps', root);
+    if (strip) strip.scrollBy({ left: dir * Math.max(44, strip.clientWidth - 44), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
   // ------------------------------------------------------------------ popovers
@@ -3050,6 +3096,8 @@
       case 'launcher-search': if (UI.pop !== 'launcher') togglePop('launcher'); break;
       case 'qs': togglePop('qs'); break;
       case 'trash': openApp('files', { path: 'trash:' }); break;
+      case 'tb-prev': tbPage(-1); break;
+      case 'tb-next': tbPage(1); break;
       case 'peek': { const anyVisible = [...wins.values()].some((w) => !w.min); wins.forEach((w) => (anyVisible ? minimize(w) : restore(w))); break; }
       case 'open-settings': openApp('settings'); break;
       case 'lock': lockScreen(); break;
