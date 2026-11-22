@@ -86,11 +86,12 @@ class Accounts
      */
     public static function delete(User $user): void
     {
+        // the drive is moved aside last, inside the transaction: if that fails, the account isn't deleted either
         DB::transaction(function () use ($user) {
             $user->delete();
             self::keepAnAdmin('You can’t delete the last administrator.');
+            Drive::archive($user->username);
         });
-        Drive::archive($user->username);
     }
 
     /**

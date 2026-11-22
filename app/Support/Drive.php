@@ -80,7 +80,12 @@ class Drive
         }
         $dest = Storage::disk('drives')->path('.deleted');
         File::ensureDirectoryExists($dest, 0775);
-        File::moveDirectory($root, $dest.DIRECTORY_SEPARATOR.$username.'-'.gmdate('Ymd-His'));
+        // left in place, the drive would go to the next account given this username
+        abort_unless(
+            Fs::rename($root, $dest.DIRECTORY_SEPARATOR.$username.'-'.gmdate('Ymd-His')),
+            500,
+            'Couldn’t move the account’s files aside, so the account wasn’t deleted.',
+        );
     }
 
     /**
@@ -413,7 +418,7 @@ class Drive
         if (file_exists($targetAbs) && strcasecmp($targetAbs, $abs) !== 0) {
             abort(409, 'Something with that name already exists.');
         }
-        rename($abs, $targetAbs);
+        abort_unless(Fs::rename($abs, $targetAbs), 500, 'Couldn’t rename “'.basename($clean).'”.');
 
         return $this->entry($target, $targetAbs);
     }
@@ -453,9 +458,12 @@ class Drive
             $targetAbs = $this->abs($target);
             if ($copy) {
                 $this->checkQuota(self::sizeOf($sourceAbs));
-                is_dir($sourceAbs) ? File::copyDirectory($sourceAbs, $targetAbs) : copy($sourceAbs, $targetAbs);
+                if (! Fs::copy($sourceAbs, $targetAbs)) {
+                    Fs::delete($targetAbs); // whatever was copied before it failed
+                    abort(500, 'Couldn’t copy “'.basename($source).'”.');
+                }
             } else {
-                rename($sourceAbs, $targetAbs);
+                abort_unless(Fs::rename($sourceAbs, $targetAbs), 500, 'Couldn’t move “'.basename($source).'”.');
             }
             $results[] = $this->entry($target, $targetAbs);
         }

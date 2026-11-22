@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\Drive;
+use App\Support\Fs;
 
 // Browser › Downloads: saves a web file into the user's drive (lib/net.php's net_fetch_to_drive). The file is written
 // to a temporary file first and capped at the user's free space (and a hard limit), then moved into the folder under
@@ -52,9 +53,14 @@ class WebFetcher
             abort(502, 'The website answered with an error ('.$web->status.').');
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'losdl');
+        $tmp = @tempnam(sys_get_temp_dir(), 'losdl');
+        if ($tmp === false) {
+            $web->close();
+            abort(500, 'Couldn’t save the download.');
+        }
         try {
-            $out = fopen($tmp, 'wb');
+            $out = @fopen($tmp, 'wb');
+            abort_if($out === false, 500, 'Couldn’t save the download.');
             $received = 0;
             foreach ($web->chunks() as $chunk) {
                 $received += strlen($chunk);
@@ -62,17 +68,26 @@ class WebFetcher
                     fclose($out);
                     abort(507, 'That file is larger than your free storage ('.round($limit / 1048576).' MB).');
                 }
-                fwrite($out, $chunk);
+                // a short write (a full disk) would otherwise save a cut-off file as if it were complete
+                if (@fwrite($out, $chunk) !== strlen($chunk)) {
+                    fclose($out);
+                    abort(500, 'Couldn’t save the download. The server may be out of disk space.');
+                }
             }
-            fclose($out);
+            abort_unless(fclose($out), 500, 'Couldn’t save the download.');
 
             $target = $name !== ''
                 ? $drive->clean($dir.'/'.$drive->name($name))
                 : $drive->unique($dir, $drive->name(self::filename($web->url, $web->header('Content-Disposition'), $web->header('Content-Type'))));
             abort_if(is_dir($drive->abs($target)), 409, 'A folder with that name is already there.');
             $abs = $drive->abs($target);
-            if (! @rename($tmp, $abs)) {
-                copy($tmp, $abs);
+            $existed = file_exists($abs);
+            // rename fails across disks (the temp folder may be elsewhere); a copy then does the job
+            if (! Fs::rename($tmp, $abs) && ! Fs::copy($tmp, $abs)) {
+                if (! $existed) {
+                    Fs::delete($abs); // a partial copy
+                }
+                abort(500, 'Couldn’t save the download to your drive.');
             }
 
             return $drive->entry($target, $abs);

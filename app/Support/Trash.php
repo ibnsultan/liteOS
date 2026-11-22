@@ -52,7 +52,8 @@ class Trash
             $dest = $this->path($id);
             $isDir = is_dir($abs);
             $size = $isDir ? null : (int) filesize($abs);
-            rename($abs, $dest);
+            // recorded only once it has moved; items moved before a failure stay moved and recorded
+            abort_unless(Fs::rename($abs, $dest), 500, 'Couldn’t move “'.basename($clean).'” to the Trash.');
             TrashItem::query()->create([
                 'user_id' => $this->user->id,
                 'trash_id' => $id,
@@ -93,8 +94,13 @@ class Trash
                     $folder = '/';
                 }
                 $source = $this->path($item->trash_id);
+                // a record whose item is already gone from .trash is just cleared; one that fails to move back stays
                 if (file_exists($source)) {
-                    rename($source, $this->drive->abs($this->drive->unique($folder, $item->name)));
+                    abort_unless(
+                        Fs::rename($source, $this->drive->abs($this->drive->unique($folder, $item->name))),
+                        500,
+                        'Couldn’t restore “'.$item->name.'”.',
+                    );
                 }
                 $item->delete();
             });
@@ -116,12 +122,18 @@ class Trash
             $query->whereIn('trash_id', $this->validIds($ids));
         }
         $deleted = 0;
+        $failed = 0;
         foreach ($query->get() as $item) {
-            $path = $this->path($item->trash_id);
-            is_dir($path) ? File::deleteDirectory($path) : File::delete($path);
+            // an item that can't be erased keeps its record, so it stays in the Trash (and in the storage count)
+            if (! Fs::delete($this->path($item->trash_id))) {
+                $failed++;
+
+                continue;
+            }
             $item->delete();
             $deleted++;
         }
+        abort_if($failed > 0, 500, $failed === 1 ? 'One item couldn’t be deleted. Try again.' : $failed.' items couldn’t be deleted. Try again.');
 
         return $deleted;
     }
