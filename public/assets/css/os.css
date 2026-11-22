@@ -228,6 +228,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .os-root.dragging .win-shield { display: block; }
 .os-root.dragging { cursor: default; }
 .rz { position: absolute; z-index: 2; }
+/* touch: a finger on these drags (a window, its edges, desktop icons, the selection box on the desktop) instead of
+   the browser taking the gesture for scrolling or zooming and cancelling the drag */
+.win-bar, .rz, .desk-icon, .wall, .desk-icons { touch-action: none; }
 .rz.n { top: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
 .rz.s { bottom: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
 .rz.e { right: -3px; top: 8px; bottom: 8px; width: 7px; cursor: ew-resize; }

@@ -263,6 +263,7 @@
   // The master volume (top bar / Quick settings) scales every <audio>/<video> in the app.
   // An element can carry data-app-volume="0..1" for its own level within that.
   function masterVolume(s) { return !s || s.muted ? 0 : (s.volume == null ? 80 : s.volume) / 100; }
+      el.style.touchAction = 'none'; // a finger drags the window, rather than the browser scrolling the page
   function applyVolume(el) {
     const v = masterVolume(current.settings);
     const own = el.dataset && el.dataset.appVolume != null ? Math.max(0, Math.min(1, +el.dataset.appVolume)) : 1;
