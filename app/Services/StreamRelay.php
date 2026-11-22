@@ -19,7 +19,7 @@ class StreamRelay
 
     const USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
 
-    public function __construct(private WebClient $web) {}
+    public function __construct(private WebClient $web, private RelaySlots $slots) {}
 
     public function sign(string $url): string
     {
@@ -37,7 +37,8 @@ class StreamRelay
     public function relay(string $url, string $signature, bool $rewrite, ?string $range): Response
     {
         abort_if($url === '' || ! hash_equals($this->sign($url), $signature), 403, 'This stream link has expired. Reload the player and try again.');
-        @set_time_limit(0);
+        $maxSeconds = max(60, (int) config('liteos.net.relay_max_seconds'));
+        @set_time_limit($maxSeconds + 60);
 
         $headers = ['User-Agent' => self::USER_AGENT, 'Accept' => '*/*'] + ($range ? ['Range' => $range] : []);
         $web = $this->web->open($url, $headers, ['connect' => 15]);
@@ -75,15 +76,39 @@ class StreamRelay
             }
         }
 
-        return new StreamedResponse(function () use ($chunks, $web) {
-            foreach ($chunks as $chunk) {
-                echo $chunk;
-                flush();
-                if (connection_aborted()) {
-                    break;
-                }
-            }
+        // a body that streams holds a PHP worker for as long as it runs, so the account gets only so many at once
+        $user = (string) auth()->id();
+        $slot = $this->slots->take($user);
+        if ($slot === null) {
             $web->close();
+            abort(429, 'You’re playing too many streams at once. Stop one and try again.');
+        }
+
+        return new StreamedResponse(function () use ($chunks, $web, $user, $slot, $maxSeconds) {
+            // PHP would end the script the moment the player hangs up, skipping the finally below and keeping the slot
+            // taken; with this the loop sees connection_aborted() and gives it back
+            ignore_user_abort(true);
+            $started = $beat = time();
+            try {
+                foreach ($chunks as $chunk) {
+                    echo $chunk;
+                    flush();
+                    if (connection_aborted()) {
+                        break;
+                    }
+                    $now = time();
+                    if ($now - $started >= $maxSeconds) {
+                        break; // set_time_limit only counts CPU time on Linux, so the ceiling is checked here too
+                    }
+                    if ($now - $beat >= RelaySlots::BEAT) {
+                        $this->slots->beat($user, $slot);
+                        $beat = $now;
+                    }
+                }
+            } finally {
+                $web->close();
+                $this->slots->free($user, $slot);
+            }
         }, $web->status === 206 ? 206 : 200, $out);
     }
 

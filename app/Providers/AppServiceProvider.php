@@ -6,8 +6,11 @@ use App\Models\User;
 use App\Support\AppRegistry;
 use App\Support\SystemIcons;
 use App\View\Components\WindowLayout;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -38,5 +41,16 @@ class AppServiceProvider extends ServiceProvider
 
         // administrators manage accounts and the system settings (routes/os.php: can:admin)
         Gate::define('admin', fn (User $user) => $user->isAdmin() && ! $user->isDisabled());
+
+        // the web relay and downloads, per account (config liteos.net; StreamController and WebController routes)
+        foreach (['net-sign' => 'sign_per_minute', 'net-stream' => 'stream_per_minute', 'net-fetch' => 'fetch_per_minute'] as $name => $key) {
+            RateLimiter::for($name, fn (Request $request) => Limit::perMinute(max(1, (int) config('liteos.net.'.$key)))
+                ->by($name.':'.($request->user()?->getAuthIdentifier() ?? $request->ip()))
+                ->response(fn (Request $request, array $headers) => response()->json(
+                    ['success' => false, 'message' => 'Too many requests. Wait a minute and try again.'],
+                    429,
+                    $headers,
+                )));
+        }
     }
 }

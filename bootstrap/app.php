@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
 use Illuminate\Validation\ValidationException;
@@ -47,6 +48,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (Throwable $e, Request $request) use ($wantsJson) {
             if (! $wantsJson($request)) {
                 return null; // fall through to the regular HTML error pages
+            }
+
+            // a response thrown as it is (a rate limit's own 429) is already the answer
+            if ($e instanceof HttpResponseException) {
+                return $e->getResponse();
             }
 
             $status = 500;

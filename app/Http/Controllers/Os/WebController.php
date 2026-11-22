@@ -30,6 +30,6 @@ class WebController extends Controller
     public static function routes(): void
     {
         Route::get('/framecheck', [self::class, 'framecheck'])->name('net.framecheck');
-        Route::post('/fetch', [self::class, 'fetch'])->name('net.fetch');
+        Route::post('/fetch', [self::class, 'fetch'])->middleware('throttle:net-fetch')->name('net.fetch');
     }
 }

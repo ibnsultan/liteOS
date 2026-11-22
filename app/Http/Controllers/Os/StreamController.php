@@ -34,7 +34,7 @@ class StreamController extends Controller
 
     public static function routes(): void
     {
-        Route::post('/sign', [self::class, 'sign'])->name('net.sign');
-        Route::get('/stream', [self::class, 'stream'])->name('net.stream');
+        Route::post('/sign', [self::class, 'sign'])->middleware('throttle:net-sign')->name('net.sign');
+        Route::get('/stream', [self::class, 'stream'])->middleware('throttle:net-stream')->name('net.stream');
     }
 }

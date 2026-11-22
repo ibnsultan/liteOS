@@ -17,6 +17,18 @@ return [
     // storage for a new account, in MB, until an admin sets another default in Settings › System
     'default_quota_mb' => (int) env('LITEOS_DEFAULT_QUOTA_MB', 1024),
 
+    // what one account may ask of the server's web connection, so nobody can use it as an unmetered proxy: requests a
+    // minute for signing relay links, relayed requests (HLS asks for a segment every few seconds per stream, and
+    // retries quickly) and downloads to the drive; long relays (radio, a direct video) running at once; and how long
+    // one relay may run before it ends
+    'net' => [
+        'sign_per_minute' => (int) env('LITEOS_NET_SIGN_PER_MINUTE', 30),
+        'stream_per_minute' => (int) env('LITEOS_NET_STREAM_PER_MINUTE', 600),
+        'fetch_per_minute' => (int) env('LITEOS_NET_FETCH_PER_MINUTE', 20),
+        'relays_at_once' => (int) env('LITEOS_NET_RELAYS_AT_ONCE', 4),
+        'relay_max_seconds' => (int) env('LITEOS_NET_RELAY_MAX_SECONDS', 4 * 3600),
+    ],
+
     // where the bundled apps live: one folder per app with its manifest.json, icon.svg and files
     'apps_path' => public_path('assets/apps'),
 

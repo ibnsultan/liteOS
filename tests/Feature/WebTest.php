@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\RelaySlots;
 use App\Services\StreamRelay;
 use App\Services\WebClient;
 use App\Support\Drive;
 use App\Support\PublicAddress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -243,6 +245,69 @@ class WebTest extends TestCase
             ->assertHeader('Content-Range', 'bytes 0-6/100');
         $this->assertSame('MP3DATA', $response->streamedContent());
         $this->assertSame('bytes=0-6', WebClient::sent()[0]['headers']['Range']);
+    }
+
+    public function test_signing_relaying_and_downloading_are_rate_limited_per_account(): void
+    {
+        config(['liteos.net.sign_per_minute' => 2, 'liteos.net.stream_per_minute' => 2, 'liteos.net.fetch_per_minute' => 1]);
+        WebClient::fake(['radio.example.com/*' => [200, ['Content-Type' => 'audio/mpeg'], 'MP3'], 'example.com/*' => [200, ['Content-Type' => 'text/plain'], 'hi']]);
+        $url = 'http://radio.example.com/live.mp3';
+
+        $this->postJson('/os/net/sign', ['urls' => [$url]])->assertOk();
+        $link = $this->postJson('/os/net/sign', ['urls' => [$url], 'rewrite' => false])->assertOk()->json('result')[$url];
+        $this->postJson('/os/net/sign', ['urls' => [$url]])
+            ->assertStatus(429)
+            ->assertJsonPath('message', 'Too many requests. Wait a minute and try again.');
+
+        $this->get($link)->assertOk();
+        $this->get($link)->assertOk();
+        $this->get($link)->assertStatus(429);
+
+        $this->postJson('/os/net/fetch', ['url' => 'https://example.com/a.txt'])->assertOk();
+        $this->postJson('/os/net/fetch', ['url' => 'https://example.com/b.txt'])->assertStatus(429);
+
+        // another account has its own allowance
+        $this->actingAs(User::factory()->create(['username' => 'baraka']));
+        Drive::ensureHome('baraka');
+        $this->postJson('/os/net/sign', ['urls' => [$url]])->assertOk();
+        $this->postJson('/os/net/fetch', ['url' => 'https://example.com/a.txt'])->assertOk();
+    }
+
+    public function test_an_account_can_run_only_so_many_long_relays_at_once(): void
+    {
+        config(['liteos.net.relays_at_once' => 2]);
+        WebClient::fake(['radio.example.com/*' => [200, ['Content-Type' => 'audio/mpeg'], 'MP3']]);
+        $url = 'http://radio.example.com/live.mp3';
+        $link = $this->postJson('/os/net/sign', ['urls' => [$url], 'rewrite' => false])->json('result')[$url];
+        $slots = app(RelaySlots::class);
+        $id = (string) $this->amina->id;
+
+        // two relays still streaming elsewhere
+        $slots->take($id);
+        $slots->take($id);
+        $this->get($link)
+            ->assertStatus(429)
+            ->assertJsonPath('message', 'You’re playing too many streams at once. Stop one and try again.');
+
+        // a relay whose worker died stops counting once it hasn't been seen for a minute
+        Cache::put('relay-slots:'.$id, ['old1' => time() - 61, 'old2' => time() - 120], 3600);
+        $response = $this->get($link)->assertOk();
+        $this->assertSame(1, $slots->inUse($id));
+
+        // a finished relay gives its slot back
+        $this->assertSame('MP3', $response->streamedContent());
+        $this->assertSame(0, $slots->inUse($id));
+    }
+
+    public function test_playlists_dont_take_a_relay_slot(): void
+    {
+        config(['liteos.net.relays_at_once' => 1]);
+        WebClient::fake(['tv.example.com/*' => [200, ['Content-Type' => 'application/vnd.apple.mpegurl'], "#EXTM3U\nseg.ts\n"]]);
+        app(RelaySlots::class)->take((string) $this->amina->id);
+        $url = 'http://tv.example.com/index.m3u8';
+
+        $link = $this->postJson('/os/net/sign', ['urls' => [$url]])->json('result')[$url];
+        $this->get($link)->assertOk();
     }
 
     public function test_unsigned_or_altered_links_are_refused(): void
