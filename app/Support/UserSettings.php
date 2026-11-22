@@ -73,7 +73,7 @@ class UserSettings
             'muted' => false,
             'textSize' => 'default',
             'clock24' => true,
-            'pinned' => ['files', 'documents', 'sheets', 'slides', 'code', 'media', 'browser', 'board'],
+            'pinned' => ['files', 'settings', 'browser'],
             'desktopIcons' => ['files', 'trash'],   // app ids, and "trash"
             'deskIcons' => true,            // show the desktop icons at all (desktop menu > View)
             'deskIconSize' => 'medium',

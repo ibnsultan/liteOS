@@ -23,7 +23,7 @@
   const DEFAULTS = {
     theme: 'light', accent: '#2F6FD6', wallpaper: 'siamese', wallpaperFit: 'cover', taskbar: 'floating', align: 'center',
     iconSize: 'medium', autohide: false, labels: false, topbar: true, magnify: true, transparency: true, nightLight: false,
-    dnd: false, textSize: 'default', clock24: true, pinned: ['files', 'documents', 'sheets', 'slides', 'code', 'media', 'browser', 'board'], desktopIcons: ['files', 'trash'],
+    dnd: false, textSize: 'default', clock24: true, pinned: ['files', 'settings', 'browser'], desktopIcons: ['files', 'trash'],
     deskIcons: true, deskIconSize: 'medium', deskSort: 'name', deskLayout: {},
     quickAccess: ['/Desktop', '/Downloads', '/Documents', '/Pictures', '/Music', '/Videos'],
   };

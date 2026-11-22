@@ -36,7 +36,7 @@ class SettingsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('result.theme', 'light')
             ->assertJsonPath('result.taskbar', 'floating')
-            ->assertJsonPath('result.pinned', ['files', 'documents', 'sheets', 'slides', 'code', 'media', 'browser', 'board']);
+            ->assertJsonPath('result.pinned', ['files', 'settings', 'browser']);
     }
 
     public function test_each_user_keeps_their_own_settings(): void
