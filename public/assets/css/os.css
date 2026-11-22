@@ -348,6 +348,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .fdlg-row .fdlg-type span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fdlg-row .fdlg-type .ico, .fdlg-row .fdlg-type svg { flex-shrink: 0; color: var(--muted); }
 .fdlg-row .fdlg-type[aria-expanded="true"] { border-bottom: 2px solid var(--accent); }
+
+/* LiteOS's print dialog (os.js printDialog, LiteLink devices only): label | control rows, flyouts for choices */
+.pdlg-head { display: flex; align-items: center; gap: 8px; padding: 20px 24px 0; }
+.pdlg-head .dlg-title { padding: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdlg .dlg-body { gap: 10px; padding-top: 14px; }
+.pdlg-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; }
+.pdlg-row > span { color: var(--text-2); }
+.pdlg-row .input { height: 32px; padding: 0 10px; border-radius: var(--radius-s); }
+.pdlg-combo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; text-align: left; color: var(--text); cursor: pointer; font: inherit; }
+.pdlg-combo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdlg-combo .ico, .pdlg-combo svg { flex-shrink: 0; color: var(--muted); }
+.pdlg-note { margin: 0; color: var(--text-2); }
+.pdlg-note.warn { margin-left: 108px; color: var(--danger-ink); font-size: 12px; }
+.pdlg-status { margin-right: auto; font-size: 12px; color: var(--muted); }
+.pdlg-menu .menu-item.is-current { background: var(--accent-soft); color: var(--accent-ink); }
+/* a printer that can take documents now: a faint green dot after its name */
+.pdlg-combo span { flex: 1; }
+.pdlg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--success); opacity: .55; }
+.pdlg-menu .pdlg-dot { margin-left: auto; }
 .fdlg-typemenu .menu-item.is-current { background: var(--accent-soft); color: var(--accent-ink); }
 .fdlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .fdlg-btns .btn { min-width: 88px; height: 32px; border-radius: var(--radius-s); }

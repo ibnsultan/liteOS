@@ -231,7 +231,9 @@ body { background: var(--page); }
 .st-scanlist { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
 .st-scanrow { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border: none; border-radius: var(--radius); background: var(--surface-2); cursor: pointer; color: var(--text); text-align: left; }
 .st-scanrow:hover { background: var(--hover); }
-.err { color: var(--danger-ink); font-size: var(--fs-m); min-height: 18px; }
+.st-scanrow:disabled { cursor: default; opacity: .6; }
+.st-scanrow:disabled:hover { background: var(--surface-2); }
+.st-scanrow small { margin-left: auto; }.err { color: var(--danger-ink); font-size: var(--fs-m); min-height: 18px; }
 
 /* ------------------------------------------------------------ narrow windows */
 @media (max-width: 900px) {

@@ -465,6 +465,20 @@
     saveSettings(changes) { return host ? host.saveSettings(changes) : api('settings.save', { settings: changes }); },
     onSettings(fn) { listeners.push(fn); },
     /** Run fn once the DOM is ready and the theme is applied. */
+    /**
+     * Print a PDF (Blob, ArrayBuffer or bytes) with LiteOS's print dialog: on a LiteLink device that allows printing,
+     * it lists the device's printers and sends it. opts: { title, copies, pages ('1-3,5') } (copies and pages are where
+     * the dialog starts; the person can change them).
+     * -> { job, printer } once sent, null if the person cancelled, or false when LiteOS can't print here: then print
+     * the app's own way (window.print()), as before.
+     */
+    print(pdf, opts) { return host && host.print ? host.print.print(pdf, opts || {}, winId) : Promise.resolve(false); },
+    /** Whether print() will show LiteOS's print dialog (a LiteLink device that allows printing). */
+    canPrint() { return host && host.print ? host.print.available() : Promise.resolve(false); },
+    /** The signed-in user's documents still waiting or printing: [{ job, printer, title, state, message }]. */
+    printJobs() { return host && host.print ? host.print.jobs() : Promise.resolve([]); },
+    /** Cancel one of them. */
+    cancelPrintJob(job) { return host && host.print ? host.print.cancel(job) : Promise.reject(new Error('Printing isn’t available here.')); },
     ready(fn) {
       const run = async () => {
         if (!host) {

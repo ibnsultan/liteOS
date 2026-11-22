@@ -122,6 +122,7 @@
       if (!caps) return;
       DEV.ll = LL;
       DEV.caps = caps;
+      if (caps.print) LL.on('print-job', printJobEvent);
       const redraw = () => { renderBars(); if (UI.pop && UI.pop !== 'launcher') renderPop(); };
       if (caps.audio && caps.audio.output) {
         LL.audio.state().then((a) => { DEV.audio = a; redraw(); }).catch(() => {});
@@ -2464,6 +2465,158 @@
     });
   }
 
+  // ================================================================== printing (LiteLink)
+  // On a LiteLink device that allows printing, apps print a PDF through LiteOS's own dialog (host.print, OS.print in
+  // the SDK): the device's printers, the options each one has, then LiteLink sends it. The device's queue covers the
+  // whole LiteLink session, which several LiteOS users can share one after another, so LiteOS remembers each user's
+  // own documents by the job ids it got back, and a user only ever sees and cancels those. Without LiteLink printing,
+  // print resolves to false and the app prints the way it always did (window.print()).
+  const canPrint = () => devHas('print');
+  const jobsKey = () => 'los.print.' + (S.user ? S.user.username : '');
+  function myJobs() { try { const l = JSON.parse(localStorage.getItem(jobsKey()) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+  function saveJobs(list) { try { localStorage.setItem(jobsKey(), JSON.stringify(list.slice(-50))); } catch (e) { /* storage blocked */ } }
+  const forgetJob = (id) => saveJobs(myJobs().filter((x) => x.job !== id));
+  /** This user's documents still waiting or printing: [{ job, printer, title, state, message }]. */
+  async function printJobs() {
+    if (!canPrint()) return [];
+    const open = await DEV.ll.print.jobs();
+    const mine = myJobs();
+    saveJobs(mine.filter((m) => open.some((o) => o.job === m.job))); // finished while away: forgotten
+    return open.filter((o) => mine.some((m) => m.job === o.job)).map((o) => {
+      const m = mine.find((x) => x.job === o.job) || {};
+      return Object.assign({}, o, { title: m.title || o.title, printer: m.printer || o.printer }); // the printer's name, as chosen
+    });
+  }
+  async function cancelPrintJob(job) {
+    if (!canPrint() || !myJobs().some((m) => m.job === job)) throw new Error('That document isn’t one of yours.');
+    await DEV.ll.print.cancelJob(job);
+  }
+  // what happens to this user's documents after they're sent (the bridge's print-job events, started in startDevice)
+  function printJobEvent(ev) {
+    const mine = ev && myJobs().find((m) => m.job === ev.job);
+    if (!mine) return; // another user's, or not LiteOS's
+    if (ev.state === 'stopped') notify('“' + mine.title + '” is waiting: ' + (ev.message || 'the printer stopped') + '.', { type: 'error', title: mine.printer });
+    if (ev.state === 'done') { forgetJob(ev.job); notify('“' + mine.title + '” has printed.', { type: 'success', title: mine.printer }); }
+    if (ev.state === 'cancelled') forgetJob(ev.job);
+  }
+
+  const isBlob = (x) => Object.prototype.toString.call(x) === '[object Blob]' || Object.prototype.toString.call(x) === '[object File]';
+  /** LiteOS's print dialog. -> { job, printer } once the printer's queue has it, null if cancelled, false without printing. */
+  async function printDialog(pdf, o, winId) {
+    if (DEV.readyP) await DEV.readyP;
+    if (!canPrint()) return false;
+    o = o || {};
+    const blob = isBlob(pdf) ? pdf : new Blob([pdf], { type: 'application/pdf' });
+    const title = String(o.title || 'Document').slice(0, 120);
+    const caller = winId && wins.get(winId) ? wins.get(winId).app : null;
+    const SIDES = [['one', 'One-sided'], ['long', 'Two-sided, flip on long edge'], ['short', 'Two-sided, flip on short edge']];
+    const ORIENT = [['', 'Automatic'], ['portrait', 'Portrait'], ['landscape', 'Landscape']];
+    return modal((box, done) => {
+      let printers = null;
+      let err = '';
+      let sending = null;
+      // copies and pages can start as the app's own print page had them (o.copies, o.pages)
+      const v = { p: null, copies: Math.min(99, Math.max(1, Math.round(+o.copies) || 1)), pages: typeof o.pages === 'string' ? o.pages : '', sides: 'one', color: true, media: '', orient: '' };
+      const pick = (p) => { v.p = p; v.sides = 'one'; v.color = !!p.color; v.media = p.mediaDefault || (p.media || [])[0] || ''; };
+      const row = (label, ctl) => '<label class="pdlg-row"><span>' + esc(label) + '</span>' + ctl + '</label>';
+      // in the printer list, a printer that can take documents now gets a faint green dot after its name (only there:
+      // the box shows just the chosen printer's name); nothing else is said about it
+      const takes = (p) => p && p.state !== 'stopped';
+      const dot = '<i class="pdlg-dot" aria-hidden="true"></i>';
+      const combo = (key, text) => '<button class="input pdlg-combo" type="button" data-pick="' + key + '" aria-haspopup="menu">' +
+        '<span>' + esc(text) + '</span>' + ICON('down', 14) + '</button>';
+      function draw(status) {
+        let body;
+        if (!printers) body = '<p class="pdlg-note">' + esc(err || 'Finding printers…') + '</p>';
+        else if (!printers.length) body = '<p class="pdlg-note">' + esc(err || 'No printers are set up on this device. Printers are added in LiteLink’s Settings.') + '</p>';
+        else {
+          const p = v.p;
+          body = row('Printer', combo('printer', p.name)) +
+            (p.state === 'stopped' && p.message ? '<p class="pdlg-note warn">' + esc(p.message) + '</p>' : '') +
+            row('Copies', '<input class="input" type="number" data-k="copies" min="1" max="99" value="' + v.copies + '">') +
+            row('Pages', '<input class="input" data-k="pages" placeholder="All" spellcheck="false" value="' + esc(v.pages) + '">') +
+            (p.duplex ? row('Sides', combo('sides', SIDES.find((s) => s[0] === v.sides)[1])) : '') +
+            (p.color ? row('Colour', combo('color', v.color ? 'Colour' : 'Black and white')) : '') +
+            ((p.media || []).length ? row('Paper size', combo('media', v.media || 'Printer default')) : '') +
+            row('Orientation', combo('orient', ORIENT.find((x) => x[0] === v.orient)[1]));
+        }
+        const ready = printers && printers.length;
+        box.innerHTML = '<div class="pdlg-head">' + (caller ? '<img src="' + esc(caller.img) + '" alt="" width="16" height="16">' : '') +
+          '<h2 class="dlg-title">Print “' + esc(title) + '”</h2></div><div class="dlg-body">' + body + '</div>' +
+          '<div class="dlg-actions">' + (status ? '<span class="pdlg-status">' + esc(status) + '</span>' : '') +
+          (ready ? '<button class="btn" type="button" data-b="cancel">Cancel</button><button class="btn is-default" type="button" data-b="print"' + (sending ? ' disabled' : '') + '>Print</button>'
+            : '<button class="btn is-default" type="button" data-b="cancel">' + (printers ? 'Close' : 'Cancel') + '</button>') + '</div>';
+        const d = $('.is-default', box);
+        if (d && !sending) d.focus({ preventScroll: true });
+      }
+      function menu(btn) {
+        const p = v.p;
+        const lists = {
+          printer: printers.map((x) => [x, x.name]),
+          sides: SIDES, color: [[true, 'Colour'], [false, 'Black and white']],
+          media: (p.media || []).map((m) => [m, m]), orient: ORIENT,
+        };
+        const key = btn.dataset.pick;
+        const cur = { printer: p, sides: v.sides, color: v.color, media: v.media, orient: v.orient }[key];
+        const r = btn.getBoundingClientRect();
+        // a combo box's list: printers with the printer icon, the current choice shown by its background (no dot)
+        window.LOS_menu.open(lists[key].map(([val, label]) => Object.assign({ label, action: () => {
+          if (key === 'printer') pick(val); else v[key] = val;
+          draw();
+        } }, key === 'printer' ? { icon: 'device.printer' } : {})), { x: r.left, y: r.bottom + 2 }, { parent: box, cls: 'pdlg-menu' });
+        const m = $('.pdlg-menu', box);
+        if (m) {
+          m.style.minWidth = r.width + 'px';
+          const at = lists[key].findIndex(([val]) => val === cur);
+          const items = m.querySelectorAll('.menu-item');
+          if (items[at]) items[at].classList.add('is-current');
+          if (key === 'printer') printers.forEach((x, i) => { if (takes(x) && items[i]) items[i].insertAdjacentHTML('beforeend', dot); });
+        }
+      }
+      function send() {
+        const p = v.p;
+        const pages = v.pages.replace(/\s+/g, '');
+        if (pages && !/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(pages)) { draw('Pages must look like 1-3,5'); return; }
+        const copies = Math.round(+v.copies);
+        if (!(copies >= 1 && copies <= 99)) { draw('Copies must be from 1 to 99'); return; }
+        const opts = { title, copies, onProgress: (x) => { if (sending) draw('Sending… ' + (x.total ? Math.round((x.sent / x.total) * 100) + '%' : '')); } };
+        if (pages) opts.pages = pages;
+        if (p.duplex) opts.duplex = v.sides;
+        if (p.color) opts.color = v.color;
+        if (v.media && (p.media || []).includes(v.media)) opts.media = v.media;
+        if (v.orient) opts.orientation = v.orient;
+        sending = DEV.ll.print.print(p.id, blob, opts);
+        draw('Sending…');
+        sending.done.then((r) => {
+          const mine = myJobs().filter((x) => x.job !== r.job).concat({ job: r.job, printer: p.name, title, at: Date.now() });
+          saveJobs(mine);
+          sending = null;
+          done({ job: r.job, printer: p.id });
+          notify('“' + title + '” was sent to ' + p.name + '.', { title: 'Printing' });
+        }, (e) => {
+          sending = null;
+          if (e && e.cancelled) return;
+          draw(e.message);
+        });
+      }
+      box.addEventListener('input', (e) => { const k = e.target.dataset && e.target.dataset.k; if (k) v[k] = e.target.value; });
+      box.addEventListener('click', (e) => {
+        const t = e.target.closest('button');
+        if (!t || t.disabled) return;
+        if (t.dataset.pick && !sending) menu(t);
+        else if (t.dataset.b === 'print') send();
+        else if (t.dataset.b === 'cancel') { if (sending) sending.cancel(); sending = null; done(null); }
+      });
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && sending) { sending.cancel(); sending = null; } // the dialog closes; the half-sent PDF goes
+        if (e.key === 'Enter' && e.target.matches('input') && printers && printers.length && !sending) { e.preventDefault(); send(); }
+      }, true);
+      draw();
+      DEV.ll.print.printers().then((list) => { printers = list || []; if (printers.length) pick(printers.find((x) => x.default) || printers[0]); draw(); },
+        (e) => { err = e.message; printers = []; draw(); });
+    }, 'dlg-wide pdlg');
+  }
+
   // USB drives of a LiteLink thin client (usb.js), shown in the picker's Places below the folders: none off a
   // LiteLink device or with USB drives off for the connection, so the picker is then as it always was
   const USB = window.LOS_usb || null;
@@ -3204,6 +3357,13 @@
       confirm: (o) => confirmDialog(o || {}),
       prompt: (o) => promptDialog(o || {}),
       alert: (o) => alertDialog(o || {}),
+    },
+    /** Printing on a LiteLink device (OS.print in the SDK): available() waits for the device to answer. */
+    print: {
+      available: async () => { if (DEV.readyP) await DEV.readyP; return canPrint(); },
+      print: (pdf, o, winId) => printDialog(pdf, o, winId),
+      jobs: () => printJobs(),
+      cancel: (job) => cancelPrintJob(job),
     },
     /** Admin/user changes made in Settings (e.g. display name) refresh shell state. */
     refreshUser(user) { if (user) { S.user = Object.assign({}, S.user, user); renderBars(); } },

@@ -32,6 +32,7 @@ LiteOS.ready((OS) => {
       bluetooth: 'This device has no Bluetooth adapter',
       audio: 'This device has no sound output',
       storage: 'USB drives are turned off for this connection',
+      print: 'Printing is turned off for this connection, or not installed on this device',
     })[area] || 'Not available on this device';
   }
 
@@ -49,6 +50,7 @@ LiteOS.ready((OS) => {
     ['bluetooth', 'Bluetooth & devices', 'settings.bluetooth'],
     ['bluetooth/devices', 'Devices', 'settings.bluetooth', 'Bluetooth devices: pair, connect, remove'],
     ['bluetooth/usb', 'USB drives', 'settings.usb', 'Drives plugged into this device'],
+    ['bluetooth/printers', 'Printers', 'device.printer', 'This device’s printers, your documents printing'],
     ['bluetooth/mouse', 'Mouse', 'settings.mouse', 'Pointer size'],
     ['network', 'Network & internet', 'settings.network'],
     ['network/wifi', 'Wi-Fi', 'settings.wifi', 'Networks in range'],
@@ -374,6 +376,7 @@ LiteOS.ready((OS) => {
             ctl: sw(!!(bt && bt.powered), ' data-dev="bt-power"', 'Bluetooth', !!off || !bt) }),
           goRow('bluetooth/devices', { off, ctl: bt ? plural(paired.length, 'device') : '' }),
           goRow('bluetooth/usb', { off: why('storage') }),
+          goRow('bluetooth/printers', { off: why('print') }),
           goRow('bluetooth/mouse'),
           row({ go: 'time/typing', icon: 'settings.keyboard', title: 'Keyboard', sub: 'Keyboard layout' }));
     },
@@ -400,6 +403,33 @@ LiteOS.ready((OS) => {
           : !drives ? rows(row({ title: 'Loading…' }))
             : drives.length ? rows(...drives.map(usbRow)) : rows(row({ icon: 'settings.usb', title: 'No USB drives', sub: 'Plug a USB drive into this device to see it here' }))) +
         (has('storage') ? '<p class="st-note">' + (dev.caps.storage.usb === 'write' ? 'Files can be copied to and from these drives in Files.' : 'These drives can be read; this connection doesn’t allow writing to them.') + '</p>' : '');
+    },
+
+    // the device's printers (set up in LiteLink's own Settings) and this user's documents still printing
+    'bluetooth/printers'() {
+      const off = why('print');
+      const printers = data.printers;
+      const jobs = data.printJobs || [];
+      const STATE = { idle: 'Ready', printing: 'Printing', stopped: 'Stopped', pending: 'Waiting' };
+      const pRow = (p) => row({ icon: 'device.printer', title: esc(p.name),
+        sub: esc((p.kind === 'usb' ? 'USB' : 'Network') + ' · ' + (p.state === 'stopped' && p.message ? p.message : STATE[p.state] || p.state) +
+          (p.duplex ? ' · Two-sided' : '') + (p.color ? ' · Colour' : '')),
+        // more options (print a test page, details, remove) in a menu
+        ctl: (p.default ? '<span class="hint">Used last</span>' : '') +
+          '<button class="icon-btn" data-print-more="' + esc(p.id) + '" aria-label="More for ' + esc(p.name) + '" title="More options">' + G('moreV') + '</button>' });
+      return bridgeInfo(['print']) +
+        rows(row({ icon: 'device.printer', title: 'Add a printer', sub: 'A printer plugged in by USB or on the network', off,
+          ctl: '<button class="btn btn-primary" data-act="print-add"' + (off ? ' disabled' : '') + '>Add printer</button>' })) +
+        h('Printers') +
+        (off ? rows(row({ icon: 'device.printer', title: 'Printers', off }))
+          : !printers ? rows(row({ title: 'Loading…' }))
+            : printers.length ? rows(...printers.map(pRow)) : rows(row({ icon: 'device.printer', title: 'No printers', sub: 'Add one above, or in LiteLink’s own Settings' }))) +
+        (has('print') ? rows(row({ icon: 'settings.system', title: 'Printer settings', sub: 'Printers in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="printers"', off: why('session') })) : '') +
+        (has('print') ? h('Your documents') + (jobs.length
+          ? rows(...jobs.map((j) => row({ icon: 'device.printer', title: esc(j.title), sub: esc(j.printer + ' · ' + (j.state === 'stopped' && j.message ? j.message : STATE[j.state] || j.state)),
+            ctl: '<button class="btn" data-print-cancel="' + esc(j.job) + '">Cancel</button>' })))
+          : rows(row({ title: 'Nothing printing', sub: 'Documents you print from LiteOS show here until they’re done' }))) +
+          '<p class="st-note">Only your own documents are shown; others using this device see theirs.</p>' : '');
     },
 
     'bluetooth/mouse'() {
@@ -805,6 +835,7 @@ LiteOS.ready((OS) => {
     if (want('network') && id === 'network/wifi') set('wifi', LL.network.wifi());
     if (want('bluetooth') && (id === 'home' || top === 'bluetooth')) set('bt', LL.bluetooth.state());
     if (want('storage') && (id === 'bluetooth/usb' || id === 'system/storage')) set('drives', LL.storage.list());
+    if (want('print') && id === 'bluetooth/printers') { set('printers', LL.print.printers()); set('printJobs', OS.printJobs()); }
     if (want('audio') && id === 'system/sound') set('audio', LL.audio.state());
     if (want('display') && id === 'system/display') set('disp', LL.display.state());
     if (want('input') && (top === 'time')) set('input', LL.input.state());
@@ -924,6 +955,81 @@ LiteOS.ready((OS) => {
     } catch (e) { if (dlg.el.open) $('.err', dlg.el).textContent = e.message; }
   }
 
+  // A test page: a one-page PDF made here (LiteOS's name, the printer's, the time), sent to the printer as it is.
+  function testPagePdf(printerName) {
+    // PDF text: plain ASCII, with \ ( ) escaped
+    const asc = (t) => String(t).replace(/[^\x20-\x7E]/g, '?').replace(/[\\()]/g, (c) => '\\' + c);
+    const lines = [['LiteOS test page', 24, 760], ['Printer: ' + printerName, 13, 720], ['Printed from LiteOS on ' + new Date().toLocaleString(), 13, 700],
+      ['If you can read this, the printer works.', 13, 660]];
+    const text = 'BT ' + lines.map(([t, size, y]) => '/F1 ' + size + ' Tf 1 0 0 1 72 ' + y + ' Tm (' + asc(t) + ') Tj').join(' ') + ' ET' +
+      ' 0.18 0.44 0.84 RG 2 w 72 640 m 523 640 l S';
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', '<< /Length ' + text.length + ' >>\nstream\n' + text + '\nendstream'];
+    let out = '%PDF-1.4\n';
+    const at = objs.map((o, i) => { const off = out.length; out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; return off; });
+    const xref = out.length;
+    out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n' + at.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('') +
+      'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    return new Blob([out], { type: 'application/pdf' });
+  }
+  async function printTestPage(p) {
+    try {
+      await LL.print.print(p.id, testPagePdf(p.name), { title: 'Test page' }).done;
+      OS.notify('A test page was sent to ' + p.name + '.', { type: 'success', title: 'Test page' });
+    } catch (e) { if (!e.cancelled) OS.notify(e.message, { type: 'error', title: 'Couldn’t print a test page' }); }
+  }
+  function printerDetails(p) {
+    const STATE = { idle: 'Ready', printing: 'Printing', stopped: 'Stopped' };
+    OS.dialog.alert({ title: p.name, message: [
+      'Connection: ' + (p.kind === 'usb' ? 'USB' : 'Network'),
+      'Status: ' + (STATE[p.state] || p.state) + (p.message ? ' (' + p.message + ')' : ''),
+      'Two-sided: ' + (p.duplex ? 'Yes' : 'No'),
+      'Colour: ' + (p.color ? 'Yes' : 'No, black and white'),
+      'Paper: ' + ((p.media || []).join(', ') || 'Printer default') + (p.mediaDefault ? ' (default ' + p.mediaDefault + ')' : ''),
+      p.default ? 'Used last on this device' : '',
+    ].filter(Boolean).join('\n') });
+  }
+
+  // Add a printer, as LiteLink's Settings does: the printers it can see now (USB and network), or one by its address.
+  // Setting one up changes the device for everyone: LiteLink asks for its admin password in its own dialog.
+  async function addPrinter() {
+    const added = async (name) => {
+      OS.notify(name + ' is ready to use.', { type: 'success', title: 'Printer added' });
+      data.printers = await LL.print.printers().catch(() => data.printers); render();
+    };
+    const dlg = dialog('Add a printer', '<p class="hint">Printers plugged into this device or on its network show here.</p>' +
+      '<div class="st-scan">' + ico('device.printer', 20) + '<span>Looking for printers…</span></div>' +
+      '<label class="field"><span>Or its address</span><input class="input" name="addr" spellcheck="false" placeholder="ipp://office-printer.local or 192.168.1.50"></label>',
+    'Add', async (f) => {
+      const addr = f.addr.value.trim();
+      if (!addr) throw new Error('Choose a printer above, or type its address.');
+      const r = await LL.print.add(addr);
+      await added(r.name || addr);
+    });
+    try {
+      const found = await LL.print.find();
+      if (!dlg.el.open) return;
+      $('.st-scan', dlg.el).outerHTML = found.length
+        ? '<div class="st-scanlist">' + found.map((p) => {
+          const note = p.added ? 'Added' : !p.driverless ? 'Needs a driver LiteLink doesn’t include' : '';
+          return '<button type="button" class="st-scanrow" data-uri="' + esc(p.uri) + '" data-name="' + esc(p.name) + '"' + (note ? ' disabled' : '') + '>' +
+            ico('device.printer', 20) + '<span>' + esc(p.name) + '</span>' + (note ? '<small class="hint">' + esc(note) + '</small>' : '') + '</button>';
+        }).join('') + '</div>'
+        : '<div class="st-scan"><span>No printers found. Check that the printer is on and connected, or type its address.</span></div>';
+      dlg.el.querySelectorAll('[data-uri]:not([disabled])').forEach((b) => b.addEventListener('click', async () => {
+        b.disabled = true;
+        const label = b.querySelector('span');
+        label.textContent = 'Adding…';
+        try {
+          const r = await LL.print.add(b.dataset.uri, b.dataset.name);
+          dlg.close();
+          await added(r.name || b.dataset.name);
+        } catch (e) { $('.err', dlg.el).textContent = e.message; b.disabled = false; label.textContent = b.dataset.name; }
+      }));
+    } catch (e) { if (dlg.el.open) $('.err', dlg.el).textContent = e.message; }
+  }
+
   // ------------------------------------------------------------------ device settings (window.LiteLink)
   async function devCall(fn, failTitle) {
     try { return await fn(); } catch (e) { OS.notify(e.message, { type: 'error', title: failTitle }); return null; }
@@ -1003,6 +1109,31 @@ LiteOS.ready((OS) => {
       data.drives = await devCall(() => LL.storage.list(), 'Couldn’t list the drives') || []; render();
       return;
     }
+    if (b.dataset.printMore) {
+      const p = (data.printers || []).find((x) => x.id === b.dataset.printMore);
+      if (!p) return;
+      const r = b.getBoundingClientRect();
+      OS.menu([
+        { label: 'Print a test page', icon: 'device.printer', action: () => printTestPage(p) },
+        { label: 'Details', icon: 'info', action: () => printerDetails(p) },
+        'sep',
+        // it changes the device for everyone: asked first here, then LiteLink asks for its admin password
+        { label: 'Remove printer', icon: 'trash', danger: true, action: async () => {
+          const ok = await OS.dialog.confirm({ title: 'Remove ' + p.name + '?', message: 'It won’t be offered for printing on this device any more, to anyone.', okLabel: 'Remove', danger: true });
+          if (!ok) return;
+          const done = await devCall(() => LL.print.remove(p.id), 'Couldn’t remove the printer');
+          if (done !== null) OS.notify(p.name + ' was removed.', { type: 'success', title: 'Printer removed' });
+          data.printers = await devCall(() => LL.print.printers(), 'Couldn’t list the printers') || data.printers; render();
+        } },
+      ], { x: r.right - 210, y: r.bottom + 4 });
+      return;
+    }
+    if (b.dataset.printCancel) {
+      b.disabled = true;
+      await devCall(() => OS.cancelPrintJob(b.dataset.printCancel), 'Couldn’t cancel the document');
+      data.printJobs = await OS.printJobs().catch(() => data.printJobs); render();
+      return;
+    }
     if (b.dataset.btConnect) {
       b.disabled = true;
       await devCall(() => LL.bluetooth.connect(b.dataset.btConnect, b.dataset.on === '1'), b.dataset.on === '1' ? 'Couldn’t connect' : 'Couldn’t disconnect');
@@ -1071,6 +1202,7 @@ LiteOS.ready((OS) => {
       }
       case 'll-settings': await devCall(() => LL.session.openSettings(b.dataset.page), 'Couldn’t open LiteLink’s Settings'); break;
       case 'bt-add': addBluetooth(); break;
+      case 'print-add': addPrinter(); break;
       case 'copy-specs': {
         const text = Array.from(document.querySelectorAll('.st-exp.open .st-kv, .st-exp .st-kv')).map((dl) => Array.from(dl.children).reduce((acc, el) => acc + (el.tagName === 'DT' ? el.textContent + '\t' : el.textContent + '\n'), '')).join('\n');
         try { await navigator.clipboard.writeText(text || (OS.system.instanceName || 'LiteOS')); OS.notify('The device specifications were copied.', { type: 'success', title: 'Copied' }); } catch (x) { OS.notify('The clipboard isn’t available here.', { type: 'error', title: 'Couldn’t copy' }); }
@@ -1264,6 +1396,10 @@ LiteOS.ready((OS) => {
       if (caps.storage) {
         const drives = async () => { data.drives = await LL.storage.list().catch(() => data.drives); if (page === 'bluetooth/usb' || page === 'system/storage') redraw(); };
         ['device-added', 'device-removed', 'device-ejected'].forEach((n) => LL.on(n, drives));
+      }
+      if (caps.print) { // the Printers page follows the printers and this user's documents
+        LL.on('printers', (list) => { data.printers = list; if (page === 'bluetooth/printers') redraw(); });
+        LL.on('print-job', async () => { if (page !== 'bluetooth/printers') return; data.printJobs = await OS.printJobs().catch(() => data.printJobs); redraw(); });
       }
       go(page, true);
     });

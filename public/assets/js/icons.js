@@ -39,6 +39,7 @@
     grid: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
     panel: 'M3 4h18v16H3z M15 4v16',
     more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+    moreV: 'M12 5h.01 M12 12h.01 M12 19h.01',
     cut: 'M6 6a2.5 2.5 0 1 0 0 .01z M6 18a2.5 2.5 0 1 0 0 .01z M8 7.5L20 18 M8 16.5L20 6',
     copy: 'M8 8h12v12H8z M16 8V4H4v12h4',
     paste: 'M8 4h8v3H8z M6 5H5v16h14V5h-1',
