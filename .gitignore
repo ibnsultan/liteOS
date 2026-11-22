@@ -25,3 +25,5 @@ public/icons
 
 storage/*.key
 storage/pail
+
+compile_*/
