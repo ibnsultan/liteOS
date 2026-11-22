@@ -16,6 +16,16 @@ span.brand:hover { background: none !important; }
 .topbar .spacer { min-width: 8px; }
 .lock .topbar { z-index: 2; }
 @media (max-width: 760px) { .topbar .menus { display: none; } }
+/* narrow screens: the controls and the clock keep their size and the app name gives way ("…"); below 600px the gaps
+   tighten and the name beside the kite and the date go (the time stays); below 420px search goes (the kite opens it) */
+.topbar > .brand, .topbar > .tb-icon, .topbar > .status { flex: none; }
+.topbar .app-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .status .tb-date { margin-right: -4px; }
+@media (max-width: 600px) {
+  .topbar { gap: 6px; padding: 0 4px 0 8px; }
+  .topbar .brand-name, .topbar .tb-date { display: none; }
+}
+@media (max-width: 420px) { .topbar [data-act="launcher"][aria-label="Search"] { display: none; } }
 
 /* ------------------------------------------------------------ the desktop never scrolls */
 html, body, .os-root, .lock, .oobe { overflow: clip; }

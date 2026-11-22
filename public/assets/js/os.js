@@ -293,8 +293,8 @@
     o = o || {};
     const name = esc(S.system.instanceName || 'LiteOS');
     const brand = o.launcher
-      ? '<button class="brand" data-act="launcher" aria-label="Open launcher"><img src="assets/img/kite-blue.svg" alt="">' + name + '</button>'
-      : '<span class="brand"><img src="assets/img/kite-blue.svg" alt="">' + name + '</span>';
+      ? '<button class="brand" data-act="launcher" aria-label="Open launcher"><img src="assets/img/kite-blue.svg" alt=""><span class="brand-name">' + name + '</span></button>'
+      : '<span class="brand"><img src="assets/img/kite-blue.svg" alt=""><span class="brand-name">' + name + '</span></span>';
     let left = '';
     if (o.app) {
       left += '<span class="app-name">' + esc(o.app) + '</span>';
@@ -304,10 +304,10 @@
     if (o.desktop) {
       right = netButton('tb-icon') + '<button class="tb-icon" data-act="volume" aria-label="Volume" title="Volume">' + ICON(volIconName(), 16) + '</button>' +
         '<button class="tb-icon" data-act="launcher" aria-label="Search" title="Search (Alt+Space)">' + ICON('search', 15) + '</button>' +
-        '<button class="status' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><span data-clock="td"></span></button>' +
+        '<button class="status' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><span class="tb-date" data-clock="d"></span><span data-clock="t"></span></button>' +
         '<button class="tb-icon" data-act="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
     } else {
-      right = '<span class="status static" data-clock="td"></span><button class="tb-icon" data-l="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
+      right = '<span class="status static"><span class="tb-date" data-clock="d"></span><span data-clock="t"></span></span><button class="tb-icon" data-l="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
     }
     return '<div class="topbar glass">' + brand + left + '<span class="spacer"></span>' + right + '</div>';
   }
