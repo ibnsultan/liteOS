@@ -13,6 +13,8 @@
         "esbuild": "^0.28.2",
         "fflate": "^0.8.3",
         "laravel-vite-plugin": "^3.1",
+        "pdf-lib": "1.17.1",
+        "pdfjs-dist": "6.5.438",
         "prosemirror-commands": "^1.7.2",
         "prosemirror-dropcursor": "^1.8.4",
         "prosemirror-gapcursor": "^1.4.1",

@@ -1,0 +1,31 @@
+{
+  "id": "pdf",
+  "name": "PDF Viewer",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Read, search and print PDF documents.",
+  "author": "LiteOS",
+  "category": "Productivity",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "pdf",
+  "colors": [
+    "#F07176",
+    "#D63B41"
+  ],
+  "opens": [
+    "pdf"
+  ],
+  "window": {
+    "size": [
+      1040,
+      740
+    ],
+    "chrome": "custom",
+    "single": false,
+    "material": "mica"
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

@@ -34,7 +34,7 @@ return [
 
     // the launcher's order for the bundled apps; apps not listed (installed later) follow, by name. Which apps are part
     // of the OS and can't be removed is "system": true in their manifest.
-    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'browser', 'board', 'notes', 'calculator', 'clock', 'settings'],
+    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'settings'],
 
     // file-type groups, by extension; the SDK hands these to apps as OS.kinds
     'kinds' => [
