@@ -1570,7 +1570,7 @@
     if (!body) return;
     const qv = UI.lsQuery.trim().toLowerCase();
     const fileBtn = (f) => '<button class="ls-file" data-file="' + esc(f.path) + '" data-type="' + f.type + '">' + fileTile(f, 34, 9) +
-      '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc(parent(f.path)) + '</small></span></button>';
+      '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc('My drive' + (parent(f.path) === '/' ? '' : parent(f.path))) + '</small></span></button>'; // "My drive/Desktop/samples"
     if (qv) {
       const apps = window.LOS_APPS.filter((a) => a.name.toLowerCase().includes(qv));
       const files = (UI.results || []).filter((f) => f.name.toLowerCase().includes(qv));
