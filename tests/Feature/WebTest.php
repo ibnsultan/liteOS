@@ -247,6 +247,39 @@ class WebTest extends TestCase
         $this->assertSame('bytes=0-6', WebClient::sent()[0]['headers']['Range']);
     }
 
+    public function test_relayed_answers_are_inert_on_the_liteos_origin(): void
+    {
+        WebClient::fake([
+            'evil.example.com/page' => [200, ['Content-Type' => 'text/html; charset=utf-8'], '<script>parent.alert(1)</script>'],
+            'evil.example.com/image.svg' => [200, ['Content-Type' => 'image/svg+xml'], '<svg onload="alert(1)"/>'],
+            'evil.example.com/untyped' => [200, [], 'data'],
+            'tv.example.com/seg.ts' => [200, ['Content-Type' => 'video/MP2T'], 'TS'],
+            'tv.example.com/index.m3u8' => [200, ['Content-Type' => 'application/vnd.apple.mpegurl'], "#EXTM3U\nseg.ts\n"],
+            'radio.example.com/*' => [200, ['Content-Type' => 'audio/aac'], 'AAC'],
+        ]);
+        $expect = [
+            'http://evil.example.com/page' => 'application/octet-stream',
+            'http://evil.example.com/image.svg' => 'application/octet-stream',
+            'http://evil.example.com/untyped' => 'application/octet-stream',
+            'http://tv.example.com/seg.ts' => 'video/MP2T',
+            'http://tv.example.com/index.m3u8' => 'application/vnd.apple.mpegurl; charset=utf-8',
+            'http://radio.example.com/live' => 'audio/aac',
+        ];
+
+        config(['liteos.net.relays_at_once' => 10]); // the bodies aren't read here, so their slots aren't given back
+        $links = $this->postJson('/os/net/sign', ['urls' => array_keys($expect)])->json('result');
+        foreach ($expect as $url => $type) {
+            $this->get($links[$url])
+                ->assertOk()
+                ->assertHeader('Content-Type', $type)
+                ->assertHeader('Content-Security-Policy', "sandbox; default-src 'none'; frame-ancestors 'none'")
+                ->assertHeader('Content-Disposition', 'attachment')
+                ->assertHeader('X-Content-Type-Options', 'nosniff');
+        }
+    }
+
+    // ------------------------------------------------------------ limits per account
+
     public function test_signing_relaying_and_downloading_are_rate_limited_per_account(): void
     {
         config(['liteos.net.sign_per_minute' => 2, 'liteos.net.stream_per_minute' => 2, 'liteos.net.fetch_per_minute' => 1]);

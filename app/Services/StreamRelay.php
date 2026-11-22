@@ -13,9 +13,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 //   POST, so other sites can't use the relay.
 // - Every hop passes PublicAddress (WebClient).
 // - HLS playlists are rewritten so their segments, keys and sub-playlists go through the relay too.
+// - What comes back is someone else's content on the LiteOS origin, and the addresses can come from an imported
+//   playlist, so it is made inert: sandboxed, sent as a download if a browser ever opens it as a page, and given a
+//   type that can't render as a page unless it is media (headers()). The player reads it with fetch and <video>,
+//   which ignore all three.
 class StreamRelay
 {
     const PLAYLIST_MAX = 16 * 1024 * 1024;
+
+    // types passed through as they are; anything else (text/html, image/svg+xml, XML…) goes out as octet-stream
+    const MEDIA_TYPES = ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'audio/mpegurl', 'audio/x-mpegurl',
+        'application/dash+xml', 'video/mp2t', 'application/octet-stream', 'binary/octet-stream'];
 
     const USER_AGENT = 'VLC/3.0.20 LibVLC/3.0.20';
 
@@ -61,13 +69,10 @@ class StreamRelay
                 }
             }
 
-            return response($rewrite ? $this->rewrite($text, $web->url) : $text, 200, [
-                'Content-Type' => 'application/vnd.apple.mpegurl; charset=utf-8',
-                'Cache-Control' => 'no-store',
-            ]);
+            return response($rewrite ? $this->rewrite($text, $web->url) : $text, 200, $this->headers('application/vnd.apple.mpegurl; charset=utf-8'));
         }
 
-        $out = ['Content-Type' => $type !== '' ? $type : 'application/octet-stream', 'Cache-Control' => 'no-store'];
+        $out = $this->headers($type);
         // curl unpacks compressed answers, so the server's length only holds for uncompressed ones
         $names = $web->header('Content-Encoding') === '' ? ['Content-Length', 'Content-Range', 'Accept-Ranges'] : ['Accept-Ranges'];
         foreach ($names as $name) {
@@ -132,6 +137,25 @@ class StreamRelay
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The headers every relayed answer carries: a type that only renders as media, a sandbox with nothing allowed, and
+     * a download if it is ever opened as a page.
+     *
+     * @return array<string, string>
+     */
+    private function headers(string $type): array
+    {
+        $essence = strtolower(trim(explode(';', $type)[0]));
+        $media = str_starts_with($essence, 'audio/') || str_starts_with($essence, 'video/') || in_array($essence, self::MEDIA_TYPES, true);
+
+        return [
+            'Content-Type' => $media ? $type : 'application/octet-stream',
+            'Content-Security-Policy' => "sandbox; default-src 'none'; frame-ancestors 'none'",
+            'Content-Disposition' => 'attachment',
+            'Cache-Control' => 'no-store',
+        ];
     }
 
     private function isPlaylist(string $url, string $type, string $head): bool
