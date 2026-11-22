@@ -850,7 +850,7 @@ LiteOS.ready((OS) => {
     const view = views[page] || views.home;
     el.innerHTML = '<div class="st-inner">' + header(page) + view() + '</div>';
     el.scrollTop = scroll;
-    OS.win.setTitle(page === 'home' ? 'Settings' : PAGES[page].title + ' — Settings');
+    OS.win.setTitle('Settings'); // the window is always "Settings", whichever page is open
   }
   // redraw the page, keeping the search box as it was
   function redraw() {
