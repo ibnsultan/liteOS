@@ -452,7 +452,7 @@ LiteOS.ready((OS) => {
         rows(goRow('network/wifi', { off, ctl: n && n.wifi && n.wifi.present ? (n.wifi.enabled ? 'On' : 'Off') : n ? 'No adapter' : '' }),
           goRow('network/ethernet', { off, ctl: n && n.kind === 'ethernet' ? 'Connected' : '' }),
           goRow('network/vpn', { off, ctl: vpns.length ? plural(vpns.filter((v) => v.active).length, 'connection') + ' on' : '' }),
-          row({ icon: 'settings.network', title: 'Advanced network settings', sub: 'Network adapters and VPN in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') }));
+          row({ icon: 'settings.network-advanced', title: 'Advanced network settings', sub: 'Network adapters and VPN in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') }));
     },
 
     'network/wifi'() {
@@ -467,7 +467,7 @@ LiteOS.ready((OS) => {
           (!list ? rows(row({ title: 'Looking for networks…' }))
             : list.length ? rows(...list.map((w) => row({ icon: 'settings.wifi', title: esc(w.ssid || 'Hidden network'), sub: (w.active ? 'Connected · ' : '') + (w.security ? 'Secured' : 'Open') + ' · ' + bars(w.signal) + ' signal' })))
               : rows(row({ title: 'No networks found' }))) +
-          rows(row({ icon: 'settings.network', title: 'Join or forget a network', sub: 'Wi-Fi networks are managed in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') })));
+          rows(row({ icon: 'settings.wifi', title: 'Join or forget a network', sub: 'Wi-Fi networks are managed in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') })));
     },
 
     'network/ethernet'() {
@@ -489,7 +489,7 @@ LiteOS.ready((OS) => {
           : !n ? rows(row({ title: 'Loading…' }))
             : vpns.length ? rows(...vpns.map((v) => row({ icon: 'settings.vpn', title: esc(v.name), sub: v.active ? 'Connected' : 'Not connected' })))
               : rows(row({ icon: 'settings.vpn', title: 'No VPN connections', sub: 'VPN connections are set up in LiteLink’s Settings' }))) +
-        rows(row({ icon: 'settings.network', title: 'Manage VPN connections', sub: 'Turning a VPN on or off happens in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') }));
+        rows(row({ icon: 'settings.vpn', title: 'Manage VPN connections', sub: 'Turning a VPN on or off happens in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="network"', off: why('session') }));
     },
 
     // ---------------------------------------------------------------- Personalisation
