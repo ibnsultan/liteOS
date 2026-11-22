@@ -75,14 +75,18 @@
     note.t = setTimeout(() => n.remove(), 5000);
   }
 
-  // The device's power buttons, when LiteOS runs on a LiteLink device (its helper listens on this port).
-  async function bridge(path, body) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 600);
+  // The device's own End session, Restart and Shut down: only when LiteOS runs on a LiteLink device that allows them
+  // (window.LiteLink, docs/litelink-integration.md). Anywhere else they aren't in the menu and nothing calls LiteLink.
+  const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+  let devCaps = null;
+  if (LL) Promise.resolve(LL.ready).then((c) => { devCaps = c || null; }, () => {});
+  const devHas = (area) => !!(devCaps && devCaps[area]);
+  async function deviceAction(kind) {
     try {
-      const r = await fetch('http://127.0.0.1:7777' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: ctl.signal });
-      return r.ok;
-    } catch (e) { return false; } finally { clearTimeout(t); }
+      if (kind === 'end') await LL.session.end();
+      else await LL.power[kind]();
+      showBoot({ end: 'Ending the session…', restart: 'Restarting…', shutdown: 'Shutting down…' }[kind]);
+    } catch (e) { note(e.message); }
   }
 
   const actions = $('.auth-actions');
@@ -105,9 +109,10 @@
         window.LOS_menu.open([
           signOut ? { label: 'Sign out', icon: 'logout', action: () => { showBoot('Signing out…'); signOut.submit(); } } : null,
           { label: 'Reload', icon: 'reload', action: () => (embedded ? window.top : window).location.reload() },
-          'sep',
-          { label: 'Restart device', icon: 'rotate', action: async () => { if (await bridge('/power', { action: 'reboot' })) showBoot('Restarting…'); else note('Restart isn’t available on this device.'); } },
-          { label: 'Shut down', icon: 'power', action: async () => { if (await bridge('/power', { action: 'shutdown' })) showBoot('Shutting down…'); else note('Shut down isn’t available here. You can close this browser tab.'); } },
+          devHas('session') || devHas('power') ? 'sep' : null,
+          devHas('session') ? { label: 'End session', icon: 'external', action: () => deviceAction('end') } : null,
+          devHas('power') ? { label: 'Restart device', icon: 'rotate', action: () => deviceAction('restart') } : null,
+          devHas('power') ? { label: 'Shut down', icon: 'power', action: () => deviceAction('shutdown') } : null,
         ].filter(Boolean), above(b));
       }
     });

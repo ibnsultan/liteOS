@@ -342,8 +342,29 @@
     else if (host && host.focusChanged) host.focusChanged();
   }, 0));
 
+  // ------------------------------------------------------------------ the device (LiteLink)
+  // On a LiteLink thin client, LiteLink gives every LiteOS frame its own window.LiteLink: the device's USB drives,
+  // sound, network, power, Bluetooth, printers… (docs/litelink-integration.md). OS.device wraps this frame's one.
+  // Everywhere else api is null, ready gives null and has() is false, so device features stay off on an ordinary PC.
+  const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+  let devCaps = null;
+  const devReady = LL ? Promise.resolve(LL.ready).then((c) => { devCaps = c || null; return devCaps; }, () => null) : Promise.resolve(null);
+  const device = Object.freeze({
+    /** window.LiteLink, or null off a LiteLink device. Check has() (after ready) before using an area. */
+    get api() { return LL; },
+    /** Resolves to the capabilities ({ storage, audio, network, power, print, … }), or null; never rejects. */
+    ready: devReady,
+    /** True once the device answered. */
+    get available() { return !!devCaps; },
+    /** What the device and this connection allow ({} until ready). */
+    get capabilities() { return devCaps || {}; },
+    /** Whether an area ('storage', 'audio', 'network', 'power', 'session', 'bluetooth', 'print', …) can be used. */
+    has(area) { return !!(devCaps && devCaps[area]); },
+  });
+
   // ------------------------------------------------------------------ public API
   const LiteOS = {
+    device,
     inShell: !!host,
     args: Object.fromEntries(params.entries()),
     get user() { return current.user; },

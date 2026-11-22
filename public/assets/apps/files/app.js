@@ -68,7 +68,7 @@ LiteOS.ready((OS) => {
   // This PC next to My drive, open like folders (usb:<drive>:/path), copy to and from My drive, and eject. All of it
   // waits for LiteLink to be detected and to allow USB drives; without it (an ordinary PC) none of this runs and Files
   // is as it always was. A drive is read only unless the connection allows writing (no rename or delete either way).
-  const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+  const LL = OS.device.api; // window.LiteLink on a LiteLink device, null elsewhere (sdk.js)
   const usb = { on: false, write: false, drives: [], free: new Map(), ejected: new Set() };
   const isUsb = (p) => typeof p === 'string' && p.startsWith('usb:');
   const usbParse = (p) => { const m = /^usb:([^:]+):(\/.*)$/.exec(p || ''); return m ? { id: m[1], path: m[2] } : null; };
@@ -300,7 +300,8 @@ LiteOS.ready((OS) => {
       const writable = isFolder() || usbWritableHere();
       // Eject: inside a drive, or with a drive selected in This PC
       const ejectId = onUsb ? usbParse(st.path).id : (m === 'device' && one && one.usb ? one.id : null);
-      h += cmdBtn('new', onUsb ? 'New folder' : 'New', I('plus'), writable) + cmdIcon('upload', 'Upload', 'upload', writable) + '<span class="sep"></span>' +
+      // no Upload on a LiteLink thin client: it would open the device's own files (sticks come in through This PC)
+      h += cmdBtn('new', onUsb ? 'New folder' : 'New', I('plus'), writable) + (LL ? '' : cmdIcon('upload', 'Upload', 'upload', writable)) + '<span class="sep"></span>' +
         cmdIcon('cut', 'Cut', 'cut', files && !onUsb) + cmdIcon('copy', 'Copy', 'copy', files) + cmdIcon('paste', 'Paste', 'paste', !!clip.get() && canPasteHere()) +
         cmdIcon('rename', 'Rename', 'rename', files && !onUsb && st.sel.size === 1) + cmdIcon('download', 'Download', 'download', !!one && one.type === 'file') +
         cmdIcon('delete', 'Move to Trash', 'trash', files && !onUsb) + '<span class="sep"></span>' +
@@ -542,7 +543,7 @@ LiteOS.ready((OS) => {
     } else if (!list.length) {
       content.innerHTML = '<div class="empty">' + S(m === 'trash' ? 'shell.trash' : m === 'search' ? 'shell.search' : 'place.folder', 40) +
         '<div style="font-weight:600;color:var(--text)">' + (m === 'trash' ? 'Trash is empty' : m === 'search' ? 'No files found' : m === 'recent' ? 'Nothing here yet' : 'This folder is empty') + '</div>' +
-        '<div>' + (m === 'folder' ? 'Drop files here, or use New and Upload.' : m === 'usb' && usb.write ? 'Drop files here, or paste from My drive.' : m === 'recent' ? 'Files you open or save show up here.' : '') + '</div></div>';
+        '<div>' + (m === 'folder' ? (LL ? 'Use New to make a file or folder here.' : 'Drop files here, or use New and Upload.') : m === 'usb' && usb.write ? 'Drop files here, or paste from My drive.' : m === 'recent' ? 'Files you open or save show up here.' : '') + '</div></div>';
     } else if (curView() !== 'list') {
       const v = curView();
       const isImg = (e) => e.type === 'file' && window.LOS_KINDS.image.includes(e.ext);
@@ -915,7 +916,7 @@ LiteOS.ready((OS) => {
       const u = usbParse(st.path);
       OS.menu([viewItem(), sortItem(), 'sep', { label: 'Refresh', icon: 'reload', key: 'F5', action: refresh }]
         .concat(usb.write ? [{ label: 'Paste', icon: 'paste', key: 'Ctrl+V', disabled: !clip.get(), action: () => paste(st.path) }, 'sep',
-          { label: 'New folder', icon: 'folder', action: usbNewFolder }, { label: 'Upload files', icon: 'upload', action: () => $('#upload').click() }] : [])
+          { label: 'New folder', icon: 'folder', action: usbNewFolder }] : [])
         .concat(['sep', { label: 'Eject ' + usbName(u.id), action: () => usbEject(u.id) }]), at);
       return;
     }
@@ -928,7 +929,7 @@ LiteOS.ready((OS) => {
       { label: 'Paste', icon: 'paste', key: 'Ctrl+V', disabled: !clip.get(), action: () => paste(st.path) },
       'sep',
       { label: 'New', icon: 'plus', items: newItems() },
-      { label: 'Upload files', icon: 'upload', action: () => $('#upload').click() },
+      ...(LL ? [] : [{ label: 'Upload files', icon: 'upload', action: () => $('#upload').click() }]), // not on a LiteLink thin client
     ].concat(window.LOS_opensWithCode(st.path, true) ? ['sep', { label: 'Open with Code', icon: 'code', action: () => OS.open('code', { folder: st.path }) }] : []), at);
   }
 
@@ -1261,6 +1262,7 @@ LiteOS.ready((OS) => {
     document.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop'));
     if (isExternalFiles(ev)) {
       ev.preventDefault();
+      if (LL) return; // the thin client's own files don't come in (LiteLink device)
       const dir = target && target.dataset.dropdir ? target.dataset.dropdir : (canPasteHere() ? st.path : null);
       if (dir) { await upload(ev.dataTransfer.files, dir); announce(); }
       return;

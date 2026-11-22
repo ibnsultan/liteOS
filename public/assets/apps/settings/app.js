@@ -19,7 +19,7 @@ LiteOS.ready((OS) => {
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 
   // ------------------------------------------------------------------ the LiteLink device bridge
-  const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+  const LL = OS.device.api; // window.LiteLink on a LiteLink device, null elsewhere (sdk.js)
   const dev = { ready: !LL, caps: null, err: {} };
   const has = (area) => !!(dev.caps && dev.caps[area]);
   const NO_LITELINK = 'Available when LiteOS runs on a LiteLink device';

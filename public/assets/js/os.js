@@ -105,15 +105,76 @@
     return wp.css;
   }
 
-  async function bridge(path, body) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 600);
+  // ================================================================== the device (LiteLink)
+  // On a LiteLink thin client, LiteLink gives this page window.LiteLink (docs/litelink-integration.md). The shell
+  // uses it for the device's power (restart, shut down, End session), its sound (the volume in the top bar, the tray
+  // and Quick settings), its network (an icon with its state) and Bluetooth (a Quick settings tile): each only once
+  // LiteLink answered and allows that area. Anywhere else DEV.ll stays null, none of this shows, and nothing calls it.
+  const DEV = { ll: null, caps: {}, audio: null, net: null, bt: null, started: false };
+  const devHas = (area) => !!(DEV.ll && DEV.caps[area]);
+  const devAudio = () => (devHas('audio') && DEV.caps.audio.output && DEV.audio ? DEV.audio : null);
+  function startDevice() {
+    if (DEV.started) return;
+    DEV.started = true;
+    const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
+    if (!LL) return;
+    DEV.readyP = Promise.resolve(LL.ready).then((caps) => {
+      if (!caps) return;
+      DEV.ll = LL;
+      DEV.caps = caps;
+      const redraw = () => { renderBars(); if (UI.pop && UI.pop !== 'launcher') renderPop(); };
+      if (caps.audio && caps.audio.output) {
+        LL.audio.state().then((a) => { DEV.audio = a; redraw(); }).catch(() => {});
+        // changed elsewhere (LiteLink's volume menu, a headset, Settings): follow, unless a slider is being dragged
+        LL.on('audio', (a) => { DEV.audio = a; if (!(document.activeElement && document.activeElement.matches('.qrange[data-k=volume]'))) redraw(); });
+      }
+      if (caps.network) {
+        LL.network.state().then((n) => { DEV.net = n; redraw(); }).catch(() => {});
+        LL.on('network', (n) => { DEV.net = n; redraw(); });
+      }
+      if (caps.bluetooth) LL.bluetooth.state().then((b) => { DEV.bt = b; redraw(); }).catch(() => {});
+      redraw();
+    }, () => {});
+  }
+  // the volume shown: the device's on a LiteLink device, LiteOS's own app volume otherwise
+  function volIconName() {
+    const a = devAudio();
+    if (a) return a.muted || !a.volume ? 'mute' : 'volume';
+    const s = set();
+    return s.muted || !s.volume ? 'mute' : 'volume';
+  }
+  const setDeviceVolume = debounce((changes) => {
+    if (!devAudio()) return;
+    DEV.ll.audio.set(changes).then((a) => { DEV.audio = a; }).catch((e) => notify(e.message, { type: 'error', title: 'Sound' }));
+  }, 120);
+  // the network icon: wired, Wi-Fi or offline (from the icon set's tray icons)
+  function netIcon(size) {
+    const n = DEV.net;
+    const role = !n || !n.connected ? 'tray.offline' : n.kind === 'wifi' ? 'tray.wifi-good' : 'tray.wired';
+    return window.LOS_sysIconImg(role, size || 16, { cls: 'ico' });
+  }
+  function netLabel() {
+    const n = DEV.net;
+    if (!n || !n.connected) return 'Not connected';
+    return n.kind === 'wifi' ? 'Wi-Fi: ' + (n.wifi && n.wifi.network || n.name || 'connected') : (n.name || 'Ethernet') + ': connected';
+  }
+  const netButton = (cls) => (devHas('network') && DEV.net
+    ? '<button class="' + cls + '" data-act="net" aria-label="Network: ' + esc(netLabel()) + '" title="' + esc(netLabel()) + '">' + netIcon(16) + '</button>' : '');
+  /** Restart, shut down or end the LiteLink session: the windows close, so unsaved changes are asked about first. */
+  async function deviceAction(kind) {
+    const words = { restart: ['Restart the device?', 'Restart', 'Restarting…'], shutdown: ['Shut down the device?', 'Shut down', 'Shutting down…'],
+      end: ['End this session?', 'End session', 'Ending the session…'] }[kind];
+    const dirty = [...wins.values()].filter((w) => w.dirty);
+    if (dirty.length) {
+      const ok = await confirmDialog({ title: words[0], message: dirty.length + ' window(s) have unsaved changes. They will be lost.', okLabel: words[1], danger: true });
+      if (!ok) return;
+    }
     try {
-      const r = await fetch('http://127.0.0.1:7777' + path, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: ctl.signal,
-      });
-      return r.ok;
-    } catch (e) { return false; } finally { clearTimeout(t); }
+      if (kind === 'end') await DEV.ll.session.end();
+      else await DEV.ll.power[kind === 'restart' ? 'restart' : 'shutdown']();
+      forgetDesk();
+      showBoot(words[2]);
+    } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t ' + words[1].toLowerCase() }); }
   }
 
   // ================================================================== boot
@@ -240,8 +301,7 @@
     }
     let right;
     if (o.desktop) {
-      const s = set();
-      right = '<button class="tb-icon" data-act="volume" aria-label="Volume" title="Volume">' + ICON(s.muted || !s.volume ? 'mute' : 'volume', 16) + '</button>' +
+      right = netButton('tb-icon') + '<button class="tb-icon" data-act="volume" aria-label="Volume" title="Volume">' + ICON(volIconName(), 16) + '</button>' +
         '<button class="tb-icon" data-act="launcher" aria-label="Search" title="Search (Alt+Space)">' + ICON('search', 15) + '</button>' +
         '<button class="status' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><span data-clock="td"></span></button>' +
         '<button class="tb-icon" data-act="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
@@ -260,15 +320,13 @@
       items.push({ label: 'Sign out', icon: 'logout', action: signOut });
     }
     items.push({ label: 'Reload', icon: 'reload', action: () => { showBoot('Restarting…'); setTimeout(() => location.reload(), 700); } });
-    items.push('sep');
-    items.push({ label: 'Restart device', icon: 'rotate', action: async () => {
-      if (await bridge('/power', { action: 'reboot' })) showBoot('Restarting…');
-      else notify('Restart isn’t available on this device.', { type: 'error', title: 'Can’t restart' });
-    } });
-    items.push({ label: 'Shut down', icon: 'power', action: async () => {
-      if (await bridge('/power', { action: 'shutdown' })) showBoot('Shutting down…');
-      else notify('Shut down isn’t available here. You can close this browser tab.', { type: 'error', title: 'Can’t shut down' });
-    } });
+    // the device's own: only on a LiteLink device that allows them
+    if (devHas('session') || devHas('power')) items.push('sep');
+    if (devHas('session')) items.push({ label: 'End session', icon: 'external', action: () => deviceAction('end') });
+    if (devHas('power')) {
+      items.push({ label: 'Restart device', icon: 'rotate', action: () => deviceAction('restart') });
+      items.push({ label: 'Shut down', icon: 'power', action: () => deviceAction('shutdown') });
+    }
     showMenu(items, r.top > window.innerHeight / 2 ? { x: r.left, y: r.top - 6, above: true } : { x: r.right - 210, y: r.bottom + 6 });
   }
 
@@ -280,6 +338,7 @@
       '<div class="wall" data-act="wall"></div><div class="desk-icons" role="list" aria-label="Desktop"></div><div class="windows"></div><div id="bars"></div><div id="pops"></div>' +
       '<div class="toasts" aria-live="polite"></div>';
     applySettings();
+    startDevice();
     if (!preloaded) loadDeskFiles();
     if (!clockTimer) clockTimer = setInterval(() => tickClock(document), 10000);
     if (firstRun) {
@@ -1028,6 +1087,7 @@
     }
     if (UI.pop === 'qs') {
       api('fs.usage').then((u) => { UI.usage = u; if (UI.pop === 'qs') renderPop(); }).catch(() => {});
+      if (devHas('bluetooth')) DEV.ll.bluetooth.state().then((b) => { DEV.bt = b; if (UI.pop === 'qs') renderPop(); }).catch(() => {});
     }
   }
 
@@ -1095,8 +1155,25 @@
     }
     if (UI.pop === 'vol') {
       const a = UI.anchor || { right: window.innerWidth - 200, bottom: 34 };
-      pops.innerHTML = '<div class="pop volpop from-top" style="top:' + (a.bottom + 8) + 'px;left:' + Math.max(8, Math.min(window.innerWidth - 268, a.left - 110)) + 'px" role="dialog" aria-label="Volume">' +
-        '<div class="qlabel">Volume</div>' + volumeRow() + '<small class="vol-hint">Sound from LiteOS apps</small></div>';
+      const below = a.bottom < window.innerHeight / 2; // from the top bar it drops down; from the taskbar's tray it rises
+      const left = Math.max(8, Math.min(window.innerWidth - 268, (a.left || 0) - 110));
+      pops.innerHTML = '<div class="pop volpop' + (below ? ' from-top' : '') + '" style="' + (below ? 'top:' + (a.bottom + 8) : 'bottom:' + (window.innerHeight - a.top + 8)) + 'px;left:' + left + 'px" role="dialog" aria-label="Volume">' +
+        '<div class="qlabel">Volume</div>' + volumeRow() + '<small class="vol-hint">' +
+        (devAudio() ? esc(devAudio().output ? devAudio().output.name : 'This device') : 'Sound from LiteOS apps') + '</small></div>';
+      return;
+    }
+    if (UI.pop === 'net') {
+      // the device's network, read only: joining and switching networks stay in LiteLink
+      const a = UI.anchor || { right: window.innerWidth - 200, bottom: 34 };
+      const below = a.bottom < window.innerHeight / 2;
+      const left = Math.max(8, Math.min(window.innerWidth - 288, (a.left || 0) - 130));
+      const n = DEV.net || {};
+      const row = (k, v) => (v ? '<div class="net-row"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>' : '');
+      pops.innerHTML = '<div class="pop volpop netpop' + (below ? ' from-top' : '') + '" style="' + (below ? 'top:' + (a.bottom + 8) : 'bottom:' + (window.innerHeight - a.top + 8)) + 'px;left:' + left + 'px" role="dialog" aria-label="Network">' +
+        '<div class="net-head">' + netIcon(20) + '<span><b>' + esc(netLabel()) + '</b>' + (n.connected && n.ip ? '<small>' + esc(n.ip) + '</small>' : '') + '</span></div>' +
+        (n.connected ? row('Gateway', n.gateway) + row('DNS', n.dns) : '') +
+        (n.vpn || []).filter((v) => v.active).map((v) => row('VPN', v.name)).join('') +
+        '<button class="btn net-more" data-act="net-settings">Network settings</button></div>';
       return;
     }
     if (UI.pop === 'launcher') {
@@ -1129,6 +1206,8 @@
         qTile('q-taskbar', s.taskbar === 'classic', 'taskbar', 'Classic taskbar') +
         qTile('q-glass', s.transparency !== false, 'glass', 'Transparency') +
         qTile('q-a11y', s.textSize && s.textSize !== 'default', 'access', 'Accessibility', 'Larger text', 'q-a11y-more') +
+        // the device's Bluetooth (LiteLink only): on/off, the chevron opens its page in Settings
+        (devHas('bluetooth') && DEV.bt && DEV.bt.present ? qTile('q-bt', DEV.bt.powered, 'settings.bluetooth', 'Bluetooth', 'Bluetooth', 'q-bt-more') : '') +
         '</div>' +
         '<div class="qsliders">' + sliderRow('brightness') + sliderRow('volume') + '</div>' +
         '<div class="qfoot">' + avatar(u, 30) + '<span class="meta"><b>' + esc(u.name) + '</b><small>' + (usage ? fmtSize(usage.used) + ' of ' + fmtSize(usage.quota) : 'Storage…') + '</small>' +
@@ -1407,8 +1486,11 @@
       return '<div class="qvol"><span class="qico" title="Brightness">' + ICON('sun', 18) + '</span>' +
         '<input class="qrange" data-k="brightness" type="range" min="20" max="100" value="' + v + '" aria-label="Brightness" style="--v:' + Math.round((v - 20) / 0.8) + '%"><span class="qpct" data-k="brightness">' + v + '%</span></div>';
     }
-    const v = s.muted ? 0 : (s.volume == null ? 80 : s.volume);
-    return '<div class="qvol"><button class="ibtn" data-act="q-mute" aria-label="' + (s.muted ? 'Unmute' : 'Mute') + '">' + ICON(s.muted || !v ? 'mute' : 'volume', 18) + '</button>' +
+    // on a LiteLink device the slider is the device's volume; LiteOS's own app volume stays in Settings › Sound
+    const da = devAudio();
+    const muted = da ? da.muted : s.muted;
+    const v = muted ? 0 : da ? da.volume : (s.volume == null ? 80 : s.volume);
+    return '<div class="qvol"><button class="ibtn" data-act="q-mute" aria-label="' + (muted ? 'Unmute' : 'Mute') + '">' + ICON(muted || !v ? 'mute' : 'volume', 18) + '</button>' +
       '<input class="qrange" data-k="volume" type="range" min="0" max="100" value="' + v + '" aria-label="Volume" style="--v:' + v + '%"><span class="qpct" data-k="volume">' + v + '%</span></div>';
   }
 
@@ -2675,7 +2757,25 @@
       case 'q-theme': saveSettings({ theme: effectiveTheme() === 'dark' ? 'light' : 'dark' }); break;
       case 'q-night': saveSettings({ nightLight: !set().nightLight }); break;
       case 'q-dnd': saveSettings({ dnd: !set().dnd }); break;
-      case 'q-mute': saveSettings({ muted: !set().muted }); break;
+      case 'q-mute':
+        if (devAudio()) {
+          DEV.audio = Object.assign({}, DEV.audio, { muted: !DEV.audio.muted });
+          setDeviceVolume({ muted: DEV.audio.muted });
+          renderBars(); renderPop();
+        } else saveSettings({ muted: !set().muted });
+        break;
+      case 'net': UI.anchor = t.getBoundingClientRect(); togglePop('net'); break;
+      case 'net-settings': closePops(); openApp('settings', { page: DEV.net && DEV.net.kind === 'wifi' ? 'network/wifi' : 'network/ethernet' }); break;
+      case 'q-bt':
+        if (devHas('bluetooth') && DEV.bt) {
+          const on = !DEV.bt.powered;
+          DEV.bt = Object.assign({}, DEV.bt, { powered: on });
+          renderPop();
+          DEV.ll.bluetooth.setPower(on).then(() => DEV.ll.bluetooth.state()).then((b) => { DEV.bt = b; if (UI.pop === 'qs') renderPop(); })
+            .catch((x) => { DEV.bt = Object.assign({}, DEV.bt, { powered: !on }); if (UI.pop === 'qs') renderPop(); notify(x.message, { type: 'error', title: 'Bluetooth' }); });
+        }
+        break;
+      case 'q-bt-more': closePops(); openApp('settings', { page: 'bluetooth' }); break;
       case 'q-taskbar': saveSettings({ taskbar: set().taskbar === 'classic' ? 'floating' : 'classic' }); break;
       case 'q-glass': saveSettings({ transparency: set().transparency === false }); break;
       case 'q-a11y': saveSettings({ textSize: set().textSize && set().textSize !== 'default' ? 'default' : 'large' }); break;
@@ -2695,7 +2795,7 @@
 
   root.addEventListener('mousedown', (e) => {
     if (!UI.pop) return;
-    if (e.target.closest('.pop') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume]')) return;
+    if (e.target.closest('.pop') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume],[data-act=net]')) return;
     closePops();
   });
 
@@ -2726,9 +2826,14 @@
       saveBrightness(v);
       return;
     }
-    S.settings = Object.assign({}, set(), { volume: v, muted: false });
     $$('.qrange[data-k=volume]', root).forEach((r) => { if (r !== e.target) r.value = v; r.style.setProperty('--v', v + '%'); });
     $$('.qpct[data-k=volume]', root).forEach((x) => { x.textContent = v + '%'; });
+    if (devAudio()) { // the device's volume: LiteOS's own app volume isn't touched
+      DEV.audio = Object.assign({}, DEV.audio, { volume: v, muted: false });
+      setDeviceVolume({ volume: v, muted: false });
+      return;
+    }
+    S.settings = Object.assign({}, set(), { volume: v, muted: false });
     const st = hostState();
     subs.forEach((fn) => { try { fn(st); } catch (x) { subs.delete(fn); } });
     saveVolume(v);

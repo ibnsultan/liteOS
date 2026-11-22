@@ -35,6 +35,15 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 /* ------------------------------------------------------------ volume */
 .volpop { width: 260px; padding: 14px 16px; border-radius: var(--radius-l); display: flex; flex-direction: column; gap: 8px; }
 .vol-hint { font-size: 11px; color: var(--faint); }
+/* the device's network (LiteLink only, os.js): read only, with a way into Settings */
+.netpop { width: 280px; }
+.net-head { display: flex; align-items: center; gap: 10px; padding-bottom: 4px; }
+.net-head span { display: flex; flex-direction: column; min-width: 0; }
+.net-head b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.net-head small { font-size: 12px; color: var(--muted); }
+.net-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); }
+.net-row b { font-weight: 500; color: var(--text); }
+.net-more { align-self: flex-start; margin-top: 4px; }
 .qvol { display: flex; align-items: center; gap: 10px; }
 .qvol .ibtn { width: 32px; height: 32px; flex-shrink: 0; }
 .qpct { width: 36px; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
