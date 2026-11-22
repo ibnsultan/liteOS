@@ -62,10 +62,24 @@
   }
 
   function sessionLost() {
+    if (!S.user) return;
     S.user = null;
     notify('You were signed out. Sign in again to continue.', { type: 'error', title: 'Signed out' });
     setTimeout(() => location.reload(), 1500);
   }
+  // A refused request (401) tells the desktop its session ended, but a desktop that asks the server little (a guest's
+  // files are answered in the browser) could go on looking signed in, and the next app window would then show the
+  // sign-in page. So it also asks every minute and whenever the tab comes back into view; an ended session, or an
+  // account an administrator disabled or that was turned off (the guest), goes back to the sign-in page.
+  async function checkSession() {
+    if (!S.user || UI.lockShown || document.hidden) return;
+    let st;
+    try { st = await api('auth.status'); } catch (e) { return; } // offline: try again later
+    if (st && st.csrf) S.csrf = st.csrf;
+    if (!st || !st.user || st.user.disabled || st.user.username !== S.user.username) sessionLost();
+  }
+  setInterval(checkSession, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkSession(); });
 
   // ================================================================== helpers
   const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
@@ -111,7 +125,10 @@
   // and Quick settings), its network (an icon with its state) and Bluetooth (a Quick settings tile): each only once
   // LiteLink answered and allows that area. Anywhere else DEV.ll stays null, none of this shows, and nothing calls it.
   const DEV = { ll: null, caps: {}, audio: null, net: null, bt: null, started: false };
-  const devHas = (area) => !!(DEV.ll && DEV.caps[area]);
+  // what this account may do with the device (OS.user.can): restarting, shutting down and Bluetooth change the device
+  // for everyone, so Local accounts and guests don't get them; USB drives need can.usb
+  const DEV_NEEDS = { power: 'settingsDevice', bluetooth: 'settingsDevice', storage: 'usb', print: 'print' };
+  const devHas = (area) => !!(DEV.ll && DEV.caps[area]) && !(DEV_NEEDS[area] && S.user && S.user.can && !S.user.can[DEV_NEEDS[area]]);
   const devAudio = () => (devHas('audio') && DEV.caps.audio.output && DEV.audio ? DEV.audio : null);
   function startDevice() {
     if (DEV.started) return;
@@ -192,8 +209,46 @@
     }
     // setup and signing in are pages of their own (resources/views/auth); this page is only served signed in
     if (!S.user) { location.assign(window.LOS_BASE + (S.setupNeeded ? 'setup' : 'login')); return; }
+    if (window.LOS_CONFIG.guest) await startGuestDrive();
+    else dropGuestWorker();
     applyTheme();
     prepareDesktop(!!window.LOS_CONFIG.welcome);
+  }
+
+  // The Guest account's files, Trash and settings live in this browser: LOS_endpoint sends the drive's actions to
+  // os/guestfs/..., which assets/js/guest-drive.js answers in every guest page. Where the browser allows a service
+  // worker, the same code also runs there (public/guest-sw.js), so <img>, <video> and downloads of a guest's files
+  // work too; without one only fetch() reaches them. The guest's own settings are kept there as well and laid over
+  // the defaults the server sent (only keys the server knows are kept).
+  S.guestBase = null;
+  const guestSettings = (mine) => {
+    const out = Object.assign({}, S.guestBase);
+    Object.keys(mine || {}).forEach((k) => { if (k in S.guestBase) out[k] = mine[k]; });
+    return out;
+  };
+  // an account that isn't the guest has no use for a guest drive worker left on this browser by an earlier guest
+  function dropGuestWorker() {
+    const sw = navigator.serviceWorker;
+    if (!sw || !sw.getRegistrations) return;
+    sw.getRegistrations().then((list) => list.forEach((r) => {
+      const w = r.active || r.waiting || r.installing;
+      if (w && /\/guest-sw\.js(\?|$)/.test(new URL(w.scriptURL).pathname + new URL(w.scriptURL).search)) r.unregister();
+    })).catch(() => {});
+  }
+  async function startGuestDrive() {
+    S.guestBase = S.settings;
+    if (!window.LOS_guestDrive || !navigator.storage || !navigator.storage.getDirectory) return; // reported once the desktop is up
+    const sw = navigator.serviceWorker;
+    if (sw) {
+      try {
+        const cfg = window.LOS_CONFIG;
+        await capped(sw.register(window.LOS_BASE + 'guest-sw.js?quota=' + cfg.guestQuota + '&kinds=' + encodeURIComponent(JSON.stringify(cfg.kinds || {})), { scope: window.LOS_BASE })
+          .then(() => sw.ready)
+          .then(() => (sw.controller ? null : new Promise((r) => sw.addEventListener('controllerchange', r, { once: true })))), 4000);
+      } catch (e) { /* no service worker here: pages still answer the guest drive themselves */ }
+    }
+    if (navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    try { S.settings = guestSettings(await api('settings.get')); } catch (e) { /* the defaults, then */ }
   }
 
   // The boot screen is also the waiting room: the desktop is built behind it with the user's data already in hand
@@ -230,6 +285,9 @@
     await capped(nextFrame(), 120); // a hidden tab draws no frames
     bootDone();
     if (firstRun) setTimeout(() => notify('Open the launcher to find your apps.', { type: 'success', title: 'Welcome to LiteOS' }), 500);
+    if (window.LOS_CONFIG.guest && !(navigator.storage && navigator.storage.getDirectory)) {
+      setTimeout(() => notify('This browser can’t keep a guest’s files, so they can’t be saved. Use a recent Chrome, Edge or Firefox.', { type: 'error', title: 'Guest files unavailable' }), 600);
+    }
   }
 
   // ------------------------------------------------------------------ boot screen
@@ -317,7 +375,7 @@
     const r = btn.getBoundingClientRect();
     const items = [];
     if (signedIn) {
-      if (!UI.lockShown) items.push({ label: 'Lock', icon: 'lock', action: lockScreen });
+      if (!UI.lockShown && canLock()) items.push({ label: 'Lock', icon: 'lock', action: lockScreen });
       items.push({ label: 'Sign out', icon: 'logout', action: signOut });
     }
     items.push({ label: 'Reload', icon: 'reload', action: () => { showBoot('Restarting…'); setTimeout(() => location.reload(), 700); } });
@@ -380,7 +438,8 @@
     S.settings = Object.assign({}, set(), changes);
     applySettings();
     try {
-      S.settings = await api('settings.save', { settings: changes });
+      const saved = await api('settings.save', { settings: changes });
+      S.settings = S.guestBase ? guestSettings(saved) : saved;
       applySettings();
     } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t save settings' }); }
     return S.settings;
@@ -1228,9 +1287,9 @@
       pops.innerHTML = '<div class="pop launcher" style="' + popPosition('launcher') + '" role="dialog" aria-label="Launcher">' +
         '<label class="ls-search">' + ICON('search', 16) + '<input type="text" placeholder="Search apps and files" aria-label="Search apps and files" value="' + esc(UI.lsQuery) + '"></label>' +
         '<div class="ls-body"></div>' +
-        '<div class="ls-foot">' + avatar(u, 34) + '<span class="who"><b>' + esc(u.name) + '</b><small>' + (u.role === 'admin' ? 'Administrator' : 'Standard user') + ' · ' + esc(u.username) + '</small></span>' +
+        '<div class="ls-foot">' + avatar(u, 34) + '<span class="who"><b>' + esc(u.name) + '</b><small>' + (({ admin: 'Administrator', local: 'Local account', guest: 'Guest' })[u.role] || 'Standard user') + '</small></span>' +
         '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 18) + '</button>' +
-        '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 18) + '</button>' +
+        (canLock() ? '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 18) + '</button>' : '') +
         '<button class="ibtn" data-act="signout" title="Sign out" aria-label="Sign out">' + ICON('power', 18) + '</button></div></div>';
       const input = $('.ls-search input', pops);
       input.addEventListener('input', () => { UI.lsQuery = input.value; launcherSearch(); });
@@ -1257,10 +1316,10 @@
         (devHas('bluetooth') && DEV.bt && DEV.bt.present ? qTile('q-bt', DEV.bt.powered, 'qs-bluetooth', 'Bluetooth', 'Bluetooth', 'q-bt-more') : '') +
         '</div>' +
         '<div class="qsliders">' + sliderRow('brightness') + sliderRow('volume') + '</div>' +
-        '<div class="qfoot">' + avatar(u, 30) + '<span class="meta"><b>' + esc(u.name) + '</b><small>' + (usage ? fmtSize(usage.used) + ' of ' + fmtSize(usage.quota) : 'Storage…') + '</small>' +
+        '<div class="qfoot">' + avatar(u, 30) + '<span class="meta"><b>' + esc(u.name) + '</b><small>' + (usage ? fmtSize(usage.used) + ' of ' + fmtSize(usage.quota) : u.role === 'guest' ? 'Guest' : 'Storage…') + '</small>' +
         '<span class="meter"><i style="width:' + pct + '%"></i></span></span>' +
         '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 17) + '</button>' +
-        '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 17) + '</button>' +
+        (canLock() ? '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 17) + '</button>' : '') +
         '<button class="ibtn" data-act="power" title="Power" aria-label="Power options">' + ICON('power', 17) + '</button></div></div>';
     }
   }
@@ -2297,7 +2356,7 @@
       section('Frequent', folders.map((d) => ({ label: baseName(d), icon: 'folder', color: '#DC8B16', title: d, action: () => openApp('files', { path: d }) })));
     } else if (appId === 'settings') {
       section('Settings', [['personalisation', 'Personalisation', 'palette'], ['taskbar', 'Taskbar', 'taskbar'], ['storage', 'Storage', 'storage'], ['account', 'Accounts', 'user']]
-        .concat(S.user && S.user.role === 'admin' ? [['system', 'System', 'server']] : [])
+        .concat(S.user && (S.user.can ? S.user.can.admin : S.user.role === 'admin') ? [['system', 'System', 'server']] : [])
         .map(([id, n, ic]) => ({ label: n, icon: ic, action: () => openApp('settings', { section: id }) })));
     } else if (appId === 'notes') {
       const notes = recent.filter((f) => f.path.startsWith('/Notes/')).slice(0, 6);
@@ -3053,8 +3112,11 @@
   // Locking: the server locks the session (the API refuses until unlocked, a reload lands on the lock page), and the
   // lock page itself is shown in a frame over the open windows, so nothing is closed. It posts 'liteos-unlocked'
   // once the password was right (resources/views/auth/unlocked.blade.php).
+  // whether this account can lock (OS.user.can.lock): the guest has no password to unlock with, so it signs out instead
+  function canLock() { return !S.user || !S.user.can || !!S.user.can.lock; }
   async function lockScreen(alreadyLocked) {
     if (UI.lockShown) return;
+    if (!canLock() && alreadyLocked !== true) { signOut(); return; }
     closePops();
     hideMenu();
     let url = window.LOS_BASE + 'lock?embed=1';

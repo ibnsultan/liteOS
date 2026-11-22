@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Capabilities;
 use App\Support\Role;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,8 +14,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 // A LiteOS account. Signs in with a username (stored lowercase, so "Abdul" and "abdul" are one account on MySQL and
 // SQLite alike), has a role, an avatar colour for the sign-in screen, an optional storage quota and a drive folder
-// named after the username. Disabled accounts keep their data but can't sign in.
-#[Fillable(['username', 'name', 'password', 'role', 'color', 'quota_mb', 'disabled_at', 'last_login_at'])]
+// named after the username. Disabled accounts keep their data but can't sign in. A Local account may carry an
+// administrator's switches in "permissions" (see App\Support\Capabilities).
+#[Fillable(['username', 'name', 'password', 'role', 'color', 'quota_mb', 'disabled_at', 'last_login_at', 'permissions'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -35,6 +37,7 @@ class User extends Authenticatable
             'quota_mb' => 'integer',
             'disabled_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'permissions' => 'array',
         ];
     }
 
@@ -55,6 +58,16 @@ class User extends Authenticatable
         return $this->role === Role::Admin;
     }
 
+    public function isLocal(): bool
+    {
+        return $this->role === Role::Local;
+    }
+
+    public function isGuest(): bool
+    {
+        return $this->role === Role::Guest;
+    }
+
     public function isDisabled(): bool
     {
         return $this->disabled_at !== null;
@@ -73,7 +86,10 @@ class User extends Authenticatable
     /**
      * The account as the desktop sees it (never the password). Keys are the MVP's, which the shell and Settings read.
      *
-     * @return array{username: string, name: string, role: string, color: string, disabled: bool, quotaMB: int|null, created: string|null, lastLogin: string|null}
+     * "can" is what the account may do (App\Support\Capabilities::for), so the shell and the apps hide what the server
+     * would refuse anyway.
+     *
+     * @return array{username: string, name: string, role: string, color: string, disabled: bool, quotaMB: int|null, created: string|null, lastLogin: string|null, can: array<string, mixed>}
      */
     public function toPublic(): array
     {
@@ -86,6 +102,7 @@ class User extends Authenticatable
             'quotaMB' => $this->quota_mb,
             'created' => $this->created_at?->toIso8601String(),
             'lastLogin' => $this->last_login_at?->toIso8601String(),
+            'can' => Capabilities::for($this),
         ];
     }
 }

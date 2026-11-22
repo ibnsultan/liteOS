@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Os;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Role;
 use App\Support\SystemSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,8 @@ class SystemController extends Controller
             'version' => config('liteos.version'),
             'php' => PHP_VERSION,
             'uploadMax' => ini_get('upload_max_filesize'),
-            'userCount' => User::query()->count(),
+            'userCount' => User::query()->where('role', '!=', Role::Guest->value)->count(),
+            'localApps' => config('liteos.local_apps'),
         ];
 
         return $this->jsonSuccess();

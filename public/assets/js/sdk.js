@@ -14,10 +14,15 @@
     if (window.parent && window.parent !== window && window.parent.LiteOSHost) host = window.parent.LiteOSHost;
   } catch (e) { host = null; }
   // An app page framed by anything but the desktop (the Browser app pointed at LiteOS, a page inside a page) would be
-  // LiteOS inside itself: it shows a line instead and starts nothing.
+  // LiteOS inside itself: it shows a line instead and starts nothing. A guest uses apps only in the desktop's windows:
+  // an app page opened on its own goes back to the desktop (the server refuses it too, AppsController).
   if (!host && window.parent !== window) {
     const stop = () => { document.body.innerHTML = '<p style="margin:0;padding:16px;font:13px/1.5 system-ui,sans-serif;color:#5a606b;text-align:center">LiteOS apps open only in LiteOS’s own windows.</p>'; };
     if (document.body) stop(); else document.addEventListener('DOMContentLoaded', stop);
+    return;
+  }
+  if (!host && window.LOS_CONFIG && window.LOS_CONFIG.guest) {
+    location.replace(window.LOS_BASE);
     return;
   }
 
@@ -154,6 +159,18 @@
      * (read whole, up to 64 MB). Freed when the window closes, or with revokeUrl().
      */
     objectUrl: async (path) => {
+      // a guest's files are in this browser: without the guest drive's service worker only fetch() reaches them
+      if (window.LOS_CONFIG && window.LOS_CONFIG.guest && !onUsb(path) && !(navigator.serviceWorker && navigator.serviceWorker.controller)) {
+        const res = await fetch(fs.rawUrl(path));
+        if (!res.ok) throw new Error('“' + String(path).split('/').pop() + '” couldn’t be read.');
+        // a blob: URL runs as LiteOS itself (the server's copy is sandboxed; this one can't be), so only pictures,
+        // video and audio keep their type; a page, script or anything else is handed over as plain text
+        const blob = await res.blob();
+        const media = /^(image\/(?!svg)|video\/|audio\/)/.test(blob.type);
+        const url = URL.createObjectURL(media ? blob : new Blob([blob], { type: 'text/plain' }));
+        objectUrls.add(url);
+        return url;
+      }
       if (!onUsb(path)) return fs.rawUrl(path);
       const url = URL.createObjectURL(await USB.readBlob(path));
       objectUrls.add(url);
@@ -246,6 +263,7 @@
     dragRegion(el, isHandle) {
       if (!host || !winId || !host.win.dragStart) return;
       const ok = (t) => !isHandle || isHandle(t);
+      el.style.touchAction = 'none'; // a finger drags the window, rather than the browser scrolling the page
       el.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || !ok(e.target)) return;
         e.preventDefault();
@@ -270,7 +288,6 @@
   // The master volume (top bar / Quick settings) scales every <audio>/<video> in the app.
   // An element can carry data-app-volume="0..1" for its own level within that.
   function masterVolume(s) { return !s || s.muted ? 0 : (s.volume == null ? 80 : s.volume) / 100; }
-      el.style.touchAction = 'none'; // a finger drags the window, rather than the browser scrolling the page
   function applyVolume(el) {
     const v = masterVolume(current.settings);
     const own = el.dataset && el.dataset.appVolume != null ? Math.max(0, Math.min(1, +el.dataset.appVolume)) : 1;

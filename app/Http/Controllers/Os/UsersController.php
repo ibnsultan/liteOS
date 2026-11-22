@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\Accounts;
 use App\Support\Drive;
+use App\Support\Role;
 use App\Support\SecurityLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,14 +14,17 @@ use Illuminate\Support\Facades\Route;
 
 // Accounts, for administrators (/os/users, behind the "admin" gate): the list with each drive's use and quota, and
 // creating, changing and deleting accounts. The account is named in the request body by username, as the Settings
-// app sends it. An administrator can't disable or delete their own account while signed in with it.
+// app sends it. An administrator can't disable or delete their own account while signed in with it. A Local account's
+// switches (web access, apps, changing its name and password) are changed here too, as "permissions".
 class UsersController extends Controller
 {
     public function list(): JsonResponse
     {
-        $this->result = User::query()->orderBy('created_at')->orderBy('id')->get()->map(fn (User $user) => $user->toPublic() + [
+        $this->result = User::query()->where('role', '!=', Role::Guest->value)->orderBy('created_at')->orderBy('id')->get()->map(fn (User $user) => $user->toPublic() + [
             'used' => Drive::usage($user->username),
             'quota' => Drive::quotaBytes($user),
+            // a Local account's switches as the administrator set them (null: the defaults); "can" has the result
+            'permissions' => $user->isLocal() ? $user->permissions : null,
         ])->all();
 
         return $this->jsonSuccess();
@@ -51,7 +55,7 @@ class UsersController extends Controller
         }
 
         $changes = $request->input('changes', []);
-        $changes = is_array($changes) ? array_intersect_key($changes, array_flip(['name', 'role', 'disabled', 'quotaMB', 'password'])) : [];
+        $changes = is_array($changes) ? array_intersect_key($changes, array_flip(['name', 'role', 'disabled', 'quotaMB', 'password', 'permissions'])) : [];
         if ($user->is($request->user()) && ! empty($changes['disabled'])) {
             return $this->jsonError('You can’t disable your own account.');
         }
@@ -81,7 +85,9 @@ class UsersController extends Controller
 
     private function target(Request $request): ?User
     {
-        return User::query()->where('username', strtolower(trim((string) $request->input('username'))))->first();
+        // the built-in Guest account isn't changed or deleted here (Settings › Accounts has its own switch)
+        return User::query()->where('username', strtolower(trim((string) $request->input('username'))))
+            ->where('role', '!=', Role::Guest->value)->first();
     }
 
     public static function routes(): void

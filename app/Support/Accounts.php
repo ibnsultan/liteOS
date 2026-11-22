@@ -42,7 +42,7 @@ class Accounts
 
     /**
      * Applies an administrator's or the user's own changes: name, role, disabled, quotaMB (null = system default),
-     * password. Keys that aren't given stay as they are.
+     * password, permissions (a Local account's switches; null = the defaults). Keys that aren't given stay as they are.
      *
      * @param  array<string, mixed>  $changes
      *
@@ -56,9 +56,18 @@ class Accounts
             }
             if (array_key_exists('role', $changes)) {
                 $user->role = self::checkRole((string) $changes['role']);
+                // a Local account's switches mean nothing for another role, and shouldn't come back if it's made Local again
+                if ($user->role !== Role::Local) {
+                    $user->permissions = null;
+                }
             }
             if (array_key_exists('disabled', $changes)) {
                 $user->disabled_at = $changes['disabled'] ? ($user->disabled_at ?? now()) : null;
+            }
+            // a Local account's switches (App\Support\Capabilities), after the role so one request can make an account
+            // Local and set them; other roles have none, so they're ignored there
+            if (array_key_exists('permissions', $changes) && $user->role === Role::Local) {
+                $user->permissions = is_array($changes['permissions']) ? (Capabilities::cleanPermissions($changes['permissions']) ?: null) : null;
             }
             if (array_key_exists('quotaMB', $changes)) {
                 $quota = $changes['quotaMB'];
@@ -103,6 +112,9 @@ class Accounts
         if (! preg_match(self::USERNAME_PATTERN, $username)) {
             self::fail('username', 'Usernames are 2–32 characters: lowercase letters, numbers, dot, dash or underscore.');
         }
+        if ($username === Guest::USERNAME) {
+            self::fail('username', 'That username is kept for the guest account.');
+        }
 
         return $username;
     }
@@ -141,6 +153,9 @@ class Accounts
         $role = $role instanceof Role ? $role : Role::tryFrom($role);
         if ($role === null) {
             self::fail('role', 'Unknown role.');
+        }
+        if ($role === Role::Guest) {
+            self::fail('role', 'There is one guest account, built in. Turn it on in Settings › Accounts.');
         }
 
         return $role;

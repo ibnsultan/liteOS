@@ -33,6 +33,13 @@
           <div class="g-err" role="alert"><i data-icon="info" data-size="14"></i><span>{{ $error }}</span></div>
         @endif
       </form>
+      {{-- the built-in Guest account, while an administrator has it turned on (App\Support\Guest) --}}
+      @if ($guest)
+        <form class="g-guest" method="post" action="{{ route('login.guest') }}" data-busy>
+          @csrf
+          <button class="g-link" type="submit">Sign in as guest</button>
+        </form>
+      @endif
     @endif
   </div>
   <x-auth-actions />

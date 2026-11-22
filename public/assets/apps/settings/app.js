@@ -13,7 +13,13 @@ LiteOS.ready((OS) => {
   const $ = (s, el) => (el || document).querySelector(s);
   const G = (n, s) => OS.icon(n, s || 16);                       // line glyphs: chevrons, search
   const ico = (role, s) => window.LOS_sysIconImg(role, s || 20);  // system icons from the icon set
-  const isAdmin = () => OS.user && OS.user.role === 'admin';
+  // what this account may do (OS.user.can, from App\Support\Capabilities): pages and rows it can't use aren't shown,
+  // and the server refuses them anyway. An older server without "can" means everything, as before.
+  const can = (k) => !!OS.user && (!OS.user.can || !!OS.user.can[k]);
+  const isAdmin = () => !!OS.user && (OS.user.can ? !!OS.user.can.admin : OS.user.role === 'admin');
+  const roleName = (r) => ({ admin: 'Administrator', local: 'Local account', guest: 'Guest' })[r] || 'Standard user';
+  const isGuest = () => !!OS.user && OS.user.role === 'guest';
+  const MANAGED = 'Your administrator manages this for your account';
   const st = () => OS.settings;
   const save = (changes) => OS.saveSettings(changes);
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
@@ -87,7 +93,14 @@ LiteOS.ready((OS) => {
   const PAGES = Object.fromEntries(PAGE_LIST.map(([id, title, icon, sub]) => [id, { id, title, icon, sub }]));
   const parentOf = (id) => (id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : null);
   const NAV = ['home', 'system', 'bluetooth', 'network', 'personalisation', 'apps', 'accounts', 'time', 'accessibility'];
-  const adminOnly = (id) => id === 'accounts/users';
+  // pages that need a capability; a page's subpages need it too (network covers network/wifi)
+  const NEEDS = { 'accounts/users': 'admin', network: 'settingsDevice', 'bluetooth/devices': 'settingsDevice', 'bluetooth/printers': 'settingsDevice',
+    'time/typing': 'settingsDevice', 'bluetooth/usb': 'usb', 'apps/browser': 'web', 'system/storage': 'files' };
+  function allowed(id) {
+    if (isGuest() && id === 'accounts/signin') return false;
+    for (let p = id; p; p = parentOf(p)) if (NEEDS[p] && !can(NEEDS[p])) return false;
+    return true;
+  }
 
   // older section names (other apps and the shell open Settings with these)
   const OLD = { personalisation: 'personalisation', taskbar: 'personalisation/taskbar', apps: 'apps', notifications: 'system/notifications',
@@ -95,7 +108,7 @@ LiteOS.ready((OS) => {
   function startPage() {
     if (OS.args.focus === 'desktop') return 'personalisation/desktop';
     const a = OS.args.page || OLD[OS.args.section] || OS.args.section;
-    return PAGES[a] && !(adminOnly(a) && !isAdmin()) ? a : 'home';
+    return PAGES[a] && allowed(a) ? a : 'home';
   }
 
   // inside the desktop, the page is see-through over the window's Mica (settings.css)
@@ -115,8 +128,10 @@ LiteOS.ready((OS) => {
     return w.css;
   }
 
-  /** One setting row. o: { icon, title, sub, ctl, go (a page id), act, off (why it can't be used), attrs, cls } */
+  /** One setting row. o: { icon, title, sub, ctl, go (a page id), act, off (why it can't be used), attrs, cls, dev (changes
+   *  the device itself: left out for accounts without settingsDevice) }. Returns '' for a row the account can't use. */
   function row(o) {
+    if ((o.go && !allowed(o.go)) || (!can('settingsDevice') && (o.dev || o.act === 'll-settings'))) return '';
     const link = !!(o.go || o.act);
     const tag = link ? 'button' : 'div';
     const off = o.off || '';
@@ -188,6 +203,7 @@ LiteOS.ready((OS) => {
     if (!has('network') || !data.net) return '';
     const n = data.net;
     const wifi = n.kind === 'wifi';
+    if (!allowed('network')) return '';
     return '<button class="st-stat" data-go="network">' + ico(wifi ? 'settings.wifi' : 'settings.ethernet', 24) +
       '<span><b>' + esc(wifi ? (n.wifi && n.wifi.network) || 'Wi-Fi' : n.kind === 'ethernet' ? 'Ethernet' : 'Network') + '</b>' +
       '<small>' + (n.connected ? 'Connected' : 'Not connected') + '</small></span></button>';
@@ -226,7 +242,7 @@ LiteOS.ready((OS) => {
         '<div class="st-specs">' +
         spec('Processor', esc(data.info ? data.info.processor : offSys ? 'Not available here' : 'Loading…'), offSys) +
         spec('Installed RAM', esc(data.info && data.info.memory ? util.formatSize(data.info.memory) : offSys ? 'Not available here' : 'Loading…'), offSys) +
-        spec('Storage', u ? esc(util.formatSize(u.used) + ' of ' + util.formatSize(u.quota) + ' used') : 'Loading…') +
+        (can('files') ? spec('Storage', u ? esc(util.formatSize(u.used) + ' of ' + util.formatSize(u.quota) + ' used') : 'Loading…') : '') +
         spec('Screen', window.screen.width + ' × ' + window.screen.height) + '</div>' +
         row({ title: 'About your device', go: 'system/about' }));
       const btCard = card('Bluetooth devices', 'Manage, add and remove devices',
@@ -238,8 +254,9 @@ LiteOS.ready((OS) => {
         '<div class="st-walls home">' + walls.map((w) => '<button class="st-wall' + (s.wallpaper === w.id ? ' on' : '') + '" data-wall="' + w.id + '" aria-label="' + esc(w.name) + '" style="background:' + esc(w.css) + '"></button>').join('') + '</div>' +
         row({ icon: 'settings.colour', title: 'Colour mode', ctl: sel(' data-set="theme" aria-label="Colour mode"', [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Automatic']], s.theme) }) +
         row({ title: 'Browse more backgrounds, colours and themes', go: 'personalisation' }));
-      return hero() + bridgeInfo(['network', 'bluetooth', 'system']) +
-        '<div class="st-home"><div class="st-col">' + recommended + devInfo + '</div><div class="st-col">' + btCard + theme + '</div></div>';
+      const device = can('settingsDevice');
+      return hero() + (device ? bridgeInfo(['network', 'bluetooth', 'system']) : '') +
+        '<div class="st-home"><div class="st-col">' + recommended + devInfo + '</div><div class="st-col">' + (device ? btCard : '') + theme + '</div></div>';
     },
 
     // ---------------------------------------------------------------- System
@@ -253,17 +270,17 @@ LiteOS.ready((OS) => {
       const disp = data.disp || [];
       const main = disp[0];
       const modes = main ? main.modes.map((m) => [m, m.replace('x', ' × ') + (m === main.preferred ? ' (Recommended)' : '')]) : [['', '—']];
-      return bridgeInfo(['display']) +
+      return (can('settingsDevice') ? bridgeInfo(['display']) : '') +
         h('Brightness & colour') +
         rows(row({ icon: 'settings.display', title: 'Brightness', sub: 'Dims the screen inside LiteOS', ctl: slider(' data-range="brightness"', 20, 100, s.brightness == null ? 100 : s.brightness, 'Brightness') }),
           tog('nightLight', 'Night light', 'Use warmer colours to help block blue light', { icon: 'settings.colour' })) +
         h('Scale & layout') +
         rows(choose('textSize', 'Text size', 'Size of text and controls in apps', [['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']], { icon: 'settings.font' }),
-          row({ icon: 'settings.display', title: 'Display resolution', sub: off ? '' : 'Adjust the resolution to fit your connected display', off,
+          row({ icon: 'settings.display', title: 'Display resolution', sub: off ? '' : 'Adjust the resolution to fit your connected display', off, dev: true,
             ctl: sel(' data-dev="resolution" aria-label="Display resolution"', modes, main ? main.current : '', !!off || !main) })) +
         (disp.length > 1 ? h('Multiple displays') + rows(...disp.map((d) => row({ icon: 'device.display', title: esc(d.output), sub: esc(d.current.replace('x', ' × ') + (d.rate ? ' at ' + d.rate + ' Hz' : '')) }))) : '') +
-        h('Related settings') +
-        rows(row({ icon: 'settings.display', title: 'Advanced display', sub: 'Screens and resolutions in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="display"', off: why('session') }));
+        (can('settingsDevice') ? h('Related settings') +
+        rows(row({ icon: 'settings.display', title: 'Advanced display', sub: 'Screens and resolutions in LiteLink’s Settings', act: 'll-settings', attrs: ' data-page="display"', off: why('session') })) : '');
     },
 
     'system/sound'() {
@@ -303,11 +320,11 @@ LiteOS.ready((OS) => {
       const off = why('power');
       return bridgeInfo(['power']) +
         h('This session') +
-        rows(row({ icon: 'shell.lock', title: 'Lock', sub: 'Your windows stay open; sign in again to come back', ctl: '<button class="btn" data-act="lock">Lock</button>' }),
+        rows(can('lock') ? row({ icon: 'shell.lock', title: 'Lock', sub: 'Your windows stay open; sign in again to come back', ctl: '<button class="btn" data-act="lock">Lock</button>' }) : '',
           row({ icon: 'shell.logout', title: 'Sign out', sub: 'Closes your apps and returns to the sign-in screen', ctl: '<button class="btn" data-act="sign-out">Sign out</button>' })) +
         h('This device') +
-        rows(row({ icon: 'shell.restart', title: 'Restart', sub: 'Restarts the LiteLink device', off, ctl: '<button class="btn" data-act="restart"' + (off ? ' disabled' : '') + '>Restart</button>' }),
-          row({ icon: 'shell.shutdown', title: 'Shut down', sub: 'Turns the LiteLink device off', off, ctl: '<button class="btn" data-act="shutdown"' + (off ? ' disabled' : '') + '>Shut down</button>' }),
+        rows(row({ icon: 'shell.restart', title: 'Restart', sub: 'Restarts the LiteLink device', off, dev: true, ctl: '<button class="btn" data-act="restart"' + (off ? ' disabled' : '') + '>Restart</button>' }),
+          row({ icon: 'shell.shutdown', title: 'Shut down', sub: 'Turns the LiteLink device off', off, dev: true, ctl: '<button class="btn" data-act="shutdown"' + (off ? ' disabled' : '') + '>Shut down</button>' }),
           row({ icon: 'device.computer', title: 'End session', sub: 'Leaves LiteOS and goes back to LiteLink', off: why('session'), ctl: '<button class="btn" data-act="end-session"' + (why('session') ? ' disabled' : '') + '>End session</button>' }));
     },
 
@@ -324,9 +341,9 @@ LiteOS.ready((OS) => {
         rows(row({ icon: 'place.trash', title: 'Trash', sub: t ? plural(t.length, 'item') + ' · ' + util.formatSize(trashSize) : 'Loading…',
             ctl: '<button class="btn" data-act="open-trash">Open</button><button class="btn" data-act="empty-trash"' + (t && t.length ? '' : ' disabled') + '>Empty Trash</button>' }),
           row({ icon: 'app.files', title: 'Files', sub: 'Browse and manage everything on your drive', ctl: '<button class="btn" data-launch="files">Open Files</button>' })) +
-        h('USB drives') +
+        (can('usb') ? h('USB drives') +
         rows(...(offUsb ? [row({ icon: 'settings.usb', title: 'USB drives', off: offUsb })]
-          : drives.length ? drives.map(usbRow) : [row({ icon: 'settings.usb', title: 'No USB drives', sub: 'Plug a USB drive into this device to see it here' })]));
+          : drives.length ? drives.map(usbRow) : [row({ icon: 'settings.usb', title: 'No USB drives', sub: 'Plug a USB drive into this device to see it here' })])) : '');
     },
 
     'system/about'() {
@@ -368,11 +385,12 @@ LiteOS.ready((OS) => {
       const off = why('bluetooth');
       const bt = data.bt;
       const paired = bt ? bt.devices : [];
-      return bridgeInfo(['bluetooth', 'storage']) +
+      const device = can('settingsDevice');
+      return (device ? bridgeInfo(['bluetooth', 'storage']) +
         '<div class="st-devhead' + (off ? ' off' : '') + '">' +
         '<button class="st-addtile" data-act="bt-add"' + (off ? ' disabled' : '') + '><span class="plus">' + G('plus', 22) + '</span><span>Add device</span></button>' +
-        paired.slice(0, 3).map((d) => '<span class="st-devtile">' + ico(btIcon(d), 40) + '<b>' + esc(d.name) + '</b><small>' + (d.connected ? 'Connected' : 'Paired') + '</small></span>').join('') + '</div>' +
-        rows(row({ icon: 'settings.bluetooth', title: 'Bluetooth', sub: bt ? (bt.powered ? 'Discoverable as “' + esc((data.info && data.info.hostname) || 'LiteLink') + '”' : 'Off') : '', off,
+        paired.slice(0, 3).map((d) => '<span class="st-devtile">' + ico(btIcon(d), 40) + '<b>' + esc(d.name) + '</b><small>' + (d.connected ? 'Connected' : 'Paired') + '</small></span>').join('') + '</div>' : '') +
+        rows(row({ icon: 'settings.bluetooth', title: 'Bluetooth', sub: bt ? (bt.powered ? 'Discoverable as “' + esc((data.info && data.info.hostname) || 'LiteLink') + '”' : 'Off') : '', off, dev: true,
             ctl: sw(!!(bt && bt.powered), ' data-dev="bt-power"', 'Bluetooth', !!off || !bt) }),
           goRow('bluetooth/devices', { off, ctl: bt ? plural(paired.length, 'device') : '' }),
           goRow('bluetooth/usb', { off: why('storage') }),
@@ -608,7 +626,7 @@ LiteOS.ready((OS) => {
     // ---------------------------------------------------------------- Accounts
     accounts() {
       const u = OS.user;
-      return '<div class="st-acct">' + avatar(u, 88) + '<span class="st-hero-tx"><b>' + esc(u.name) + '</b><span>' + esc(u.username) + '</span><span>' + (isAdmin() ? 'Administrator' : 'Standard user') + '</span></span></div>' +
+      return '<div class="st-acct">' + avatar(u, 88) + '<span class="st-hero-tx"><b>' + esc(u.name) + '</b><span>' + esc(u.username) + '</span><span>' + roleName(u.role) + '</span></span></div>' +
         h('Account settings') +
         rows(goRow('accounts/info'), goRow('accounts/signin'), isAdmin() ? goRow('accounts/users', { ctl: data.users ? plural(data.users.length - 1, 'user') : '' }) : '');
     },
@@ -616,39 +634,55 @@ LiteOS.ready((OS) => {
     'accounts/info'() {
       const u = OS.user;
       return '<div class="st-acct">' + avatar(u, 88) + '<span class="st-hero-tx"><b>' + esc(u.name) + '</b><span>' + esc(u.username) + '</span></span></div>' +
-        rows(row({ icon: 'settings.user', title: 'Display name', sub: esc(u.name), ctl: '<button class="btn" data-act="edit-name">Change</button>' }),
-          row({ icon: 'settings.accounts', title: 'Account type', sub: isAdmin() ? 'Administrator: can manage users and system settings' : 'Standard user: can change only their own settings' }));
+        rows(row({ icon: 'settings.user', title: 'Display name', sub: esc(u.name) + (can('changeName') ? '' : ' · ' + MANAGED),
+            ctl: '<button class="btn" data-act="edit-name"' + (can('changeName') ? '' : ' disabled') + '>Change</button>' }),
+          row({ icon: 'settings.accounts', title: 'Account type', sub: roleName(u.role) + ': ' + (({
+            admin: 'can manage users and system settings',
+            local: 'can change their own look and basic settings; device settings are left to administrators',
+            guest: 'anyone can use it without a password; files stay in this browser',
+          })[u.role] || 'can change only their own settings') }));
     },
 
     'accounts/signin'() {
       return h('Ways to sign in') +
-        rows(row({ icon: 'status.password', title: 'Password', sub: 'Used to sign in and to unlock the screen', ctl: '<button class="btn" data-act="change-password">Change</button>' })) +
-        h('Additional settings') +
-        rows(row({ icon: 'shell.lock', title: 'Lock the screen now', sub: 'Your windows stay open behind the lock screen', ctl: '<button class="btn" data-act="lock">Lock</button>' }));
+        rows(row({ icon: 'status.password', title: 'Password', sub: 'Used to sign in and to unlock the screen' + (can('changePassword') ? '' : ' · ' + MANAGED),
+          ctl: '<button class="btn" data-act="change-password"' + (can('changePassword') ? '' : ' disabled') + '>Change</button>' })) +
+        (can('lock') ? h('Additional settings') +
+        rows(row({ icon: 'shell.lock', title: 'Lock the screen now', sub: 'Your windows stay open behind the lock screen', ctl: '<button class="btn" data-act="lock">Lock</button>' })) : '');
     },
 
     'accounts/users'() {
       const others = data.users ? data.users.filter((x) => x.username !== OS.user.username) : null;
       const x = data.system;
       const when = (iso) => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
-      const about = (p) => [esc(p.username), p.role === 'admin' ? 'Administrator' : 'Standard user', util.formatSize(p.used) + ' of ' + util.formatSize(p.quota),
+      const about = (p) => [esc(p.username), roleName(p.role), util.formatSize(p.used) + ' of ' + util.formatSize(p.quota),
         p.lastLogin ? 'Last signed in ' + esc(when(p.lastLogin)) : 'Never signed in'].join(' · ');
       return rows(row({ icon: 'settings.accounts', title: 'Add other user', sub: 'Everyone signs in with their own files and settings', ctl: '<button class="btn btn-primary" data-act="add-user">Add account</button>' })) +
+        h('Guest') +
+        rows(row({ icon: 'settings.user', title: 'Guest account', sub: 'Anyone can sign in from the sign-in screen without a password. Their files stay in the browser they use.',
+            ctl: x ? sw(!!x.guestEnabled, ' data-guest="guestEnabled"', 'Guest account') : '' }),
+          x && x.guestEnabled ? row({ icon: 'app.browser', title: 'Web access for guests', sub: 'The Browser, downloads and web content in apps. Turn it off if this LiteOS can be reached from the internet.',
+            ctl: sw(!!x.guestWeb, ' data-guest="guestWeb"', 'Web access for guests') }) : '',
+          x && x.guestEnabled ? row({ icon: 'settings.apps', title: 'Apps guests can open', sub: plural((Array.isArray(x.guestApps) ? x.guestApps : x.localApps || []).length, 'app'),
+            ctl: '<button class="btn" data-act="guest-apps">Choose</button>' }) : '') +
+        h('Storage') +
+        rows(row({ icon: 'settings.storage', title: 'Storage for each new user', sub: 'Users without their own limit get this much space',
+          ctl: x ? '<form data-form="quota" class="st-inline"><input class="input st-num-in" name="quota" type="number" min="10" value="' + esc(x.defaultQuotaMB) + '" aria-label="Storage per user in MB"><span class="hint">MB</span><button class="btn">Save</button></form>' : '' }),
+          row({ icon: 'settings.storage', title: 'Storage for each new Local account', sub: 'Local accounts without their own limit get this much space',
+            ctl: x ? '<form data-form="localQuota" class="st-inline"><input class="input st-num-in" name="quota" type="number" min="10" value="' + esc(x.defaultLocalQuotaMB) + '" aria-label="Storage per Local account in MB"><span class="hint">MB</span><button class="btn">Save</button></form>' : '' })) +
+        // the people who sign in here, last on the page
         h('Other users') +
         (!others ? rows(row({ title: 'Loading…' }))
           : others.length ? rows(...others.map((p) => '<div class="st-row' + (p.disabled ? ' dim' : '') + '">' + avatar(p, 36) + '<span class="st-tx"><b>' + esc(p.name) + (p.disabled ? ' <span class="st-tag">Disabled</span>' : '') + '</b><small>' + about(p) + '</small></span>' +
             '<span class="st-ctl"><button class="icon-btn" data-user="' + esc(p.username) + '" aria-label="More for ' + esc(p.name) + '">' + G('more') + '</button></span></div>'))
-            : rows(row({ title: 'No other users yet', sub: 'Add an account so someone else can sign in to this computer.' }))) +
-        h('Storage') +
-        rows(row({ icon: 'settings.storage', title: 'Storage for each new user', sub: 'Users without their own limit get this much space',
-          ctl: x ? '<form data-form="quota" class="st-inline"><input class="input st-num-in" name="quota" type="number" min="10" value="' + esc(x.defaultQuotaMB) + '" aria-label="Storage per user in MB"><span class="hint">MB</span><button class="btn">Save</button></form>' : '' }));
+            : rows(row({ title: 'No other users yet', sub: 'Add an account so someone else can sign in to this computer.' })));
     },
 
     // ---------------------------------------------------------------- Time & language
     time() {
       const now = new Date();
       return '<div class="st-clock"><b data-clock>' + clock(now) + '</b><span>' + esc(now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) + '</span></div>' +
-        rows(goRow('time/datetime', { ctl: esc(zone()) }), goRow('time/language', { ctl: esc(langName()) }), goRow('time/typing', { ctl: data.input ? esc(layoutName()) : '' }));
+        rows(goRow('time/datetime', Object.assign({ ctl: esc(zone()) }, can('settingsDevice') ? {} : { sub: 'Clock format' })), goRow('time/language', { ctl: esc(langName()) }), goRow('time/typing', { ctl: data.input ? esc(layoutName()) : '' }));
     },
 
     'time/datetime'() {
@@ -658,10 +692,10 @@ LiteOS.ready((OS) => {
       const cur = t ? t.timezone : zone();
       const list = zones.includes(cur) ? zones : [cur].concat(zones);
       const now = new Date();
-      return bridgeInfo(['time']) +
+      return (can('settingsDevice') ? bridgeInfo(['time']) : '') +
         '<div class="st-clock"><b data-clock>' + clock(now) + '</b><span>' + esc(now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) + '</span></div>' +
-        rows(row({ icon: 'settings.time', title: 'Set the time automatically', off, sub: t ? (t.synced ? 'Synchronised with a time server' : 'Not synchronised yet') : '', ctl: t ? '<span class="hint">' + (t.ntp ? 'On' : 'Off') + '</span>' : '' }),
-          row({ icon: 'settings.language', title: 'Time zone', off, sub: off ? '' : 'Changing it needs the LiteLink admin password',
+        rows(row({ icon: 'settings.time', title: 'Set the time automatically', off, dev: true, sub: t ? (t.synced ? 'Synchronised with a time server' : 'Not synchronised yet') : '', ctl: t ? '<span class="hint">' + (t.ntp ? 'On' : 'Off') + '</span>' : '' }),
+          row({ icon: 'settings.language', title: 'Time zone', off, dev: true, sub: off ? '' : 'Changing it needs the LiteLink admin password',
             ctl: sel(' data-dev="zone" aria-label="Time zone"', list.map((z) => [z, z.replace(/_/g, ' ')]), cur, !!off || !t) }),
           tog('clock24', 'Show time in 24-hour format', 'Show 13:00 instead of 1:00 PM', { icon: 'settings.time' }));
     },
@@ -772,9 +806,9 @@ LiteOS.ready((OS) => {
   function renderNav() {
     const u = OS.user;
     const top = page.split('/')[0];
-    $('#nav').innerHTML = '<button class="st-me" data-go="accounts">' + avatar(u, 56) + '<span class="st-me-tx"><b>' + esc(u.name) + '</b><small>' + esc(u.username) + ' · ' + (isAdmin() ? 'Administrator' : 'Standard user') + '</small></span></button>' +
+    $('#nav').innerHTML = '<button class="st-me" data-go="accounts">' + avatar(u, 56) + '<span class="st-me-tx"><b>' + esc(u.name) + '</b><small>' + esc(u.username) + ' · ' + roleName(u.role) + '</small></span></button>' +
       '<div class="st-search"><span class="ico-wrap">' + G('search', 15) + '</span><input class="input" id="find" placeholder="Find a setting" autocomplete="off" aria-label="Find a setting" aria-controls="found"><div class="st-found" id="found" role="listbox" hidden></div></div>' +
-      '<div class="st-navlist" role="list">' + NAV.map((id) => '<button class="st-navi' + (top === id ? ' active' : '') + '" data-go="' + id + '" role="listitem"' + (top === id ? ' aria-current="page"' : '') + '>' + ico(PAGES[id].icon, 20) + '<span>' + esc(PAGES[id].title) + '</span></button>').join('') + '</div>';
+      '<div class="st-navlist" role="list">' + NAV.filter(allowed).map((id) => '<button class="st-navi' + (top === id ? ' active' : '') + '" data-go="' + id + '" role="listitem"' + (top === id ? ' aria-current="page"' : '') + '>' + ico(PAGES[id].icon, 20) + '<span>' + esc(PAGES[id].title) + '</span></button>').join('') + '</div>';
   }
 
   // everything Find a setting looks through: each page, and the rows on the pages that have no page of their own
@@ -789,11 +823,13 @@ LiteOS.ready((OS) => {
     ['High contrast', 'accessibility/contrast'], ['Greyscale', 'accessibility/filters'], ['Animations', 'accessibility/effects'], ['Pair a device', 'bluetooth/devices'],
     ['IP address', 'network/ethernet'], ['Eject USB drive', 'bluetooth/usb'],
   ];
+  // rows Find a setting shouldn't offer to an account that can't change the device (the page itself stays)
+  const DEVICE_EXTRA = ['Resolution', 'Restart', 'Shut down', 'Time zone'];
   function findSettings(q) {
     const t = q.trim().toLowerCase();
     if (!t) return [];
-    const all = PAGE_LIST.filter(([id]) => id !== 'home' && !(adminOnly(id) && !isAdmin())).map(([id, title, icon, subText]) => ({ title, page: id, icon, text: (title + ' ' + (subText || '')).toLowerCase() }))
-      .concat(EXTRA.filter(([, p]) => !(adminOnly(p) && !isAdmin())).map(([title, p]) => ({ title, page: p, icon: PAGES[p].icon, text: title.toLowerCase() })));
+    const all = PAGE_LIST.filter(([id]) => id !== 'home' && allowed(id)).map(([id, title, icon, subText]) => ({ title, page: id, icon, text: (title + ' ' + (subText || '')).toLowerCase() }))
+      .concat(EXTRA.filter(([title, p]) => allowed(p) && (can('settingsDevice') || !DEVICE_EXTRA.includes(title))).map(([title, p]) => ({ title, page: p, icon: PAGES[p].icon, text: title.toLowerCase() })));
     const hits = all.filter((x) => x.text.includes(t));
     hits.sort((a, b) => (a.title.toLowerCase().startsWith(t) ? 0 : 1) - (b.title.toLowerCase().startsWith(t) ? 0 : 1));
     const seen = new Set();
@@ -826,8 +862,8 @@ LiteOS.ready((OS) => {
     const jobs = [];
     const top = id.split('/')[0];
     const set = (key, p) => jobs.push(p.then((v) => { data[key] = v; }, (e) => { dev.err[key] = e.message; }));
-    if (id === 'home' || id === 'system' || id === 'system/storage') set('usage', OS.fs.usage());
-    if (id === 'system/storage') set('trash', OS.fs.trash.list());
+    if (can('files') && (id === 'home' || id === 'system' || id === 'system/storage')) set('usage', OS.fs.usage());
+    if (can('files') && id === 'system/storage') set('trash', OS.fs.trash.list());
     if ((id === 'accounts' || id === 'accounts/users') && isAdmin()) set('users', OS.api('users.list', undefined, {}));
     if ((id === 'system/about' || id === 'accounts/users') && isAdmin()) set('system', OS.api('system.get', undefined, {}));
     if (want('system') && data.info === undefined && ['home', 'system', 'system/about', 'bluetooth'].includes(id)) set('info', LL.system.info());
@@ -863,7 +899,7 @@ LiteOS.ready((OS) => {
   }
 
   async function go(id, fromBack) {
-    if (!PAGES[id] || (adminOnly(id) && !isAdmin())) return;
+    if (!PAGES[id] || !allowed(id)) return;
     if (!fromBack && id !== page) history.push(page);
     page = id;
     render();
@@ -901,8 +937,68 @@ LiteOS.ready((OS) => {
       '<label class="field"><span>Display name</span><input class="input" name="name" required maxlength="60" value="' + esc(x ? x.name : '') + '"></label>' +
       (editing ? '' : '<label class="field"><span>Password</span><input class="input" type="password" name="password" required minlength="6" autocomplete="new-password"></label>') +
       '<div class="row" style="gap:14px;align-items:flex-end"><div class="field grow"><span>Account type</span>' +
-      sel(' data-name="role" aria-label="Account type"', [['user', 'Standard user'], ['admin', 'Administrator']], x && x.role === 'admin' ? 'admin' : 'user') + '</div>' +
+      sel(' data-name="role" aria-label="Account type"', [['user', 'Standard user'], ['local', 'Local account'], ['admin', 'Administrator']], x ? x.role : 'user') + '</div>' +
       '<label class="field grow"><span>Storage limit (MB)</span><input class="input" type="number" min="10" name="quotaMB" placeholder="Default" value="' + esc(x && x.quotaMB != null ? x.quotaMB : '') + '"></label></div>';
+  }
+
+  // Switches inside a dialog (they're buttons in a form, so type="button") and the list of apps to tick: Settings is
+  // always there (it's where anyone locks or signs out) and the Browser needs web access.
+  const dsw = (on, attrs, label, dis) => sw(on, attrs, label, dis).replace('<button class="switch"', '<button type="button" class="switch"');
+  const dlgLine = (title, subText, ctl, img) => '<div class="st-row">' + (img ? '<span class="st-ic"><img src="' + esc(img) + '" alt="" width="24" height="24"></span>' : '') +
+    '<span class="st-tx"><b>' + title + '</b>' + (subText ? '<small>' + subText + '</small>' : '') + '</span><span class="st-ctl">' + ctl + '</span></div>';
+  const isOn = (b) => b.getAttribute('aria-checked') === 'true';
+  function appSwitches(chosen, web) {
+    return '<div class="st-rows st-dlg-list">' + window.LOS_APPS.map((a) => {
+      const always = a.id === 'settings';
+      return dlgLine(esc(a.name), always ? 'Always available' : a.id === 'browser' ? 'Needs web access' : '',
+        dsw(always || chosen.includes(a.id), ' data-app="' + a.id + '"', a.name, always || (a.id === 'browser' && !web)), a.img);
+    }).join('') + '</div>';
+  }
+  const chosenApps = (f) => [...f.querySelectorAll('[data-app]')].filter(isOn).map((b) => b.dataset.app);
+  // flips a dialog's switches; turning web access off locks the Browser's switch
+  function wireSwitches(form) {
+    form.addEventListener('click', (e) => {
+      const b = e.target.closest('.switch[data-perm], .switch[data-app]');
+      if (!b || b.disabled) return;
+      const now = !isOn(b);
+      b.setAttribute('aria-checked', now ? 'true' : 'false');
+      b.previousElementSibling.textContent = now ? 'On' : 'Off';
+      if (b.dataset.perm === 'web') {
+        const browser = form.querySelector('[data-app="browser"]');
+        if (browser) browser.disabled = !now;
+      }
+    });
+  }
+
+  // What a Local account may do (App\Support\Capabilities): web access, changing its own name and password, and the
+  // apps it can open.
+  function accessDialog(x) {
+    const p = x.permissions || {};
+    const chosen = Array.isArray(p.apps) ? p.apps : ((x.can && x.can.apps) || []);
+    const perm = (key, title, subText) => dlgLine(title, subText, dsw(p[key] !== false, ' data-perm="' + key + '"', title));
+    const body = '<p class="st-note">' + esc(x.name) + ' can change their own look and basic settings. Choose what else they can do.</p>' +
+      '<div class="st-rows">' + perm('web', 'Web access', 'The Browser, downloads and web content in apps') +
+      perm('changeName', 'Change their display name', '') + perm('changePassword', 'Change their password', '') + '</div>' +
+      '<h3 class="st-h">Apps they can open</h3>' + appSwitches(chosen, p.web !== false);
+    const d = dialog('Access for ' + x.name, body, 'Save', async (f) => {
+      const value = (key) => isOn(f.querySelector('[data-perm="' + key + '"]'));
+      await OS.api('users.update', { username: x.username, changes: { permissions: { web: value('web'), changeName: value('changeName'), changePassword: value('changePassword'), apps: chosenApps(f) } } });
+      OS.notify('Changes to what ' + x.name + ' can do were saved. They apply the next time a page or app opens.', { type: 'success', title: 'Access updated' });
+      await refreshUsers();
+    });
+    wireSwitches(d.form);
+  }
+
+  // The apps guests can open (system setting guestApps; until an administrator picks, the Local accounts' defaults)
+  function guestAppsDialog() {
+    const x = data.system;
+    const chosen = Array.isArray(x.guestApps) ? x.guestApps : (x.localApps || []);
+    const d = dialog('Apps guests can open', '<p class="st-note">Guests see only these apps in the launcher.</p>' + appSwitches(chosen, x.guestWeb), 'Save', async (f) => {
+      data.system = Object.assign(data.system, await OS.api('system.save', { system: { guestApps: chosenApps(f) } }));
+      OS.notify('Guests see the new list the next time they sign in.', { type: 'success', title: 'Guest apps saved' });
+      render();
+    });
+    wireSwitches(d.form);
   }
 
   function userMenu(username, at) {
@@ -914,6 +1010,7 @@ LiteOS.ready((OS) => {
         await OS.api('users.update', { username: x.username, changes: { name: f.name.value, role: f.role.value, quotaMB: f.quotaMB.value === '' ? null : +f.quotaMB.value } });
         OS.notify('Changes to ' + x.name + ' were saved.', { type: 'success', title: 'User updated' }); await refreshUsers();
       }) },
+      ...(x.role === 'local' ? [{ label: 'Change access', icon: 'settings', action: () => accessDialog(x) }] : []),
       { label: 'Reset password', icon: 'lock', action: () => dialog('Reset password for ' + x.name, '<label class="field"><span>New password</span><input class="input" type="password" name="pw" minlength="6" required autocomplete="new-password"></label>', 'Reset password', async (f) => {
         await OS.api('users.update', { username: x.username, changes: { password: f.pw.value } });
         OS.notify('Password changed for ' + x.name + '.', { type: 'success', title: 'Password reset' });
@@ -930,6 +1027,14 @@ LiteOS.ready((OS) => {
       } });
     }
     OS.menu(items, at);
+  }
+  // the Guest section's switches (system settings guestEnabled, guestWeb)
+  async function setGuest(key, value) {
+    try {
+      data.system = Object.assign(data.system, await OS.api('system.save', { system: { [key]: value } }));
+      if (key === 'guestEnabled') OS.notify(value ? 'The sign-in screen now offers “Sign in as guest”.' : 'Guests can no longer sign in, and anyone signed in as a guest is signed out.', { type: 'success', title: value ? 'Guest account on' : 'Guest account off' });
+    } catch (e) { OS.notify(e.message, { type: 'error', title: 'Couldn’t change the guest account' }); }
+    render();
   }
   async function refreshUsers() { data.users = await OS.api('users.list', undefined, {}); render(); }
 
@@ -1070,6 +1175,7 @@ LiteOS.ready((OS) => {
     if (b.dataset.exp) { const id = b.dataset.exp; if (openExp.has(id)) openExp.delete(id); else openExp.add(id); render(); return; }
     if (b.dataset.set && b.dataset.val) { save({ [b.dataset.set]: b.dataset.val }); return; }
     if (b.dataset.toggle) { save({ [b.dataset.toggle]: !st()[b.dataset.toggle] }); return; }
+    if (b.dataset.guest) { setGuest(b.dataset.guest, !data.system[b.dataset.guest]); return; }
     if (b.dataset.wall) { save({ wallpaper: b.dataset.wall }); return; }
     if (b.dataset.accent) { save({ accent: b.dataset.accent }); return; }
     if (b.dataset.launch) { OS.open(b.dataset.launch, b.dataset.args === 'device' ? { path: 'device:' } : undefined); return; }
@@ -1237,6 +1343,9 @@ LiteOS.ready((OS) => {
             OS.notify('Use your new password the next time you sign in.', { type: 'success', title: 'Password changed' });
           });
         break;
+      case 'guest-apps':
+        guestAppsDialog();
+        break;
       case 'add-user':
         dialog('Add account', userForm(null), 'Add account', async (f) => {
           await OS.api('users.create', { username: f.username.value, name: f.name.value, password: f.password.value, role: f.role.value, quotaMB: f.quotaMB.value });
@@ -1370,6 +1479,10 @@ LiteOS.ready((OS) => {
         const sys = data.system;
         data.system = Object.assign(sys, await OS.api('system.save', { system: { instanceName: sys.instanceName, defaultQuotaMB: +f.quota.value } }));
         OS.notify('New users get ' + f.quota.value + ' MB unless you give them their own limit.', { type: 'success', title: 'Storage saved' });
+        render();
+      } else if (f.dataset.form === 'localQuota') {
+        data.system = Object.assign(data.system, await OS.api('system.save', { system: { defaultLocalQuotaMB: +f.quota.value } }));
+        OS.notify('New Local accounts get ' + f.quota.value + ' MB unless you give them their own limit.', { type: 'success', title: 'Storage saved' });
         render();
       }
     } catch (ex) { OS.notify(ex.message, { type: 'error', title: 'Couldn’t save changes' }); }

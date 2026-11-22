@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 
 // The signed-in user's own account (/os/account), from Settings › Accounts: their display name and password. Role,
-// quota and disabling are the administrator's (UsersController).
+// quota and disabling are the administrator's (UsersController). An administrator can stop a Local account changing
+// either (the account.name and account.password gates).
 class AccountController extends Controller
 {
     public function update(Request $request): JsonResponse
@@ -41,7 +42,7 @@ class AccountController extends Controller
 
     public static function routes(): void
     {
-        Route::post('/update', [self::class, 'update'])->name('account.update');
-        Route::post('/password', [self::class, 'password'])->name('account.password');
+        Route::post('/update', [self::class, 'update'])->middleware('can:account.name')->name('account.update');
+        Route::post('/password', [self::class, 'password'])->middleware('can:account.password')->name('account.password');
     }
 }

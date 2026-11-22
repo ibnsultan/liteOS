@@ -12,6 +12,48 @@
   const BASE = CFG.base;
   window.LOS_BASE = BASE;
 
+  // ------------------------------------------------------------------ each account's browser storage
+  // localStorage belongs to the browser, not to an account, so on a shared device (a guest after a user, one user
+  // after another) every app would see what the last account kept there: recent files, query history, a personal
+  // dictionary, alarms. Here every page signed in as an account gets a localStorage that keeps that account's keys
+  // apart ("los@<username>:<key>"), with the same API (getItem, setItem, removeItem, key, length, clear, and
+  // storage[key]); clear() empties only that account's. Keys kept before accounts were kept apart belong to nobody:
+  // the first account that isn't the guest to sign in takes them over, and the guest never sees them. The sign-in
+  // screen's own (los_auth_*, auth.js) belong to the device and stay where they are. This keeps the
+  // apps' data apart; it can't stop someone with the browser's developer tools on the device itself.
+  (function scopeStorage() {
+    if (!CFG.account) return;
+    let real;
+    try { real = window.localStorage; if (!real) return; } catch (e) { return; } // storage blocked: nothing to keep apart
+    const NS = 'los@';
+    const prefix = NS + CFG.account + ':';
+    const own = () => { const out = []; for (let i = 0; i < real.length; i++) { const k = real.key(i); if (k && k.startsWith(prefix)) out.push(k.slice(prefix.length)); } return out; };
+    try {
+      if (!CFG.guest && !real.getItem(NS + 'adopted')) {
+        const legacy = [];
+        for (let i = 0; i < real.length; i++) { const k = real.key(i); if (k && !k.startsWith(NS) && !k.startsWith('los_auth_')) legacy.push(k); }
+        legacy.forEach((k) => { if (real.getItem(prefix + k) == null) real.setItem(prefix + k, real.getItem(k)); real.removeItem(k); });
+        real.setItem(NS + 'adopted', '1');
+      }
+    } catch (e) { /* full or blocked: start empty */ }
+    const api = {
+      getItem: (k) => real.getItem(prefix + String(k)),
+      setItem: (k, v) => real.setItem(prefix + String(k), String(v)),
+      removeItem: (k) => real.removeItem(prefix + String(k)),
+      key: (i) => own()[i] == null ? null : own()[i],
+      clear: () => own().forEach((k) => real.removeItem(prefix + k)),
+    };
+    const scoped = new Proxy(api, {
+      get: (t, p) => (p === 'length' ? own().length : typeof p === 'symbol' || p in t ? t[p] : t.getItem(p)),
+      set: (t, p, v) => { if (typeof p !== 'symbol') t.setItem(p, v); return true; },
+      deleteProperty: (t, p) => { if (typeof p !== 'symbol') t.removeItem(p); return true; },
+      has: (t, p) => (typeof p === 'symbol' || p in t ? p in t : t.getItem(p) !== null),
+      ownKeys: () => own(),
+      getOwnPropertyDescriptor: (t, p) => (typeof p !== 'symbol' && !(p in t) && t.getItem(p) !== null ? { value: t.getItem(p), writable: true, enumerable: true, configurable: true } : undefined),
+    });
+    try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => scoped }); } catch (e) { /* left as it is */ }
+  })();
+
   window.LOS_KINDS = CFG.kinds;
   const { image: IMG, video: VID, audio: AUD } = CFG.kinds;
 
@@ -43,9 +85,13 @@
    * URL of an API action: 'auth.login' → /auth/login, everything else 'a.b' → /os/a/b.
    * Reads are GET (parameters in the query string), changes are POST.
    */
+  // For the Guest account the drive, the Trash and the desktop settings are kept in this browser: those actions go to
+  // os/guestfs/..., which the guest drive's service worker answers (public/guest-sw.js), never the server.
+  const GUEST_AREAS = { fs: true, trash: true, settings: true };
   window.LOS_endpoint = function (action) {
     const [area, verb] = String(action).split('.');
-    return BASE + (area === 'auth' ? 'auth/' : 'os/' + area + '/') + verb;
+    if (area === 'auth') return BASE + 'auth/' + verb;
+    return BASE + 'os/' + (CFG.guest && GUEST_AREAS[area] ? 'guestfs/' : '') + area + '/' + verb;
   };
 
   /** App that opens a file by default (by extension), or null. */

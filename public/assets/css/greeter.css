@@ -98,8 +98,16 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 /* the sign-in error: red text straight on the wallpaper, with a soft light halo so it reads on any picture */
 .g-err { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; color: #C8102E; font-size: 14px; font-weight: 600; line-height: 1.35; text-shadow: 0 0 2px rgba(255,255,255,.9), 0 0 8px rgba(255,255,255,.75); }
 .g-err .ico { width: 14px; height: 14px; flex-shrink: 0; filter: drop-shadow(0 0 2px rgba(255,255,255,.9)); }
-.g-link { margin-top: 12px; border: none; background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: var(--radius-l); text-shadow: 0 1px 6px rgba(10,30,70,.4); opacity: .92; }
-.g-link:hover { background: rgba(255,255,255,.14); opacity: 1; }
+.g-link { margin-top: 12px; border: none; background: none; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: var(--radius-l); text-shadow: 0 1px 6px rgba(10,30,70,.4); opacity: .8; transition: opacity .12s; }
+/* a link on the wallpaper: hovering brightens the text, no background */
+.g-link:hover { opacity: 1; text-shadow: 0 1px 8px rgba(10,30,70,.6); }
+/* clicked or focused: still only the text changes. A press dims it for a moment; keyboard focus underlines it
+   (in place of the usual outline box) so it can still be seen */
+.g-link:focus, .g-link:active { background: none; outline: none; }
+.g-link:active { opacity: .65; }
+.g-link:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+/* "Sign in as guest" sits under the username form, not a whole greeter gap away */
+.g-guest { margin-top: -38px; }
 .shake { animation: gShake .36s ease; }
 @keyframes gShake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
 

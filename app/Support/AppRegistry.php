@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 // The apps LiteOS knows about, read from their manifest.json files (the package format in docs/app-platform.md).
@@ -64,12 +65,16 @@ class AppRegistry
     }
 
     /**
-     * The apps as the shell's registry needs them (what the MVP's LOS_APPS held), printed into the desktop page.
+     * The apps as the shell's registry needs them (what the MVP's LOS_APPS held), printed into the desktop page and
+     * every app window, limited to what the signed-in account may open.
      *
      * @return list<array{id: string, name: string, icon: string, c: list<string>, img: string, role: ?string, entry: string, exts: list<string>, size: list<int>, chrome: string, material: string, single: bool, reports: bool, system: bool}>
      */
-    public function forClient(): array
+    public function forClient(?User $user = null): array
     {
+        // a signed-in account sees only the apps it may open (App\Support\Capabilities); /apps/<id> refuses the rest
+        $apps = $user === null ? $this->all() : array_intersect_key($this->all(), array_flip(Capabilities::for($user)['apps']));
+
         return array_values(array_map(fn (array $app) => [
             'id' => $app['id'],
             'name' => $app['name'],
@@ -88,7 +93,7 @@ class AppRegistry
             // the app says when it's ready to be seen (OS.win.loaded): its window stays covered until then
             'reports' => (bool) ($app['window']['reportsReady'] ?? false),
             'system' => (bool) ($app['system'] ?? false),
-        ], $this->all()));
+        ], $apps));
     }
 
     /**

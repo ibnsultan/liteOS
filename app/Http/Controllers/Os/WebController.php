@@ -22,6 +22,10 @@ class WebController extends Controller
 
     public function fetch(Request $request, WebFetcher $fetcher): JsonResponse
     {
+        // downloads are saved into the drive on the server; a guest's files are in its browser instead
+        if ($request->user()->isGuest()) {
+            return $this->jsonError('Guests can’t download files to this computer yet.', 403);
+        }
         $this->result = $fetcher->download($request->user(), (string) $request->input('url'), (string) $request->input('dir', '/Downloads'), (string) $request->input('name', ''));
 
         return $this->jsonSuccess();

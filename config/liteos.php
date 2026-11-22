@@ -16,6 +16,15 @@ return [
 
     // storage for a new account, in MB, until an admin sets another default in Settings › System
     'default_quota_mb' => (int) env('LITEOS_DEFAULT_QUOTA_MB', 1024),
+    // the same for a Local account (the limited account type, docs/account-types.md)
+    'default_local_quota_mb' => (int) env('LITEOS_DEFAULT_LOCAL_QUOTA_MB', 500),
+
+    // how much a guest may keep in the browser it uses (its files live there, not on the server)
+    'guest_quota_mb' => (int) env('LITEOS_GUEST_QUOTA_MB', 2048),
+
+    // the apps a Local account may open unless an administrator picks others (App\Support\Capabilities); Settings is
+    // always allowed, and the Browser only with web access
+    'local_apps' => ['files', 'documents', 'sheets', 'slides', 'notes', 'pdf', 'media', 'board', 'calculator', 'clock', 'settings', 'browser'],
 
     // what one account may ask of the server's web connection, so nobody can use it as an unmetered proxy: requests a
     // minute for signing relay links, relayed requests (HLS asks for a segment every few seconds per stream, and

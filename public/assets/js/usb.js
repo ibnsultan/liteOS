@@ -7,7 +7,9 @@
   'use strict';
   const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
   // the connection's USB drives setting: 'read' | 'write', or null (off, or not a LiteLink device)
-  const access = LL ? Promise.resolve(LL.ready).then((c) => (c && c.storage && c.storage.usb) || null, () => null) : Promise.resolve(null);
+  // the account must be allowed them too (the guest isn't: App\Support\Capabilities, LOS_CONFIG.can)
+  const CAN = (window.LOS_CONFIG && window.LOS_CONFIG.can) || null;
+  const access = LL && !(CAN && CAN.usb === false) ? Promise.resolve(LL.ready).then((c) => (c && c.storage && c.storage.usb) || null, () => null) : Promise.resolve(null);
   let accessNow = null;
   access.then((a) => { accessNow = a; });
   const names = new Map(); // drive id -> its name, from the last list()

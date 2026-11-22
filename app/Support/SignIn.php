@@ -28,7 +28,7 @@ class SignIn
     {
         $user = User::query()->where('username', strtolower(trim($username)))->first();
 
-        return $user !== null && ! $user->isDisabled() ? $user : null;
+        return $user !== null && ! $user->isDisabled() && ! $user->isGuest() ? $user : null;
     }
 
     /**
@@ -49,6 +49,9 @@ class SignIn
         }
 
         $user = User::query()->where('username', $username)->first();
+        if ($user?->isGuest()) {
+            $user = null; // the guest signs in from its own link, never with a password
+        }
         if ($user === null || $user->isDisabled() || ! Hash::check($password, $user->password)) {
             SecurityLog::signInFailed($username, $user === null ? 'unknown account' : ($user->isDisabled() ? 'disabled account' : 'wrong password'));
             RateLimiter::hit($key, self::LOCKOUT_SECONDS);
@@ -72,8 +75,10 @@ class SignIn
         $request->session()->regenerate();
         SessionLock::clear($request);
         $user->forceFill(['last_login_at' => now()])->save();
-        Drive::ensureHome($user->username);
-        Cookie::queue(self::LAST_USER_COOKIE, $user->username, 60 * 24 * 365);
+        if (! $user->isGuest()) {
+            Drive::ensureHome($user->username);
+            Cookie::queue(self::LAST_USER_COOKIE, $user->username, 60 * 24 * 365);
+        }
         SecurityLog::signedIn($user);
     }
 

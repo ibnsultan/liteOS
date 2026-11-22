@@ -39,6 +39,10 @@ class AuthController extends Controller
      */
     public function lock(Request $request): JsonResponse
     {
+        // the guest has no password to unlock with (the desktop signs out instead)
+        if ($request->user()?->isGuest()) {
+            return $this->jsonError('The guest account can’t be locked. Sign out instead.', 403);
+        }
         SessionLock::lock($request);
         $this->result = ['lock' => route('lock', ['embed' => 1])];
 

@@ -19,7 +19,14 @@ class ClientConfig
             'csrf' => csrf_token(),
             // just finished first-run setup: the desktop greets the new administrator (flashed by SetupController)
             'welcome' => (bool) session('welcome', false),
-            'apps' => app(AppRegistry::class)->forClient(),
+            'apps' => app(AppRegistry::class)->forClient(auth()->user()),
+            // the Guest account keeps its files and settings in this browser (public/guest-sw.js), up to this many bytes
+            'guest' => (bool) auth()->user()?->isGuest(),
+            // the signed-in account and what it may do, for the scripts that run before anything is asked of the server:
+            // apps.js keeps each account's browser storage apart, usb.js hides USB drives from accounts without them
+            'account' => auth()->user()?->username,
+            'can' => auth()->user() ? Capabilities::for(auth()->user()) : null,
+            'guestQuota' => (int) config('liteos.guest_quota_mb') * 1024 * 1024,
             'kinds' => config('liteos.kinds'),
             'wallpapers' => array_map(fn (array $w) => [
                 'id' => $w['id'],

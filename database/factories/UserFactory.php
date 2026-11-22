@@ -44,6 +44,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * A Local account (limited), with an administrator's switches if given.
+     *
+     * @param  array<string, mixed>|null  $permissions
+     */
+    public function local(?array $permissions = null): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => Role::Local, 'permissions' => $permissions]);
+    }
+
+    /**
      * An account that can't sign in.
      */
     public function disabled(): static

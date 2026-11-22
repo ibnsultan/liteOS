@@ -91,7 +91,12 @@ class UserSettings
      */
     public static function for(User $user): array
     {
-        return array_merge(self::defaults(), self::validate($user->settings?->settings ?? []));
+        // a guest's changes are kept in its browser (public/guest-sw.js); the shell lays them over these defaults
+        if ($user->isGuest()) {
+            return self::limit(self::defaults(), $user);
+        }
+
+        return self::limit(array_merge(self::defaults(), self::validate($user->settings?->settings ?? [])), $user);
     }
 
     /**
@@ -103,7 +108,7 @@ class UserSettings
      */
     public static function save(User $user, array $changes): array
     {
-        $clean = self::validate($changes);
+        $clean = self::limit(self::validate($changes), $user);
         $stored = $user->settings?->settings ?? [];
         $user->settings()->updateOrCreate([], ['settings' => array_merge($stored, $clean)]);
         $user->unsetRelation('settings');
@@ -169,6 +174,32 @@ class UserSettings
         }
 
         return $out;
+    }
+
+    /**
+     * Drops what the account may not have (App\Support\Capabilities): apps it can't open from pinned and the desktop
+     * icons, a wallpaper from the drive without a drive, a home page without web access. Run on saving and on
+     * reading, so narrowing a Local account's apps later also takes them off its taskbar.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private static function limit(array $settings, User $user): array
+    {
+        $can = Capabilities::for($user);
+        foreach (['pinned', 'desktopIcons'] as $key) {
+            if (isset($settings[$key]) && is_array($settings[$key])) {
+                $settings[$key] = array_values(array_filter($settings[$key], fn ($id) => $id === 'trash' ? $can['files'] : in_array($id, $can['apps'], true)));
+            }
+        }
+        if (! $can['drive'] && isset($settings['wallpaper']) && str_starts_with((string) $settings['wallpaper'], 'file:')) {
+            $settings['wallpaper'] = self::defaults()['wallpaper'];
+        }
+        if (! $can['web'] && array_key_exists('homepage', $settings)) {
+            $settings['homepage'] = self::defaults()['homepage'];
+        }
+
+        return $settings;
     }
 
     /**

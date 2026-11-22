@@ -14,11 +14,15 @@ use Illuminate\Support\Facades\Route;
 // controller lists its own routes in routes(). Replaces the MVP's api.php?action=a.b with /os/a/b (GET for reads, POST
 // for changes), so the shell's api() maps actions to URLs with one rule (public/assets/js/apps.js, LOS_endpoint).
 
+// Each group asks the gate for what it needs (App\Support\Capabilities, docs/account-types.md), so a limited account
+// is refused here even when an app calls the API directly; the account routes ask per route (AccountController).
 Route::prefix('settings')->group(fn () => SettingsController::routes());
 Route::prefix('account')->group(fn () => AccountController::routes());
-Route::prefix('fs')->group(fn () => DriveController::routes());
-Route::prefix('trash')->group(fn () => TrashController::routes());
-Route::prefix('net')->group(function () {
+Route::middleware('can:drive')->group(function () {
+    Route::prefix('fs')->group(fn () => DriveController::routes());
+    Route::prefix('trash')->group(fn () => TrashController::routes());
+});
+Route::middleware('can:web')->prefix('net')->group(function () {
     WebController::routes();
     StreamController::routes();
 });

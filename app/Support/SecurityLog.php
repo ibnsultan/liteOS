@@ -4,9 +4,10 @@ namespace App\Support;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 // The security log (config/logging.php, channel "security"): who signed in or failed to, unlocks and lockouts,
-// administrators' changes to accounts, password changes and refused admin requests. Every line has the event name as
+// administrators' changes to accounts, password changes, refused admin requests and what a limited account was refused. Every line has the event name as
 // its message and the details as context: the address, the account acting, the browser, and what was done to which
 // account. Passwords, session ids, CSRF tokens and relay signatures are never passed here.
 class SecurityLog
@@ -80,6 +81,7 @@ class SecurityLog
                 'disabled' => $target->isDisabled(),
                 'quotaMB' => $target->quota_mb,
                 'name' => 'changed',
+                'permissions' => $target->permissions,
                 default => null,
             };
         }
@@ -95,6 +97,21 @@ class SecurityLog
     {
         $request = request();
         self::warning('admin.refused', ['method' => $request->method(), 'path' => '/'.ltrim($request->path(), '/')]);
+    }
+
+    /**
+     * A limited account was refused something (the drive, web, its name or password, an app). Logged at most a few
+     * times a minute per account and ability, so an app retrying in a loop can't flood the log.
+     */
+    public static function capabilityRefused(User $user, string $ability): void
+    {
+        $key = 'security-log:refused:'.$user->getAuthIdentifier().':'.$ability;
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            return;
+        }
+        RateLimiter::hit($key, 60);
+        $request = request();
+        self::warning('capability.refused', ['ability' => $ability, 'method' => $request->method(), 'path' => '/'.ltrim($request->path(), '/')]);
     }
 
     /**

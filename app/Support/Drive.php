@@ -65,7 +65,9 @@ class Drive
      */
     public static function quotaBytes(User $user): int
     {
-        return ($user->quota_mb ?? (int) SystemSettings::get('defaultQuotaMB')) * 1024 * 1024;
+        $default = $user->isLocal() ? 'defaultLocalQuotaMB' : 'defaultQuotaMB';
+
+        return ($user->quota_mb ?? (int) SystemSettings::get($default)) * 1024 * 1024;
     }
 
     /**

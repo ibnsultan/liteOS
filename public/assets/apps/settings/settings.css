@@ -82,14 +82,14 @@ body { background: var(--page); }
 /* Windows-style controls */
 .st-tog { display: inline-flex; align-items: center; gap: 12px; color: var(--text); font-size: var(--fs-l); }
 .st-tog > span { min-width: 22px; text-align: right; }
-.st .switch { width: 40px; height: 20px; border-radius: var(--radius-l); background: transparent; box-shadow: inset 0 0 0 1px var(--text-2); }
-.st .switch::after { top: 4px; left: 4px; width: 12px; height: 12px; border-radius: var(--radius-l); background: var(--text-2); box-shadow: none; transition: left var(--dur), width var(--dur); }
-.st .switch:hover::after { width: 14px; height: 14px; top: 3px; border-radius: var(--radius-full); }
-.st .switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
-.st .switch[aria-checked="true"]::after { left: 24px; background: var(--on-accent); }
-.st .switch[aria-checked="true"]:hover::after { left: 22px; }
-.st .switch:disabled { opacity: .45; cursor: default; }
-.st .switch:disabled::after { width: 12px; height: 12px; top: 4px; }
+:is(.st, .dlg) .switch { width: 40px; height: 20px; border-radius: var(--radius-l); background: transparent; box-shadow: inset 0 0 0 1px var(--text-2); }
+:is(.st, .dlg) .switch::after { top: 4px; left: 4px; width: 12px; height: 12px; border-radius: var(--radius-l); background: var(--text-2); box-shadow: none; transition: left var(--dur), width var(--dur); }
+:is(.st, .dlg) .switch:hover::after { width: 14px; height: 14px; top: 3px; border-radius: var(--radius-full); }
+:is(.st, .dlg) .switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
+:is(.st, .dlg) .switch[aria-checked="true"]::after { left: 24px; background: var(--on-accent); }
+:is(.st, .dlg) .switch[aria-checked="true"]:hover::after { left: 22px; }
+:is(.st, .dlg) .switch:disabled { opacity: .45; cursor: default; }
+:is(.st, .dlg) .switch:disabled::after { width: 12px; height: 12px; top: 4px; }
 /* combo box: the button, then its flyout (in <body>, so it carries its own colours) */
 .st-combo {
   min-width: 190px; max-width: 300px; height: 32px; padding: 0 10px 0 12px; display: inline-flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -104,6 +104,10 @@ body { background: var(--page); }
 .st-combo:disabled { cursor: default; opacity: .5; }
 .st-combo:disabled:hover { background: var(--field); }
 .dlg .st-combo { width: 100%; max-width: none; height: 36px; }
+/* Access for a Local account (Accounts › Other users): switches, then the apps it can open in a list that scrolls */
+.dlg .st-note { margin: 0 0 12px; }
+.dlg .st-h { margin: 18px 0 8px; font-size: var(--fs-m); }
+.dlg .st-dlg-list { max-height: 280px; overflow-y: auto; }
 .st-flyout {
   position: fixed; z-index: 2000; max-height: 340px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 2px;
   background: var(--flyout); border: 1px solid var(--flyout-line); border-radius: var(--radius-l); box-shadow: var(--flyout-shadow);

@@ -21,6 +21,9 @@ class SettingsController extends Controller
 
     public function save(Request $request): JsonResponse
     {
+        if ($request->user()->isGuest()) {
+            return $this->jsonError('A guest’s settings are kept in the browser it uses, not on the server.', 403);
+        }
         $changes = $request->input('settings', []);
         $this->result = UserSettings::save($request->user(), is_array($changes) ? $changes : []);
 

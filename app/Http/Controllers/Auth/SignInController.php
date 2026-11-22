@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\Guest;
 use App\Support\SignIn;
 use App\Support\SystemSettings;
 use Illuminate\Contracts\View\View;
@@ -41,7 +42,22 @@ class SignInController extends Controller
             'profile' => $profile,
             'typed' => is_string($typed) ? trim($typed) : '',
             'error' => $error,
+            'guest' => Guest::available() !== null,
         ]);
+    }
+
+    /**
+     * "Sign in as guest": the built-in Guest account, without a password, while an administrator has it turned on.
+     */
+    public function guest(Request $request): RedirectResponse
+    {
+        $user = Guest::available();
+        if ($user === null) {
+            return redirect()->route('login');
+        }
+        SignIn::login($request, $user);
+
+        return redirect()->route('home');
     }
 
     public function store(Request $request): RedirectResponse
@@ -64,6 +80,7 @@ class SignInController extends Controller
         Route::middleware('guest')->group(function () {
             Route::get('/login', [self::class, 'show'])->name('login');
             Route::post('/login', [self::class, 'store'])->name('login.store');
+            Route::post('/login/guest', [self::class, 'guest'])->middleware('throttle:guest-sign-in')->name('login.guest');
         });
         Route::post('/logout', [self::class, 'logout'])->name('logout');
     }
