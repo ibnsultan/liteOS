@@ -1247,14 +1247,14 @@
       const pct = usage ? Math.min(100, Math.round((usage.used / usage.quota) * 100)) : 0;
       pops.innerHTML = '<div class="pop qs w11' + (popPosition('qs').includes('top:') ? ' from-top' : '') + '" style="' + popPosition('qs') + '" role="dialog" aria-label="Quick settings">' +
         '<div class="qgrid">' +
-        qTile('q-theme', effectiveTheme() === 'dark', 'moon', 'Dark mode') +
-        qTile('q-night', s.nightLight, 'sunset', 'Night light') +
-        qTile('q-dnd', s.dnd, 'bell', 'Focus', 'Do not disturb') +
-        qTile('q-taskbar', s.taskbar === 'classic', 'taskbar', 'Classic taskbar') +
-        qTile('q-glass', s.transparency !== false, 'glass', 'Transparency') +
-        qTile('q-a11y', s.textSize && s.textSize !== 'default', 'access', 'Accessibility', 'Larger text', 'q-a11y-more') +
+        qTile('q-theme', effectiveTheme() === 'dark', 'qs-dark', 'Dark mode') +
+        qTile('q-night', s.nightLight, 'qs-night', 'Night light') +
+        qTile('q-dnd', s.dnd, 'qs-focus', 'Focus', 'Do not disturb') +
+        qTile('q-taskbar', s.taskbar === 'classic', 'qs-taskbar', 'Classic taskbar') +
+        qTile('q-glass', s.transparency !== false, 'qs-glass', 'Transparency') +
+        qTile('q-a11y', s.textSize && s.textSize !== 'default', 'qs-access', 'Accessibility', 'Larger text', 'q-a11y-more') +
         // the device's Bluetooth (LiteLink only): on/off, the chevron opens its page in Settings
-        (devHas('bluetooth') && DEV.bt && DEV.bt.present ? qTile('q-bt', DEV.bt.powered, 'settings.bluetooth', 'Bluetooth', 'Bluetooth', 'q-bt-more') : '') +
+        (devHas('bluetooth') && DEV.bt && DEV.bt.present ? qTile('q-bt', DEV.bt.powered, 'qs-bluetooth', 'Bluetooth', 'Bluetooth', 'q-bt-more') : '') +
         '</div>' +
         '<div class="qsliders">' + sliderRow('brightness') + sliderRow('volume') + '</div>' +
         '<div class="qfoot">' + avatar(u, 30) + '<span class="meta"><b>' + esc(u.name) + '</b><small>' + (usage ? fmtSize(usage.used) + ' of ' + fmtSize(usage.quota) : 'Storage…') + '</small>' +
@@ -1520,7 +1520,8 @@
   function qTile(act, on, icon, label, title, more) {
     const t = title || label;
     const main = '<button class="qtile' + (on ? ' on' : '') + (more ? ' split' : '') + '" data-act="' + act + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" aria-label="' + esc(t) + '" title="' + esc(t) + '">' +
-      '<span class="qmain">' + ICON(icon, 18) + '</span>' +
+      // the tiles' own glyph family (icons.js qs-*), drawn as glyphs: never swapped for a picture from the icon set
+      '<span class="qmain">' + window.LOS_icon(icon, 18) + '</span>' +
       (more ? '<span class="qchev" data-act="' + more + '" role="button" aria-label="' + esc(label) + ' settings">' + ICON('forward', 14) + '</span>' : '') + '</button>';
     return '<div class="qt">' + main + '<span class="ql">' + esc(label) + '</span></div>';
   }
