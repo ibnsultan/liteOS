@@ -13,7 +13,7 @@
 
 .*/
 docs/
-vendor/
+/vendor/
 node_modules/
 
 
