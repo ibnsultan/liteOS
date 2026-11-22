@@ -73,6 +73,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // sign-ins, unlocks, lockouts, account changes and refused admin requests (App\Support\SecurityLog), in a file
+        // of their own so they outlast the app log and can be shipped elsewhere. Details go in the context, never in
+        // the message, so a typed username can't forge a line.
+        'security' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/security.log'),
+            'level' => 'info',
+            'days' => (int) env('LOG_SECURITY_DAYS', 90),
+            'replace_placeholders' => false,
+        ],
+
         'monthly' => [
             'driver' => 'monthly',
             'path' => storage_path('logs/laravel.log'),

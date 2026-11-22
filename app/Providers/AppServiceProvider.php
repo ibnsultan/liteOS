@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Support\AppRegistry;
+use App\Support\SecurityLog;
 use App\Support\SystemIcons;
 use App\View\Components\WindowLayout;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -41,6 +42,12 @@ class AppServiceProvider extends ServiceProvider
 
         // administrators manage accounts and the system settings (routes/os.php: can:admin)
         Gate::define('admin', fn (User $user) => $user->isAdmin() && ! $user->isDisabled());
+        // a refused admin request goes to the security log (only can:admin asks this gate)
+        Gate::after(function (User $user, string $ability, ?bool $result) {
+            if ($ability === 'admin' && $result === false) {
+                SecurityLog::adminRefused();
+            }
+        });
 
         // the web relay and downloads, per account (config liteos.net; StreamController and WebController routes)
         foreach (['net-sign' => 'sign_per_minute', 'net-stream' => 'stream_per_minute', 'net-fetch' => 'fetch_per_minute'] as $name => $key) {

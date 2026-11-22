@@ -42,12 +42,15 @@ class SignIn
         $key = 'login:'.$username.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
-            $minutes = (int) ceil(RateLimiter::availableIn($key) / 60);
+            $seconds = RateLimiter::availableIn($key);
+            SecurityLog::signInLocked($username, $seconds);
+            $minutes = (int) ceil($seconds / 60);
             throw ValidationException::withMessages(['password' => "Too many attempts. Try again in {$minutes} minute(s)."]);
         }
 
         $user = User::query()->where('username', $username)->first();
         if ($user === null || $user->isDisabled() || ! Hash::check($password, $user->password)) {
+            SecurityLog::signInFailed($username, $user === null ? 'unknown account' : ($user->isDisabled() ? 'disabled account' : 'wrong password'));
             RateLimiter::hit($key, self::LOCKOUT_SECONDS);
             usleep(400000);
             throw ValidationException::withMessages(['password' => $user?->isDisabled()
@@ -71,6 +74,7 @@ class SignIn
         $user->forceFill(['last_login_at' => now()])->save();
         Drive::ensureHome($user->username);
         Cookie::queue(self::LAST_USER_COOKIE, $user->username, 60 * 24 * 365);
+        SecurityLog::signedIn($user);
     }
 
     public static function logout(Request $request): void

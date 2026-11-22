@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\Accounts;
 use App\Support\Drive;
+use App\Support\SecurityLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +37,7 @@ class UsersController extends Controller
             ($quota === null || $quota === '') ? null : (int) $quota,
         );
 
+        SecurityLog::accountCreated($user);
         $this->result = $user->toPublic();
 
         return $this->jsonSuccess();
@@ -55,6 +57,7 @@ class UsersController extends Controller
         }
 
         $this->result = Accounts::update($user, $changes)->toPublic();
+        SecurityLog::accountChanged($user, $changes);
 
         return $this->jsonSuccess();
     }
@@ -70,6 +73,7 @@ class UsersController extends Controller
         }
 
         Accounts::delete($user);
+        SecurityLog::accountDeleted($user->username);
         $this->result = true;
 
         return $this->jsonSuccess();

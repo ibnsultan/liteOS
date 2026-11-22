@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Os;
 
 use App\Http\Controllers\Controller;
 use App\Support\Accounts;
+use App\Support\SecurityLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -24,10 +25,16 @@ class AccountController extends Controller
     {
         $user = $request->user();
         if (! Hash::check((string) $request->input('current'), $user->password)) {
+            SecurityLog::passwordChangeRefused($user);
+
             return $this->jsonError('Your current password is wrong.', 403);
         }
 
-        $this->result = Accounts::update($user, ['password' => (string) $request->input('new')])->toPublic();
+        $new = (string) $request->input('new');
+        $this->result = Accounts::update($user, ['password' => $new])->toPublic();
+        if ($new !== '') {
+            SecurityLog::passwordChanged($user);
+        }
 
         return $this->jsonSuccess();
     }

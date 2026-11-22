@@ -38,10 +38,13 @@ class SessionLock
         $key = 'unlock:'.$user->id.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, SignIn::MAX_ATTEMPTS)) {
-            $minutes = (int) ceil(RateLimiter::availableIn($key) / 60);
+            $seconds = RateLimiter::availableIn($key);
+            SecurityLog::unlockLocked($user, $seconds);
+            $minutes = (int) ceil($seconds / 60);
             throw ValidationException::withMessages(['password' => "Too many attempts. Try again in {$minutes} minute(s)."]);
         }
         if (! Hash::check($password, $user->password)) {
+            SecurityLog::unlockFailed($user);
             RateLimiter::hit($key, SignIn::LOCKOUT_SECONDS);
             usleep(400000);
             throw ValidationException::withMessages(['password' => 'Wrong password. Try again.']);
