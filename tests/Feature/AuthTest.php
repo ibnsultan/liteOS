@@ -8,6 +8,7 @@ use App\Support\SignIn;
 use App\Support\SystemSettings;
 use App\Support\UserSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -206,5 +207,73 @@ class AuthTest extends TestCase
 
         $this->postJson('/auth/logout')->assertOk()->assertJsonPath('result.next', route('login'));
         $this->assertGuest();
+    }
+
+    // ------------------------------------------------------------ password changes end other sessions
+
+    /**
+     * The password a session remembers (AuthenticateSession), taken after a first request so a later one can come back
+     * as that same "other" session.
+     */
+    private function sessionOf(User $user): string
+    {
+        $this->actingAs($user)->getJson('/os/settings/get')->assertOk();
+
+        return (string) session('password_hash_web');
+    }
+
+    private function asOtherSession(User $user, string $remembered): static
+    {
+        $this->app['auth']->forgetGuards();
+
+        return $this->actingAs($user->fresh())->withSession(['password_hash_web' => $remembered]);
+    }
+
+    public function test_an_administrators_password_reset_signs_the_account_out_everywhere(): void
+    {
+        $amina = $this->amina();
+        $remembered = $this->sessionOf($amina);
+        $this->assertNotSame('', $remembered);
+
+        $admin = User::factory()->admin()->create(['username' => 'admin']);
+        $this->actingAs($admin)->postJson('/os/users/update', ['username' => 'amina', 'changes' => ['password' => 'new-secret-1']])->assertOk();
+
+        $this->asOtherSession($amina, $remembered)->getJson('/os/settings/get')->assertUnauthorized()->assertJsonPath('message', 'Please sign in.');
+        $this->asOtherSession($amina, $remembered)->get('/')->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
+    public function test_changing_your_own_password_keeps_this_session_and_ends_the_others(): void
+    {
+        $amina = $this->amina();
+        $remembered = $this->sessionOf($amina);
+
+        $this->postJson('/os/account/password', ['current' => 'password', 'new' => 'new-secret-1'])->assertOk();
+        $this->getJson('/os/settings/get')->assertOk();
+        $this->assertTrue(Hash::check('new-secret-1', $amina->fresh()->password));
+
+        $this->asOtherSession($amina, $remembered)->getJson('/os/settings/get')->assertUnauthorized();
+    }
+
+    public function test_a_wrong_current_password_changes_nothing_and_ends_no_session(): void
+    {
+        $amina = $this->amina();
+        $remembered = $this->sessionOf($amina);
+
+        $this->postJson('/os/account/password', ['current' => 'wrong-one', 'new' => 'new-secret-1'])->assertForbidden();
+
+        $this->asOtherSession($amina, $remembered)->getJson('/os/settings/get')->assertOk();
+        $this->assertTrue(Hash::check('password', $amina->fresh()->password));
+    }
+
+    public function test_other_account_changes_keep_the_session(): void
+    {
+        $amina = $this->amina();
+        $remembered = $this->sessionOf($amina);
+
+        $admin = User::factory()->admin()->create(['username' => 'admin']);
+        $this->actingAs($admin)->postJson('/os/users/update', ['username' => 'amina', 'changes' => ['name' => 'Amina J', 'quotaMB' => 500]])->assertOk();
+
+        $this->asOtherSession($amina, $remembered)->getJson('/os/settings/get')->assertOk();
     }
 }

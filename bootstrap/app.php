@@ -11,6 +11,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\TokenMismatchException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -33,6 +34,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // a new install goes to setup before anything asks it to sign in
         $middleware->prependToPriorityList(before: AuthenticatesRequests::class, prepend: EnsureSetUp::class);
+
+        // a session remembers the password it signed in with: once the password changes (by the user or an
+        // administrator), every other session of that account is signed out on its next request. The session that
+        // changed it is kept, because the new password is stored in it at the end of that request.
+        $middleware->web(append: AuthenticateSession::class);
 
         // nosniff, same-origin framing, origin-only referrers and a policy that breaks nothing (SecurityHeaders)
         $middleware->append(SecurityHeaders::class);
