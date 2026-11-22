@@ -1370,7 +1370,8 @@ LiteOS.ready((OS) => {
     el.setAttribute('role', 'listbox');
     el.setAttribute('aria-label', btn.getAttribute('aria-label') || '');
     el.innerHTML = opts.map(([v, l], i) => '<button type="button" class="st-opt' + (i === at ? ' on' : '') + '" role="option" data-i="' + i + '" aria-selected="' + (i === at) + '">' + esc(l) + '</button>').join('');
-    document.body.appendChild(el);
+    // in a modal dialog the list goes inside it: everything outside a showModal() dialog sits under it (the top layer)
+    (btn.closest('dialog[open]') || document.body).appendChild(el);
     const r = btn.getBoundingClientRect();
     el.style.minWidth = r.width + 'px';
     const item = el.children[at];
@@ -1384,6 +1385,11 @@ LiteOS.ready((OS) => {
     el.style.top = (up ? r.top - gap - el.offsetHeight : r.bottom + gap) + 'px';
     el.classList.toggle('up', up);
     el.style.left = Math.max(edge, Math.min(r.left, window.innerWidth - el.offsetWidth - edge)) + 'px';
+    // a dialog still in its opening animation is transformed, so "fixed" measures from it: correct by the difference
+    const got = el.getBoundingClientRect();
+    const dx = got.left - parseFloat(el.style.left);
+    const dy = got.top - parseFloat(el.style.top);
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) { el.style.left = (parseFloat(el.style.left) - dx) + 'px'; el.style.top = (parseFloat(el.style.top) - dy) + 'px'; }
     if (el.scrollHeight > el.clientHeight) el.scrollTop = item.offsetTop - el.clientHeight / 2;
     btn.setAttribute('aria-expanded', 'true');
     const mark = (i) => {
