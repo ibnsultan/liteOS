@@ -30,5 +30,7 @@
 <script src="@versioned('assets/js/menu.js')"></script>
 <script src="@versioned('assets/js/usb.js')"></script>
 <script src="@versioned('assets/js/os.js')"></script>
+<script src="@versioned('assets/js/sounds.js')"></script>
+<script src="@versioned('assets/js/reminders.js')"></script>
 </body>
 </html>

@@ -2366,12 +2366,15 @@
   /**
    * Notification toast: header (app icon + name + close), optional image on the left,
    * optional bold title and the message. opts: { type, title, image, imageShape: 'round', win, app,
-   * actions: [{ label, action }] } (buttons along the bottom, like a native toast's; each closes it)
+   * actions: [{ label, action }] } (buttons along the bottom, like a native toast's; each closes it),
+   * urgent: true (an alarm or a timer: shown even with Do not disturb on, and kept until a button closes it),
+   * onClose (called once when it goes).
+   * Returns a function that closes it.
    */
   function notify(message, opts) {
     opts = opts || {};
     const type = opts.type || 'info';
-    if (S.settings && S.settings.dnd && type !== 'error') return;
+    if (S.settings && S.settings.dnd && type !== 'error' && !opts.urgent) return () => {};
     const box = $('.toasts', root) || (() => { const t = document.createElement('div'); t.className = 'toasts'; root.appendChild(t); return t; })();
     const w = opts.win ? wins.get(opts.win) : null;
     const app = w ? w.app : (opts.app ? window.LOS_app(opts.app) : null);
@@ -2409,10 +2412,14 @@
     if (imgEl) imgEl.addEventListener('error', () => imgEl.remove()); // broken image: hide the image area
     box.appendChild(el);
     let timer = null;
-    const close = () => { clearTimeout(timer); el.classList.add('out'); setTimeout(() => el.remove(), 220); };
+    const close = () => {
+      clearTimeout(timer); el.classList.add('out'); setTimeout(() => el.remove(), 220);
+      // onClose: told once however it closes (a button, ×, timing out), e.g. to stop an alarm's sound
+      if (typeof opts.onClose === 'function') { const f = opts.onClose; opts.onClose = null; try { f(); } catch (err) { console.error(err); } }
+    };
     const secs = Math.max(5, +(set().notifyTimeout || 5));
-    const arm = () => { timer = setTimeout(close, (type === 'error' || actions.length ? Math.max(10, secs) : secs) * 1000); }; // time to reach a button
-    if (set().notifySound) chime(type);
+    const arm = () => { if (opts.urgent) return; timer = setTimeout(close, (type === 'error' || actions.length ? Math.max(10, secs) : secs) * 1000); }; // time to reach a button
+    if (set().notifySound && !opts.urgent) chime(type);
     if (set().flashOnNotify) { const f = document.createElement('div'); f.className = 'a11y-flash'; document.body.appendChild(f); setTimeout(() => f.remove(), 600); }
     el.addEventListener('mouseenter', () => clearTimeout(timer));
     el.addEventListener('mouseleave', arm);
@@ -2427,8 +2434,11 @@
       ], { x: r.left - 180, y: r.bottom + 4 }, arm);
     });
     arm();
-    const all = box.querySelectorAll('.toast:not(.out)');
+    if (opts.urgent) el.dataset.urgent = '';
+    // more than four: the oldest goes (never an alarm still ringing)
+    const all = box.querySelectorAll('.toast:not(.out):not([data-urgent])');
     if (all.length > 4) all[0].remove();
+    return close;
   }
 
 
@@ -3331,7 +3341,7 @@
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     openApp(id, args) { return !!openApp(id, args); },
     openFile(path, isDir) { openFile(path, isDir); },
-    notify(msg, o) { notify(msg, o); },
+    notify(msg, o) { return notify(msg, o); },
     saveSettings,
     focusWindow(id) { const w = wins.get(id); if (w) focus(w); closePops(); hideMenu(); },
     focusChanged() { setTimeout(raiseFramed, 0); },

@@ -1,0 +1,27 @@
+{
+  "id": "clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "World clocks, alarms, timers and a stopwatch.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "clock",
+  "colors": [
+    "#5B93EA",
+    "#2F6FD6"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      820,
+      580
+    ],
+    "chrome": "custom",
+    "material": "mica",
+    "single": true
+  },
+  "permissions": []
+}
