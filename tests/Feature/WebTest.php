@@ -89,6 +89,31 @@ class WebTest extends TestCase
         $this->assertSame(['https://example.com/go'], array_column(WebClient::sent(), 'url')); // the only site contacted
     }
 
+    public function test_ranges_php_doesnt_count_as_private_are_refused_by_every_route(): void
+    {
+        // a name for the cloud metadata address in carrier-grade NAT, and one with a public and a private answer
+        PublicAddress::resolveUsing(fn (string $host) => match ($host) {
+            'metadata.example.com' => ['100.100.100.200'],
+            'mixed.example.com' => ['93.184.216.34', '198.18.0.1'],
+            default => ['93.184.216.34'],
+        });
+        WebClient::fake(['*' => [200, ['Content-Type' => 'text/plain'], 'secret']]);
+
+        foreach (['http://metadata.example.com/latest/meta-data/', 'http://mixed.example.com/', 'http://100.64.0.1/', 'http://[64:ff9b::a9fe:a9fe]/', 'http://[2002:a9fe:a9fe::1]/'] as $url) {
+            $this->postJson('/os/net/fetch', ['url' => $url])
+                ->assertStatus(403)
+                ->assertJsonPath('message', 'LiteOS doesn’t connect to local network addresses.');
+
+            $this->getJson('/os/net/framecheck?url='.urlencode($url))
+                ->assertOk()
+                ->assertJsonPath('result.checked', false);
+
+            $link = $this->postJson('/os/net/sign', ['urls' => [$url], 'rewrite' => false])->json('result')[$url];
+            $this->get($link)->assertStatus(403);
+        }
+        $this->assertSame([], WebClient::sent());
+    }
+
     public function test_only_web_addresses_are_accepted(): void
     {
         foreach (['file:///etc/passwd', 'ftp://example.com/x', 'https://user:pw@example.com/'] as $url) {

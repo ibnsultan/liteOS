@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Closure;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 // The guard for every request LiteOS makes to the web for a user (downloads, frame checks, the stream relay): only
 // http and https, no credentials in the address, and the host must resolve to public IP addresses only. The address
@@ -11,6 +12,45 @@ use Closure;
 class PublicAddress
 {
     const MAX_REDIRECTS = 5;
+
+    // Addresses that aren't on the public internet, from the IANA special-purpose address registries (the entries that
+    // aren't globally reachable). PHP's private and reserved filters miss several of them (carrier-grade NAT, which
+    // holds some clouds' metadata address 100.100.100.200, benchmarking, multicast, and the IPv6 ranges that carry an
+    // IPv4 address inside), so they are listed here rather than left to what a PHP build counts as reserved.
+    // https://www.iana.org/assignments/iana-ipv4-special-registry and .../iana-ipv6-special-registry
+    const BLOCKED = [
+        // IPv4
+        '0.0.0.0/8',        // "this network"
+        '10.0.0.0/8',       // private
+        '100.64.0.0/10',    // carrier-grade NAT
+        '127.0.0.0/8',      // loopback
+        '169.254.0.0/16',   // link-local
+        '172.16.0.0/12',    // private
+        '192.0.0.0/24',     // IETF protocol assignments
+        '192.0.2.0/24',     // documentation
+        '192.88.99.0/24',   // 6to4 relay
+        '192.168.0.0/16',   // private
+        '198.18.0.0/15',    // benchmarking
+        '198.51.100.0/24',  // documentation
+        '203.0.113.0/24',   // documentation
+        '224.0.0.0/4',      // multicast
+        '240.0.0.0/4',      // reserved, and the broadcast address
+        // IPv6
+        '::/96',            // unspecified, loopback and IPv4-compatible
+        '::ffff:0:0/96',    // IPv4-mapped
+        '64:ff9b::/96',     // NAT64
+        '64:ff9b:1::/48',   // local NAT64
+        '100::/64',         // discard
+        '2001::/32',        // Teredo
+        '2001:2::/48',      // benchmarking
+        '2001:10::/28',     // ORCHID
+        '2001:db8::/32',    // documentation
+        '2002::/16',        // 6to4
+        'fc00::/7',         // unique local
+        'fe80::/10',        // link-local
+        'fec0::/10',        // site-local
+        'ff00::/8',         // multicast
+    ];
 
     /** @var (Closure(string): list<string>)|null replaces DNS in tests */
     private static ?Closure $resolver = null;
@@ -101,14 +141,20 @@ class PublicAddress
         $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (self::$resolver ? (self::$resolver)($host) : self::lookup($host));
         abort_if($ips === [], 400, 'Couldn’t find that website.');
         foreach ($ips as $ip) {
-            abort_unless(
-                filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE),
-                403,
-                'LiteOS doesn’t connect to local network addresses.',
-            );
+            abort_unless(self::isPublic($ip), 403, 'LiteOS doesn’t connect to local network addresses.');
         }
 
         return $ips[0];
+    }
+
+    /**
+     * Whether an IP address is on the public internet: a valid address that is in no private, reserved or other
+     * special-purpose range.
+     */
+    public static function isPublic(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false
+            && ! IpUtils::checkIp($ip, self::BLOCKED);
     }
 
     /**
