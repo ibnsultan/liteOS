@@ -23,6 +23,7 @@
 <script src="@versioned('assets/js/icons.js')"></script>
 <script src="@versioned('assets/js/apps.js')"></script>
 <script src="@versioned('assets/js/menu.js')"></script>
+<script src="@versioned('assets/js/usb.js')"></script>
 <script src="@versioned('assets/js/sdk.js')"></script>
 @foreach (array_filter($vendor, fn ($f) => str_ends_with($f, '.js')) as $library)
 <script src="@versioned('assets/vendor/'.$library)"></script>

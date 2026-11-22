@@ -28,6 +28,7 @@
 <script src="@versioned('assets/js/icons.js')"></script>
 <script src="@versioned('assets/js/apps.js')"></script>
 <script src="@versioned('assets/js/menu.js')"></script>
+<script src="@versioned('assets/js/usb.js')"></script>
 <script src="@versioned('assets/js/os.js')"></script>
 </body>
 </html>

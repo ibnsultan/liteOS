@@ -1034,7 +1034,15 @@ LiteOS.ready((OS) => {
     }
     switch (b.dataset.act) {
       case 'browse-wall': {
-        const p = await OS.dialog.open({ title: 'Choose a background', accept: window.LOS_KINDS.image, startIn: '/Pictures' });
+        let p = await OS.dialog.open({ title: 'Choose a background', accept: window.LOS_KINDS.image, startIn: '/Pictures' });
+        // a picture on a USB stick (LiteLink device) is copied into Pictures first: the stick won't always be there
+        if (p && OS.fs.isUsb(p)) {
+          try {
+            const name = p.split('/').pop();
+            const [made] = await OS.fs.upload('/Pictures', [new File([await OS.fs.readBlob(p)], name)]);
+            p = (made && made.path) || '/Pictures/' + name;
+          } catch (e) { OS.notify(e.message, { type: 'error', title: 'Couldn’t use that picture' }); break; }
+        }
         if (p) save({ wallpaper: 'file:' + p });
         break;
       }

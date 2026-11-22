@@ -95,28 +95,64 @@
   };
 
   // ------------------------------------------------------------------ files
+  // A path on a USB stick of a LiteLink thin client ("usb:<drive>:/folder/name", from the Open / Save picker) is read
+  // and written on the stick itself through LiteLink (usb.js); everything else goes to the server as always. Rename,
+  // move, copy and delete have no USB version yet. Off a LiteLink device there are no usb: paths.
+  const USB = window.LOS_usb || null;
+  const onUsb = (p) => !!(USB && USB.isUsb(p));
+  const NO_USB_OP = () => Promise.reject(new Error('USB drives can’t do that yet.'));
+  const bytesOf = (b64) => { const s = atob(b64); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out; };
+  const objectUrls = new Set();
+  window.addEventListener('pagehide', () => { objectUrls.forEach((u) => URL.revokeObjectURL(u)); objectUrls.clear(); });
   const fs = {
-    list: (path) => q('fs.list', { path: path || '/' }),
-    stat: (path) => q('fs.stat', { path }),
-    /** -> { content: string, entry }. opts.track=false keeps it out of Recent files. */
-    read: (path, opts) => q('fs.read', opts && opts.track === false ? { path, track: '0' } : { path }),
+    list: (path) => (onUsb(path) ? USB.list(path) : q('fs.list', { path: path || '/' })),
+    stat: (path) => (onUsb(path) ? USB.stat(path) : q('fs.stat', { path })),
+    /** -> { content: string, entry }. opts.track=false keeps it out of Recent files (a stick's files never go in). */
+    read: async (path, opts) => {
+      if (!onUsb(path)) return q('fs.read', opts && opts.track === false ? { path, track: '0' } : { path });
+      const [blob, entry] = await Promise.all([USB.readBlob(path), USB.stat(path)]);
+      return { content: await blob.text(), entry };
+    },
     /** Save text. opts.overwrite=false fails if the file exists. -> entry */
-    write: (path, content, opts) => api('fs.write', { path, content, overwrite: !(opts && opts.overwrite === false) }),
+    write: (path, content, opts) => (onUsb(path) ? USB.write(path, String(content == null ? '' : content), opts)
+      : api('fs.write', { path, content, overwrite: !(opts && opts.overwrite === false) })),
     /** Save binary data given as base64. -> entry */
-    writeBase64: (path, base64, opts) => api('fs.write', { path, content: base64, encoding: 'base64', overwrite: !(opts && opts.overwrite === false) }),
-    mkdir: (path) => api('fs.mkdir', { path }),
-    rename: (path, name) => api('fs.rename', { path, name }),
-    move: (paths, dest) => api('fs.move', { paths, dest }),
-    copy: (paths, dest) => api('fs.copy', { paths, dest }),
+    writeBase64: (path, base64, opts) => (onUsb(path) ? USB.write(path, bytesOf(base64), opts)
+      : api('fs.write', { path, content: base64, encoding: 'base64', overwrite: !(opts && opts.overwrite === false) })),
+    mkdir: (path) => (onUsb(path) ? USB.mkdir(path) : api('fs.mkdir', { path })),
+    rename: (path, name) => (onUsb(path) ? NO_USB_OP() : api('fs.rename', { path, name })),
+    move: (paths, dest) => ([].concat(paths, dest).some(onUsb) ? NO_USB_OP() : api('fs.move', { paths, dest })),
+    copy: (paths, dest) => ([].concat(paths, dest).some(onUsb) ? NO_USB_OP() : api('fs.copy', { paths, dest })),
     /** Moves to Trash. */
-    remove: (paths) => api('fs.delete', { paths: [].concat(paths) }),
+    remove: (paths) => ([].concat(paths).some(onUsb) ? NO_USB_OP() : api('fs.delete', { paths: [].concat(paths) })),
     /** Upload a FileList / File[] into a folder. -> entries */
     upload(dir, files) {
+      if (onUsb(dir)) return Promise.all(Array.from(files).map((f) => USB.write(USB.join(dir, f.name), f)));
       const fd = new FormData();
       fd.append('path', dir);
       Array.from(files).forEach((f) => fd.append('files[]', f, f.name));
       return api('fs.upload', fd);
     },
+    /** Whether a path is on a USB stick of a LiteLink device. */
+    isUsb: (path) => onUsb(path),
+    /** A file's contents as a Blob, wherever it is. */
+    readBlob: async (path) => {
+      if (onUsb(path)) return USB.readBlob(path);
+      const res = await fetch(fs.rawUrl(path), { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('“' + String(path).split('/').pop() + '” couldn’t be read.');
+      return res.blob();
+    },
+    /**
+     * A URL for <img>, <video>, <audio>: rawUrl() for a file on the drive, or a blob: URL of a file on a USB stick
+     * (read whole, up to 64 MB). Freed when the window closes, or with revokeUrl().
+     */
+    objectUrl: async (path) => {
+      if (!onUsb(path)) return fs.rawUrl(path);
+      const url = URL.createObjectURL(await USB.readBlob(path));
+      objectUrls.add(url);
+      return url;
+    },
+    revokeUrl: (url) => { if (objectUrls.delete(url)) URL.revokeObjectURL(url); },
     /** kind: '' | 'image' | 'video' | 'audio' */
     search: (query, kind, limit) => q('fs.search', { q: query || '', kind: kind || '', limit: limit || 200 }),
     recent: () => q('fs.recent'),
@@ -131,6 +167,25 @@
       purge: (ids) => api('trash.purge', { ids: ids || [] }),
     },
   };
+
+  // Apps that read a file's bytes with fetch(fs.rawUrl(path)) (the office apps, Code) get a USB stick's file the same
+  // way: on a LiteLink device only, a fetch of the raw URL of a usb: path is answered from the stick. Every other
+  // request goes on untouched. <img> / <video> can't be answered like this: they use fs.objectUrl().
+  if (USB && typeof window.LiteLink === 'object' && window.LiteLink) {
+    const nativeFetch = window.fetch.bind(window);
+    const RAW = new URL(endpoint('fs.raw'), location.href);
+    window.fetch = function (input, init) {
+      try {
+        const href = typeof input === 'string' || input instanceof URL ? String(input) : input && input.url;
+        const u = new URL(href, location.href);
+        const p = u.origin === RAW.origin && u.pathname === RAW.pathname ? u.searchParams.get('path') : null;
+        if (p && USB.isUsb(p)) {
+          return USB.readBlob(p).then((b) => new Response(b, { status: 200, headers: { 'Content-Type': b.type || 'application/octet-stream', 'Content-Length': String(b.size) } }));
+        }
+      } catch (e) { /* not a URL this answers */ }
+      return nativeFetch(input, init);
+    };
+  }
 
   // ------------------------------------------------------------------ window
   const win = {

@@ -2464,7 +2464,12 @@
     });
   }
 
-  const PLACES = PLACE_ITEMS;
+  // USB drives of a LiteLink thin client (usb.js), shown in the picker's Places below the folders: none off a
+  // LiteLink device or with USB drives off for the connection, so the picker is then as it always was
+  const USB = window.LOS_usb || null;
+  const isUsbPath = (p) => !!(USB && USB.isUsb(p));
+  const pickerDrives = new Set(); // open pickers' redraws, called when a drive is plugged in, pulled out or ejected
+  if (USB) USB.onChange(() => pickerDrives.forEach((fn) => fn()));
 
   /** Short date and time for the picker's Date modified column. */
   const fmtWhen = (ts) => {
@@ -2489,14 +2494,19 @@
   function fileDialog(mode, o, winId) {
     o = o || {};
     const accept = (o.accept || []).map((x) => String(x).toLowerCase().replace(/^\./, ''));
-    const wantExt = o.ext ? String(o.ext).replace(/^\./, '') : '';
     const caller = winId && wins.get(winId) ? wins.get(winId).app : null;
     const title = o.title || (mode === 'save' ? 'Save as' : mode === 'folder' ? 'Select folder' : 'Open');
     const okLabel = mode === 'save' ? 'Save' : mode === 'folder' ? 'Select folder' : 'Open';
-    // what the type box says: the one extension a save writes, or the kinds an open accepts
-    const exts = mode === 'save' ? (wantExt ? [wantExt] : []) : accept;
-    const typeLabel = !exts.length ? 'All files (*.*)'
-      : (exts.length === 1 ? typeName({ type: 'file', name: 'x.' + exts[0] }) : 'Supported files') + ' (' + exts.map((x) => '*.' + x).join(';') + ')';
+    // the kinds in the type box: a save's formats ({types: [{label, ext}]}, or the one ext), or the kinds an open accepts
+    const extOf = (x) => String(x || '').toLowerCase().replace(/^\./, '');
+    const types = mode === 'save'
+      ? (Array.isArray(o.types) && o.types.length
+        ? o.types.filter((t) => t && extOf(t.ext)).map((t) => ({ ext: extOf(t.ext), label: String(t.label || typeName({ type: 'file', name: 'x.' + extOf(t.ext) })) }))
+        : o.ext ? [{ ext: extOf(o.ext), label: typeName({ type: 'file', name: 'x.' + extOf(o.ext) }) }] : [])
+      : accept.length ? [{ ext: '', label: accept.length === 1 ? typeName({ type: 'file', name: 'x.' + accept[0] }) : 'Supported files' }] : [];
+    const typeLabel = (t) => t.label + ' (' + (mode === 'save' ? '*.' + t.ext : accept.map((x) => '*.' + x).join(';')) + ')';
+    let typeAt = Math.max(0, types.findIndex((t) => t.ext === extOf(o.ext)));
+    let wantExt = types.length && mode === 'save' ? types[typeAt].ext : '';
     return modal((box, done) => {
       let cwd = o.startIn || (o.defaultName && o.defaultName.startsWith('/') ? parent(o.defaultName) : '/Documents');
       let entries = [];
@@ -2517,15 +2527,16 @@
             '<button class="ibtn" type="button" data-b="refresh" aria-label="Refresh" title="Refresh">' + ICON('reload', 14) + '</button></div>' +
           '<label class="fdlg-search"><input type="search" aria-label="Search this folder" spellcheck="false">' + ICON('search', 14) + '</label>' +
         '</div>' +
-        '<div class="fdlg-cmd"><button class="btn btn-ghost" type="button" data-b="mkdir">New folder</button></div>' +
-        '<div class="dlg-body"><nav class="side" aria-label="Places">' + PLACES.map((p) => '<button type="button" data-place="' + p[1] + '">' + ICON(p[2], 16) + p[0] + '</button>').join('') + '</nav>' +
+        '<div class="fdlg-cmd"><button class="btn btn-ghost" type="button" data-b="mkdir">New folder</button><span class="fdlg-ro" hidden>Read only</span></div>' +
+        '<div class="dlg-body"><nav class="side" aria-label="Navigation pane"></nav>' +
           '<div class="main"><div class="fdlg-cols" aria-hidden="true"><span>Name</span><span>Date modified</span><span>Type</span><span>Size</span></div>' +
           '<div class="list" role="listbox" aria-label="Files"></div></div></div>' +
         '<div class="fdlg-foot">' +
           '<label class="fdlg-row"><span>' + (mode === 'folder' ? 'Folder:' : 'File name:') + '</span>' +
             '<input class="input fdlg-name" spellcheck="false" autocomplete="off" value="' + esc(nameValue) + '"' + (mode === 'folder' ? ' readonly' : '') + '></label>' +
           (mode === 'folder' ? '' : '<label class="fdlg-row"><span>' + (mode === 'save' ? 'Save as type:' : 'Files of type:') + '</span>' +
-            '<select class="input fdlg-type"><option>' + esc(typeLabel) + '</option></select></label>') +
+            '<button class="input fdlg-type" type="button" data-b="type" aria-haspopup="menu" aria-expanded="false">' +
+              '<span>' + esc(types.length ? typeLabel(types[typeAt]) : 'All files (*.*)') + '</span>' + ICON('down', 14) + '</button></label>') +
           '<div class="fdlg-btns"><button class="btn is-default" type="button" data-b="ok">' + okLabel + '</button>' +
             '<button class="btn" type="button" data-b="cancel">Cancel</button></div>' +
         '</div>';
@@ -2533,7 +2544,72 @@
       const nameInput = $('.fdlg-name', box);
       const search = $('.fdlg-search input', box);
       const accepts = (e) => e.type === 'dir' || !accept.length || accept.includes((e.ext || '').toLowerCase());
-      const folderName = (p) => (p === '/' ? 'My drive' : baseName(p));
+      // Home (the Quick access folders) and This PC (the drives) are pages of the pane, not folders: nothing is saved there
+      const isVirtual = (p) => p === 'home:' || p === 'device:';
+      const folderName = (p) => (p === 'home:' ? 'Home' : p === 'device:' ? 'This PC'
+        : isUsbPath(p) ? USB.parse(p).path === '/' ? USB.driveName(USB.parse(p).id) : baseName(USB.parse(p).path) : p === '/' ? 'My drive' : baseName(p));
+      // the folder above: a drive's top folder is under This PC, as in Explorer
+      const upOf = (p) => (isVirtual(p) ? null : isUsbPath(p) ? USB.parent(p) || 'device:' : p === '/' ? 'device:' : parent(p));
+      const joinHere = (dir, name) => (isUsbPath(dir) ? USB.join(dir, name) : join(dir, name));
+      const stickReadOnly = () => isUsbPath(cwd) && !USB.writable;
+      const readOnlyHere = () => isVirtual(cwd) || stickReadOnly();
+
+      // The navigation pane, the same as Files': Home, the folders pinned to Quick access, then This PC as a tree (its
+      // drives and their folders). Only This PC starts open: My drive stays collapsed until its arrow is clicked.
+      const SPECIAL = Object.fromEntries(PLACE_ITEMS.slice(1).map((p) => [p[1], p[2]]));
+      const folderRole = (p) => SPECIAL[p] || 'place.folder';
+      const pinList = () => (Array.isArray(set().quickAccess) ? set().quickAccess : PLACE_ITEMS.slice(1).map((p) => p[1]));
+      const tree = { open: new Set(['device:']), kids: new Map() };
+      let sticks = [];
+      const driveEntries = () => [{ name: 'My drive', path: '/', type: 'dir', drive: 'place.drive' }]
+        .concat(sticks.map((d) => ({ name: d.name, path: d.path, type: 'dir', drive: 'place.removable' })));
+      const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      const subfolders = (list) => (list || []).filter((e) => e.type === 'dir' && !e.name.startsWith('.')).sort(byName);
+      async function loadKids(p) {
+        try { tree.kids.set(p, p === 'device:' ? driveEntries() : subfolders(isUsbPath(p) ? await USB.list(p) : await api('fs.list', undefined, { path: p }))); }
+        catch (e) { tree.kids.set(p, []); } // gone, or can't be read: nothing to open
+      }
+      function sideRow(path, label, role, o) {
+        o = o || {};
+        const inTree = o.depth != null;
+        const kids = tree.kids.get(path);
+        const leaf = !inTree || (kids && !kids.length);
+        return '<button type="button" class="tv' + (path === cwd ? ' on' : '') + '" data-place="' + esc(path) + '"' + (inTree ? ' style="--d:' + o.depth + '"' : '') + ' title="' + esc(label) + '">' +
+          '<span class="tw' + (leaf ? ' none' : tree.open.has(path) ? ' open' : '') + '"' + (leaf ? '' : ' data-tw="' + esc(path) + '"') + '>' + ICON('forward', 12) + '</span>' +
+          window.LOS_sysIconImg(role, 16, { cls: 'ico' }) + '<span class="nm">' + esc(label) + '</span>' + (o.pin ? '<span class="pinmark">' + ICON('pin', 12) + '</span>' : '') + '</button>';
+      }
+      function treeRows(p, depth) {
+        const kids = tree.open.has(p) && tree.kids.get(p);
+        if (!kids) return '';
+        return kids.map((k) => sideRow(k.path, k.name, k.drive || folderRole(k.path), { depth }) + treeRows(k.path, depth + 1)).join('');
+      }
+      function drawSide() {
+        const side = $('.side', box);
+        if (!side) return;
+        const top = side.scrollTop;
+        const pins = pinList();
+        side.innerHTML = sideRow('home:', 'Home', 'place.home') + '<div class="side-sep"></div>' +
+          pins.map((p) => sideRow(p, baseName(p), folderRole(p), { pin: true })).join('') + (pins.length ? '<div class="side-sep"></div>' : '') +
+          sideRow('device:', 'This PC', 'device.computer', { depth: 0 }) + treeRows('device:', 1);
+        side.scrollTop = top;
+      }
+      async function toggleTree(p) {
+        if (tree.open.has(p)) tree.open.delete(p);
+        else { tree.open.add(p); if (!tree.kids.has(p)) await loadKids(p); }
+        drawSide();
+      }
+      // the USB drives under This PC, kept current while the picker is open
+      async function drawDrives() {
+        if (USB) { try { sticks = await USB.drives(); } catch (e) { sticks = []; } }
+        if (!box.isConnected) { pickerDrives.delete(drawDrives); return; } // the picker has closed
+        tree.kids.set('device:', driveEntries());
+        if (cwd === 'device:') { entries = driveEntries(); draw(); }
+        drawSide();
+        // a drive that went away while one of its folders is open: back to Documents
+        if (isUsbPath(cwd) && !sticks.some((d) => d.id === USB.parse(cwd).id)) load('/Documents');
+      }
+      pickerDrives.add(drawDrives);
+      drawDrives();
 
       // a folder that takes a moment to open: the pointer says it's working and a bar runs along the address bar
       let loadSeq = 0;
@@ -2544,14 +2620,18 @@
         busyTimer = setTimeout(() => box.classList.add('loading'), 150);
         const idle = () => { if (seq === loadSeq) { clearTimeout(busyTimer); box.classList.remove('loading'); } };
         try {
-          const r = await api('fs.list', undefined, { path });
+          const r = path === 'home:' ? pinList().map((p) => ({ name: baseName(p), path: p, type: 'dir' }))
+            : path === 'device:' ? driveEntries()
+              : isUsbPath(path) ? await USB.list(path) : await api('fs.list', undefined, { path });
           idle();
           if (seq !== loadSeq) return; // another folder was asked for meanwhile
           if (how === 'push' && path !== cwd) { back.push(cwd); fwd.length = 0; }
           cwd = path; entries = (r || []).filter((e) => !e.name.startsWith('.')); sel = null;
           query = ''; search.value = '';
-          if (mode === 'folder') nameInput.value = folderName(cwd);
+          if (mode === 'folder') nameInput.value = isVirtual(cwd) ? '' : folderName(cwd);
+          if (!isVirtual(cwd)) tree.kids.set(cwd, subfolders(entries)); // its branch in the tree is known now
           draw();
+          drawSide();
         } catch (e) {
           idle();
           if (seq !== loadSeq) return;
@@ -2559,14 +2639,27 @@
         }
       }
       function draw() {
-        const parts = cwd.split('/').filter(Boolean);
-        $('.crumbs', box).innerHTML = '<button type="button" data-crumb="/">My drive</button>' +
-          parts.map((p, i) => '<span class="sepc">›</span><button type="button" data-crumb="/' + esc(parts.slice(0, i + 1).join('/')) + '">' + esc(p) + '</button>').join('');
+        const pc = '<button type="button" data-crumb="device:">This PC</button><span class="sepc">›</span>';
+        if (isVirtual(cwd)) {
+          $('.crumbs', box).innerHTML = '<button type="button" data-crumb="' + cwd + '">' + folderName(cwd) + '</button>';
+        } else if (isUsbPath(cwd)) { // "This PC › KINGSTON › Reports"
+          const u = USB.parse(cwd);
+          const parts = u.path.split('/').filter(Boolean);
+          $('.crumbs', box).innerHTML = pc + '<button type="button" data-crumb="' + esc(USB.make(u.id, '/')) + '">' + esc(USB.driveName(u.id)) + '</button>' +
+            parts.map((p, i) => '<span class="sepc">›</span><button type="button" data-crumb="' + esc(USB.make(u.id, '/' + parts.slice(0, i + 1).join('/'))) + '">' + esc(p) + '</button>').join('');
+        } else {
+          const parts = cwd.split('/').filter(Boolean);
+          $('.crumbs', box).innerHTML = pc + '<button type="button" data-crumb="/">My drive</button>' +
+            parts.map((p, i) => '<span class="sepc">›</span><button type="button" data-crumb="/' + esc(parts.slice(0, i + 1).join('/')) + '">' + esc(p) + '</button>').join('');
+        }
         search.placeholder = 'Search ' + folderName(cwd);
         $$('.side button', box).forEach((b) => b.classList.toggle('on', b.dataset.place === cwd));
         $('[data-b=back]', box).disabled = !back.length;
         $('[data-b=fwd]', box).disabled = !fwd.length;
-        $('[data-b=up]', box).disabled = cwd === '/';
+        $('[data-b=up]', box).disabled = !upOf(cwd);
+        // a stick the connection only lets LiteOS read: no new folders, and nothing saved there
+        $('.fdlg-ro', box).hidden = !stickReadOnly();
+        $('[data-b=mkdir]', box).disabled = readOnlyHere();
         const q = query.trim().toLowerCase();
         const shown = entries
           .filter((e) => mode !== 'folder' || e.type === 'dir')
@@ -2574,8 +2667,8 @@
           .sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
         list.innerHTML = shown.length ? shown.map((e) => '<button type="button" role="option" class="item' + (sel === e ? ' sel' : '') + (accepts(e) ? '' : ' dim') + '"' +
             ' aria-selected="' + (sel === e) + '" data-i="' + entries.indexOf(e) + '">' +
-            '<span class="nm">' + fileTile(e, 20, 5) + '<span>' + esc(e.name) + '</span></span>' +
-            '<span class="c">' + esc(fmtWhen(e.mtime)) + '</span><span class="c">' + esc(typeName(e)) + '</span>' +
+            '<span class="nm">' + (e.drive ? window.LOS_sysIconImg(e.drive, 20, { cls: 'tile filetile' }) : isVirtual(cwd) ? window.LOS_sysIconImg(folderRole(e.path), 20, { cls: 'tile filetile' }) : fileTile(e, 20, 5)) + '<span>' + esc(e.name) + '</span></span>' +
+            '<span class="c">' + (e.mtime ? esc(fmtWhen(e.mtime)) : '') + '</span><span class="c">' + esc(e.drive ? 'Drive' : typeName(e)) + '</span>' +
             '<span class="c sz">' + (e.type === 'dir' ? '' : esc(fmtSize(e.size))) + '</span></button>').join('')
           : '<div class="fdlg-empty">' + (q ? 'No items match your search.' : 'This folder is empty.') + '</div>';
       }
@@ -2583,11 +2676,34 @@
         sel = en;
         if (mode === 'folder') nameInput.value = en.type === 'dir' ? en.name : folderName(cwd);
         else if (en.type === 'file') nameInput.value = en.name;
-        draw();
+        // marked in place, not redrawn: a redraw would swap the row under the pointer between the clicks of a double-click
+        $$('[data-i]', list).forEach((r) => { const on = entries[+r.dataset.i] === en; r.classList.toggle('sel', on); r.setAttribute('aria-selected', on); });
+      }
+      // a full path typed in the name box ("/Documents/x.png"): go to its folder and take the name from there
+      async function goToTyped(name) {
+        const dir = parent(name) || '/';
+        if (dir !== cwd) {
+          // checked first, so a wrong path leaves the dialog where it is (load() falls back to My drive)
+          try { await api('fs.list', undefined, { path: dir }); } catch (e) { notify('“' + dir + '” couldn’t be found.', { type: 'error', title: 'Folder not found' }); return null; }
+          await load(dir, 'push');
+          if (cwd !== dir) return null;
+        }
+        const base = baseName(name);
+        nameInput.value = base;
+        return base;
       }
       async function ok() {
-        if (mode === 'folder') return done(sel && sel.type === 'dir' ? sel.path : cwd);
+        if (mode === 'folder') {
+          if (sel && sel.type === 'dir') return done(sel.path);
+          if (isVirtual(cwd)) return; // Home and This PC aren't folders: pick one of theirs
+          return done(cwd);
+        }
         let name = nameInput.value.trim();
+        if (name.startsWith('/') && name.length > 1) {
+          name = await goToTyped(name.replace(/\/+$/, ''));
+          if (name == null) return;
+          sel = null;
+        }
         if (mode === 'open') {
           if (sel && sel.type === 'dir' && (!name || name === sel.name)) return load(sel.path, 'push');
           if (!name) { nameInput.focus({ preventScroll: true }); return; }
@@ -2598,7 +2714,12 @@
           return;
         }
         if (!name) { nameInput.focus({ preventScroll: true }); return; }
+        if (isVirtual(cwd)) { notify('Choose a folder to save in.', { type: 'error', title: 'Can’t save here' }); return; }
+        if (readOnlyHere()) { notify('This USB drive can only be read. Choose a folder in My drive.', { type: 'error', title: 'Can’t save here' }); return; }
         if (/[\\/<>:"|?*]/.test(name)) { notify('File names can’t contain \\ / < > : " | ? *', { type: 'error', title: 'Invalid file name' }); return; }
+        // a name typed with one of the other formats' extensions saves in that format
+        const typed = types.findIndex((ty) => name.toLowerCase().endsWith('.' + ty.ext));
+        if (typed >= 0) { typeAt = typed; wantExt = types[typed].ext; }
         if (wantExt && !name.toLowerCase().endsWith('.' + wantExt.toLowerCase())) name += '.' + wantExt;
         const existing = entries.find((e) => e.name.toLowerCase() === name.toLowerCase());
         if (existing && existing.type === 'dir') { load(existing.path, 'push'); return; }
@@ -2606,9 +2727,11 @@
           const yes = await confirmDialog({ title: 'Confirm Save As', message: '“' + name + '” already exists. Do you want to replace it?', okLabel: 'Replace', danger: true });
           if (!yes) return;
         }
-        done(join(cwd, name));
+        done(joinHere(cwd, name));
       }
       box.addEventListener('click', async (e) => {
+        const tw = e.target.closest('[data-tw]');
+        if (tw) { toggleTree(tw.dataset.tw); return; } // a branch's arrow opens it, without going there
         const t = e.target.closest('button');
         if (!t || t.disabled) return;
         if (t.dataset.place) load(t.dataset.place, 'push');
@@ -2616,24 +2739,48 @@
         else if (t.dataset.i != null) { const en = entries[+t.dataset.i]; if (accepts(en)) choose(en); }
         else if (t.dataset.b === 'back') { if (back.length) { fwd.push(cwd); load(back.pop()); } }
         else if (t.dataset.b === 'fwd') { if (fwd.length) { back.push(cwd); load(fwd.pop()); } }
-        else if (t.dataset.b === 'up') load(parent(cwd), 'push');
+        else if (t.dataset.b === 'up') { if (upOf(cwd)) load(upOf(cwd), 'push'); }
         else if (t.dataset.b === 'refresh') load(cwd);
         else if (t.dataset.b === 'mkdir') mkdirHere();
         else if (t.dataset.b === 'cancel') done(null);
         else if (t.dataset.b === 'ok') ok();
+        else if (t.dataset.b === 'type') typeMenu(t);
       });
+      // the type box's list: the shell's own flyout, inside the dialog so it sits above it, at least as wide as the box;
+      // picking a save format changes the name's extension to match, as Windows does
+      function typeMenu(btn) {
+        if (!types.length) return;
+        const r = btn.getBoundingClientRect();
+        btn.setAttribute('aria-expanded', 'true');
+        window.LOS_menu.open(types.map((ty, i) => ({ label: typeLabel(ty), action: () => {
+          if (mode === 'save' && i !== typeAt) {
+            // a name shown with one of the formats' extensions gets the new one; a name without one stays as it is
+            const v = nameInput.value.trim(), m = /\.[^.]*$/.exec(v);
+            if (m && types.some((x) => '.' + x.ext === m[0].toLowerCase())) nameInput.value = v.slice(0, m.index) + '.' + ty.ext;
+          }
+          typeAt = i; wantExt = mode === 'save' ? ty.ext : '';
+          $('span', btn).textContent = typeLabel(ty);
+        } })), { x: r.left, y: r.bottom + 2 }, { parent: box, cls: 'fdlg-typemenu', onClose: () => { btn.setAttribute('aria-expanded', 'false'); btn.focus({ preventScroll: true }); } });
+        const m = $('.fdlg-typemenu', box);
+        // the current type shown by its background (a combo box's list has no dot)
+        if (m) { m.style.minWidth = r.width + 'px'; const cur = m.querySelectorAll('.menu-item')[typeAt]; if (cur) cur.classList.add('is-current'); }
+      }
       // New folder, as in Explorer: made at once as "New folder" ("New folder (2)"…) with its name open for typing over
       async function mkdirHere() {
+        if (readOnlyHere()) return;
+        const usb = isUsbPath(cwd);
         let path = '';
         for (let i = 1; i <= 50 && !path; i++) {
           const name = 'New folder' + (i > 1 ? ' (' + i + ')' : '');
           if (entries.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
-          try { await api('fs.mkdir', { path: join(cwd, name) }); path = join(cwd, name); } catch (ex) {
-            if (!/exists/i.test(ex.message)) { notify(ex.message, { type: 'error', title: 'Couldn’t create folder' }); return; }
+          try { if (usb) await USB.mkdir(joinHere(cwd, name)); else await api('fs.mkdir', { path: join(cwd, name) }); path = joinHere(cwd, name); } catch (ex) {
+            if (!/exists|already/i.test(ex.message)) { notify(ex.message, { type: 'error', title: 'Couldn’t create folder' }); return; }
           }
         }
         if (!path) return;
         await load(cwd);
+        // a stick's folders can't be renamed (LiteLink has no rename yet): the new one is just selected
+        if (usb) { const made = entries.find((x) => x.path === path); if (made) choose(made); return; }
         const en = entries.find((x) => x.path === path);
         const row = en && $('[data-i="' + entries.indexOf(en) + '"]', list);
         if (!row) return;

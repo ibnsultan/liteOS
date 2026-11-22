@@ -439,7 +439,9 @@ LiteOS.ready((OS) => {
       const img = new Image();
       img.onload = () => { images.set(path, img); resolve(img); };
       img.onerror = () => reject(new Error('Could not load ' + U.basename(path)));
-      img.src = OS.fs.rawUrl(path);
+      // a picture on a USB stick (LiteLink device) is read from the stick first
+      if (OS.fs.isUsb(path)) OS.fs.objectUrl(path).then((url) => { img.src = url; }, reject);
+      else img.src = OS.fs.rawUrl(path);
     });
   }
   async function openImage() {

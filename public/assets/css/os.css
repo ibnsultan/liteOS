@@ -306,10 +306,24 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .fdlg-cmd .btn { height: 30px; padding: 0 10px; font-weight: 500; border-color: transparent; background: transparent; }
 .fdlg-cmd .btn:hover { background: var(--hover); }
 .fdlg .dlg-body { padding: 0; flex: 1; min-height: 0; flex-direction: row; gap: 0; }
-.fdlg .side { width: 180px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 8px 6px; display: flex; flex-direction: column; gap: 1px; overflow: auto; }
+.fdlg .side { width: 200px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 8px 6px; display: flex; flex-direction: column; gap: 1px; overflow: auto; }
 .fdlg .side button { height: 32px; border: none; background: transparent; border-radius: var(--radius-l); display: flex; align-items: center; gap: 10px; padding: 0 10px; cursor: pointer; color: var(--text); text-align: left; flex-shrink: 0; }
 .fdlg .side button:hover { background: var(--hover); }
 .fdlg .side button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+/* USB drives of a LiteLink device (os.js fileDialog), below the folders */
+.fdlg .side-sep { height: 1px; margin: 6px 4px; background: var(--line); flex-shrink: 0; }
+.fdlg .side button .ico { flex-shrink: 0; }
+/* the navigation pane, as in Files: tree rows indent by depth, with the arrow's slot on every row so the icons line up */
+.fdlg .side button.tv { height: 30px; gap: 6px; padding: 0 8px 0 calc(4px + var(--d, 0) * 16px); }
+.fdlg .side .tw { width: 16px; height: 16px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--muted); }
+.fdlg .side .tw.none .ico { visibility: hidden; }
+.fdlg .side .tw[data-tw]:hover { color: var(--text); background: var(--hover); }
+.fdlg .side .tw .ico { transition: transform .12s; }
+.fdlg .side .tw.open .ico { transform: rotate(90deg); }
+.fdlg .side .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fdlg .side .pinmark { display: flex; color: var(--faint); }
+.fdlg .side button.on .pinmark { color: inherit; }
+.fdlg-ro { margin-left: auto; font-size: 12px; color: var(--muted); }
 .fdlg .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .fdlg-cols, .fdlg .item { display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 80px; align-items: center; gap: 12px; }
 .fdlg-cols { height: 30px; padding: 0 14px; font-size: var(--fs-s); color: var(--muted); border-bottom: 1px solid var(--line); flex-shrink: 0; }
@@ -329,6 +343,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .fdlg-row > span { text-align: right; color: var(--text-2); }
 .fdlg-row .input { height: 30px; padding: 0 10px; border-radius: var(--radius-s); }
 .fdlg-row .input[readonly] { color: var(--text-2); background: var(--surface-2); }
+/* the type box: a combo box (a button with its list in the shell's flyout), its label cut short rather than spilling */
+.fdlg-row .fdlg-type { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; text-align: left; color: var(--text); cursor: pointer; font: inherit; }
+.fdlg-row .fdlg-type span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fdlg-row .fdlg-type .ico, .fdlg-row .fdlg-type svg { flex-shrink: 0; color: var(--muted); }
+.fdlg-row .fdlg-type[aria-expanded="true"] { border-bottom: 2px solid var(--accent); }
+.fdlg-typemenu .menu-item.is-current { background: var(--accent-soft); color: var(--accent-ink); }
 .fdlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .fdlg-btns .btn { min-width: 88px; height: 32px; border-radius: var(--radius-s); }
 .fdlg-btns .btn:not(.is-default) { background: var(--dlg-btn); }

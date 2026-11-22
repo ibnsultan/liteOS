@@ -278,7 +278,17 @@ LiteOS.ready((OS) => {
     destroyHls();
     const live = it.kind === 'live';
     pl.classList.toggle('live', live);
-    if (live) playLive(it); else v.src = OS.fs.rawUrl(it.path);
+    if (live) playLive(it);
+    else if (OS.fs.isUsb(it.path)) {
+      // on a USB stick (LiteLink device): read from the stick, then played from memory (up to 64 MB)
+      v.removeAttribute('src');
+      OS.fs.objectUrl(it.path).then((url) => { if (cur() === it) { v.src = url; v.play().catch(() => {}); } }, (err) => {
+        if (cur() !== it) return;
+        const e = $('#error');
+        e.innerHTML = '<b>Can’t play this file</b>' + esc(err.message);
+        e.hidden = false;
+      });
+    } else v.src = OS.fs.rawUrl(it.path);
     v.playbackRate = live ? 1 : st.rate;
     const isAudio = it.kind === 'audio';
     $('#audioView').hidden = !isAudio;
@@ -869,14 +879,18 @@ LiteOS.ready((OS) => {
     vImg.style.visibility = 'hidden';
     vImg.onload = () => { photoBase(); photoTransform(); vImg.style.visibility = ''; requestAnimationFrame(() => vStage.classList.remove('nofx')); };
     vImg.onerror = () => { vImg.style.visibility = 'hidden'; OS.notify('“' + e.name + '” couldn’t be loaded. The file may be damaged or in a format the browser can’t show.', { type: 'error', title: 'Can’t open photo' }); };
-    vImg.src = photoSrc(e);
+    // a photo on a USB stick (LiteLink device) is read from the stick first
+    if (!e.builtin && OS.fs.isUsb(e.path)) OS.fs.objectUrl(e.path).then((url) => { if (PV.list[PV.i] === e) vImg.src = url; }, () => vImg.onerror());
+    else vImg.src = photoSrc(e);
     $('#vShow').hidden = $('#vDelete').hidden = !!e.builtin; // built-in wallpapers aren't files on the drive
+    if (!e.builtin && OS.fs.isUsb(e.path)) $('#vDelete').hidden = true; // nothing is deleted from a USB stick
     vImg.alt = e.name;
     $('#vName').textContent = e.name;
     $('#vIndex').textContent = n > 1 ? (PV.i + 1) + ' of ' + n : '';
     $('#vPrev').hidden = $('#vNext').hidden = n < 2;
     OS.win.setTitle(e.name + ' — Media');
-    if (n > 1) { const pre = new Image(); pre.src = photoSrc(PV.list[(PV.i + 1) % n]); }
+    const nx = n > 1 ? PV.list[(PV.i + 1) % n] : null;
+    if (nx && (nx.builtin || !OS.fs.isUsb(nx.path))) { const pre = new Image(); pre.src = photoSrc(nx); } // (a stick's photo is read when shown)
   }
   function photoBase() {
     const w = vImg.naturalWidth || 1; const h = vImg.naturalHeight || 1;
@@ -932,13 +946,25 @@ LiteOS.ready((OS) => {
   $('#vFit').addEventListener('click', photoFit);
   $('#vRotate').addEventListener('click', photoRotate);
   $('#vSlide').addEventListener('click', () => setSlideshow(!PV.timer));
-  $('#vShow').addEventListener('click', () => { const e = PV.list[PV.i]; if (e) { closeViewer(); OS.open('files', { path: U.dirname(e.path), select: e.path }); } });
+  $('#vShow').addEventListener('click', () => {
+    const e = PV.list[PV.i];
+    if (!e) return;
+    closeViewer();
+    const dir = OS.fs.isUsb(e.path) ? (window.LOS_usb.parent(e.path) || e.path.replace(/:\/.*$/, ':/')) : U.dirname(e.path);
+    OS.open('files', { path: dir, select: e.path });
+  });
   $('#vDelete').addEventListener('click', deletePhoto);
   $('#vWall').addEventListener('click', async () => {
     const e = PV.list[PV.i];
     if (!e) return;
     try {
-      await OS.saveSettings({ wallpaper: e.builtin ? e.wallId : 'file:' + e.path });
+      let path = e.path;
+      // a photo on a USB stick (LiteLink device) is copied into Pictures first: the stick won't always be there
+      if (!e.builtin && OS.fs.isUsb(path)) {
+        const [made] = await OS.fs.upload('/Pictures', [new File([await OS.fs.readBlob(path)], e.name)]);
+        path = (made && made.path) || '/Pictures/' + e.name;
+      }
+      await OS.saveSettings({ wallpaper: e.builtin ? e.wallId : 'file:' + path });
       OS.notify('“' + e.name + '” is now your desktop background.', { type: 'success', title: 'Wallpaper changed' });
     } catch (err) { OS.notify(err.message, { type: 'error', title: 'Couldn’t set the wallpaper' }); }
   });
