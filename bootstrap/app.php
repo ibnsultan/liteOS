@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureSetUp;
 use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\TopLevelOnly;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
@@ -39,6 +40,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // administrator), every other session of that account is signed out on its next request. The session that
         // changed it is kept, because the new password is stored in it at the end of that request.
         $middleware->web(append: AuthenticateSession::class);
+
+        // the desktop, sign-in, setup and the lock page are never shown inside a frame, so LiteOS can't end up inside
+        // itself (an app window whose session ended, the Browser pointed at LiteOS; TopLevelOnly)
+        $middleware->web(append: TopLevelOnly::class);
 
         // nosniff, same-origin framing, origin-only referrers and a policy that breaks nothing (SecurityHeaders)
         $middleware->append(SecurityHeaders::class);

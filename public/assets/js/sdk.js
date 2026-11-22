@@ -13,6 +13,13 @@
   try {
     if (window.parent && window.parent !== window && window.parent.LiteOSHost) host = window.parent.LiteOSHost;
   } catch (e) { host = null; }
+  // An app page framed by anything but the desktop (the Browser app pointed at LiteOS, a page inside a page) would be
+  // LiteOS inside itself: it shows a line instead and starts nothing.
+  if (!host && window.parent !== window) {
+    const stop = () => { document.body.innerHTML = '<p style="margin:0;padding:16px;font:13px/1.5 system-ui,sans-serif;color:#5a606b;text-align:center">LiteOS apps open only in LiteOS’s own windows.</p>'; };
+    if (document.body) stop(); else document.addEventListener('DOMContentLoaded', stop);
+    return;
+  }
 
   const params = new URLSearchParams(location.search);
   const winId = params.get('win') || null;

@@ -213,6 +213,8 @@ LiteOS.ready((OS) => {
       renderPage(t);
       return;
     }
+    // LiteOS's own address would put LiteOS inside itself
+    if (isLiteOS(url)) { showSelf(t, url); return; }
     // Keep whatever is showing (previous page) until the new page has loaded, then swap.
     const hadPage = !!t.pane.querySelector('.br-frame:not(.pending)');
     if (!hadPage) { t.pane.innerHTML = '<div class="br-blank"><span class="br-spin big"></span></div>'; }
@@ -325,6 +327,22 @@ LiteOS.ready((OS) => {
     renderTabs();
     if (t === active) updateChrome();
   }
+  function isLiteOS(url) {
+    try { return new URL(url, location.href).origin === location.origin; } catch (e) { return false; }
+  }
+  function showSelf(t, url) {
+    $$('.br-frame', t.pane).forEach((x) => x.remove());
+    t.frame = null;
+    t.title = hostOf(url);
+    setLoading(t, false);
+    t.pane.innerHTML = '<div class="br-blocked"><div class="br-blocked-card">' + favicon(url, 'br-blocked-ico') +
+      '<h1>This is LiteOS</h1>' +
+      '<p>You’re already in LiteOS, so it can’t open inside itself. Open its apps from the launcher.</p>' +
+      '</div></div>';
+    renderTabs();
+    if (t === active) updateChrome();
+  }
+
   function showBlocked(t, url) {
     $$('.br-frame', t.pane).forEach((x) => x.remove());
     t.frame = null;
