@@ -81,6 +81,8 @@ class UserSettings
             'deskLayout' => [],             // icons the user dragged: { "desk:files" | "file:/Desktop/a.txt": [column, row] }
             'quickAccess' => ['/Desktop', '/Downloads', '/Documents', '/Pictures', '/Music', '/Videos'], // folders pinned in Files
             'homepage' => 'https://www.wikipedia.org',
+            'launcherWidth' => 0,            // the classic launcher's width in px; 0 = its default
+            'appUsage' => [],                // how often each app was opened: { id: count }, for the modern launcher's Popular
         ];
     }
 
@@ -165,6 +167,21 @@ class UserSettings
             } elseif ($key === 'quickAccess') {
                 if (is_array($value)) {
                     $out[$key] = self::folderList($value);
+                }
+            } elseif ($key === 'launcherWidth') {
+                if (is_numeric($value)) {
+                    $out[$key] = (int) $value === 0 ? 0 : max(480, min(1200, (int) $value));
+                }
+            } elseif ($key === 'appUsage') {
+                if (is_array($value)) {
+                    $allowed = app(AppRegistry::class)->ids();
+                    $usage = [];
+                    foreach ($value as $id => $n) {
+                        if (is_string($id) && in_array($id, $allowed, true) && is_numeric($n)) {
+                            $usage[$id] = max(0, min(1000000, (int) $n));
+                        }
+                    }
+                    $out[$key] = $usage;
                 }
             } elseif ($key === 'homepage') {
                 if (is_string($value) && preg_match('#^https?://#i', $value) && strlen($value) < 2048) {

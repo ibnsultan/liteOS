@@ -74,6 +74,17 @@ class SettingsTest extends TestCase
             ->assertJsonMissingPath('result.secret');
     }
 
+    public function test_launcher_settings_keep_only_valid_entries(): void
+    {
+        $this->actingAs($this->amina)->postJson('/os/settings/save', ['settings' => [
+            'launcherWidth' => 9000,
+            'appUsage' => ['files' => 12, 'notes' => -4, 'no-such-app' => 3, 'code' => 'x'],
+        ]])
+            ->assertOk()
+            ->assertJsonPath('result.launcherWidth', 1200)
+            ->assertJsonPath('result.appUsage', ['files' => 12, 'notes' => 0]);
+    }
+
     public function test_desktop_icon_cells_keep_only_valid_entries(): void
     {
         $this->actingAs($this->amina)->postJson('/os/settings/save', ['settings' => ['deskLayout' => [

@@ -26,6 +26,7 @@
     dnd: false, textSize: 'default', clock24: true, pinned: ['files', 'settings', 'browser'], desktopIcons: ['files', 'trash'],
     deskIcons: true, deskIconSize: 'medium', deskSort: 'name', deskLayout: {},
     quickAccess: ['/Desktop', '/Downloads', '/Documents', '/Pictures', '/Music', '/Videos'],
+    launcherWidth: 0, appUsage: {},
   };
 
   // ================================================================== api
@@ -439,10 +440,20 @@
     applySettings();
     try {
       const saved = await api('settings.save', { settings: changes });
-      S.settings = S.guestBase ? guestSettings(saved) : saved;
+      const usage = set().appUsage; // counted here and saved a little later (countOpen): the shell's copy is the newest
+      S.settings = Object.assign({}, S.guestBase ? guestSettings(saved) : saved, usage ? { appUsage: usage } : {});
       applySettings();
     } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t save settings' }); }
     return S.settings;
+  }
+
+  // How often each app is opened, for the modern launcher's Popular. Counted quietly (no redraw) and saved in a batch.
+  const saveUsage = debounce(() => { api('settings.save', { settings: { appUsage: set().appUsage } }).catch(() => {}); }, 4000);
+  function countOpen(appId) {
+    const usage = Object.assign({}, set().appUsage || {});
+    usage[appId] = (usage[appId] || 0) + 1;
+    S.settings = Object.assign({}, set(), { appUsage: usage });
+    saveUsage();
   }
 
   function workArea() {
@@ -1186,6 +1197,7 @@
   function togglePop(name) {
     UI.pop = UI.pop === name ? null : name;
     UI.lsQuery = '';
+    UI.lsView = 'home';
     renderPop();
     syncBarState();
     if (UI.pop === 'launcher') {
@@ -1284,13 +1296,29 @@
     }
     if (UI.pop === 'launcher') {
       const u = S.user;
-      pops.innerHTML = '<div class="pop launcher" style="' + popPosition('launcher') + '" role="dialog" aria-label="Launcher">' +
-        '<label class="ls-search">' + ICON('search', 16) + '<input type="text" placeholder="Search apps and files" aria-label="Search apps and files" value="' + esc(UI.lsQuery) + '"></label>' +
-        '<div class="ls-body"></div>' +
-        '<div class="ls-foot">' + avatar(u, 34) + '<span class="who"><b>' + esc(u.name) + '</b><small>' + (({ admin: 'Administrator', local: 'Local account', guest: 'Guest' })[u.role] || 'Standard user') + '</small></span>' +
-        '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 18) + '</button>' +
-        (canLock() ? '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 18) + '</button>' : '') +
-        '<button class="ibtn" data-act="signout" title="Sign out" aria-label="Sign out">' + ICON('power', 18) + '</button></div></div>';
+      const classic = isClassicLauncher();
+      const search = '<label class="ls-search">' + ICON('search', 16) + '<input type="text" placeholder="Search apps and files" aria-label="Search apps and files" value="' + esc(UI.lsQuery) + '"></label>';
+      if (classic) {
+        // Windows 10 style: a rail, every app A to Z, then Popular and Recent; the right edge resizes it
+        pops.innerHTML = '<div class="pop launcher classic" style="' + popPosition('launcher') + ';width:' + launcherWidth() + 'px" role="dialog" aria-label="Launcher">' +
+          '<nav class="lc-rail" aria-label="Places">' +
+            '<button class="ibtn" data-act="lc-account" title="' + esc(u.name) + '" aria-label="Your account">' + avatar(u, 28) + '</button><span class="lc-sp"></span>' +
+            '<button class="ibtn" data-act="lc-docs" title="Documents" aria-label="Documents">' + window.LOS_sysIconImg('place.documents', 20, { cls: 'ico' }) + '</button>' +
+            '<button class="ibtn" data-act="lc-pics" title="Pictures" aria-label="Pictures">' + window.LOS_sysIconImg('place.pictures', 20, { cls: 'ico' }) + '</button>' +
+            '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 18) + '</button>' +
+            '<button class="ibtn" data-act="power" title="Power" aria-label="Power options">' + ICON('power', 18) + '</button></nav>' +
+          '<div class="lc-list">' + search + '<div class="ls-body"></div></div>' +
+          '<div class="lc-side"></div>' +
+          '<div class="lc-size" title="Drag to resize" aria-hidden="true"></div></div>';
+        wireClassicLauncher($('.pop.launcher', pops));
+      } else {
+        pops.innerHTML = '<div class="pop launcher" style="' + popPosition('launcher') + '" role="dialog" aria-label="Launcher">' + search +
+          '<div class="ls-body"></div>' +
+          '<div class="ls-foot">' + avatar(u, 34) + '<span class="who"><b>' + esc(u.name) + '</b><small>' + (({ admin: 'Administrator', local: 'Local account', guest: 'Guest' })[u.role] || 'Standard user') + '</small></span>' +
+          '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 18) + '</button>' +
+          (canLock() ? '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 18) + '</button>' : '') +
+          '<button class="ibtn" data-act="signout" title="Sign out" aria-label="Sign out">' + ICON('power', 18) + '</button></div></div>';
+      }
       const input = $('.ls-search input', pops);
       input.addEventListener('input', () => { UI.lsQuery = input.value; launcherSearch(); });
       input.addEventListener('keydown', (e) => {
@@ -1624,23 +1652,114 @@
     } catch (e) { /* ignore */ }
   }, 200);
 
+  /** How long ago a moment (Unix seconds) was: "Just now", "5m ago", "3h ago", "2d ago", or the date after a week. */
+  function agoText(ts) {
+    if (!ts) return '';
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60) return 'Just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    if (s < 7 * 86400) return Math.floor(s / 86400) + 'd ago';
+    return new Date(ts * 1000).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // The launcher follows the bar: the classic taskbar gets the Windows 10 style launcher, the dock the modern one.
+  const isClassicLauncher = () => set().taskbar === 'classic';
+  const launcherWidth = () => Math.max(480, Math.min(set().launcherWidth || 820, window.innerWidth - 16));
+  const byName = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: 'base' });
+  // Popular (modern): the 16 apps opened most; until there's a history, the pinned apps lead, then the rest in order
+  function popularApps() {
+    const use = set().appUsage || {};
+    const pins = set().pinned || [];
+    const all = window.LOS_APPS;
+    const pin = (id) => { const i = pins.indexOf(id); return i < 0 ? 999 : i; };
+    return [...all].sort((x, y) => (use[y.id] || 0) - (use[x.id] || 0) || pin(x.id) - pin(y.id) || all.indexOf(x) - all.indexOf(y)).slice(0, 16);
+  }
+  // apps under their first letter: [['A', [apps]], ...]
+  function byLetter() {
+    const groups = [];
+    [...window.LOS_APPS].sort(byName).forEach((a) => {
+      const l = (a.name[0] || '#').toUpperCase();
+      if (!groups.length || groups[groups.length - 1][0] !== l) groups.push([l, []]);
+      groups[groups.length - 1][1].push(a);
+    });
+    return groups;
+  }
+
   function renderLauncherBody() {
     const body = $('#pops .ls-body', root);
     if (!body) return;
+    const classic = isClassicLauncher();
     const qv = UI.lsQuery.trim().toLowerCase();
     const fileBtn = (f) => '<button class="ls-file" data-file="' + esc(f.path) + '" data-type="' + f.type + '">' + fileTile(f, 34, 9) +
       '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc('My drive' + (parent(f.path) === '/' ? '' : parent(f.path))) + '</small></span></button>'; // "My drive/Desktop/samples"
+    const recentBtn = (f) => '<button class="ls-file" data-file="' + esc(f.path) + '" data-type="' + f.type + '" data-recent="1" title="' + esc('My drive' + f.path) + '">' + fileTile(f, 34, 9) +
+      '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc(agoText(f.opened || f.mtime)) + '</small></span></button>';
+    const cell = (a) => '<button class="ls-app" data-app="' + a.id + '">' + appTile(a, 40) + '<span>' + esc(a.name) + '</span></button>';
+    const row = (a) => '<button class="lc-app" data-app="' + a.id + '">' + appTile(a, 28) + '<span>' + esc(a.name) + '</span></button>';
     if (qv) {
       const apps = window.LOS_APPS.filter((a) => a.name.toLowerCase().includes(qv));
       const files = (UI.results || []).filter((f) => f.name.toLowerCase().includes(qv));
-      body.innerHTML = (apps.length ? '<div class="ls-head">Apps</div><div class="ls-grid">' + apps.map((a) => '<button class="ls-app" data-app="' + a.id + '">' + appTile(a, 44, 12) + '<span>' + esc(a.name) + '</span></button>').join('') + '</div>' : '') +
+      body.innerHTML = (apps.length ? '<div class="ls-head">Apps</div>' + (classic ? apps.map(row).join('') : '<div class="ls-grid">' + apps.map(cell).join('') + '</div>') : '') +
         (files.length ? '<div class="ls-head">Files</div><div class="ls-files">' + files.map(fileBtn).join('') + '</div>' : '') +
         (!apps.length && !files.length ? '<div class="ls-empty">No apps or files match “' + esc(UI.lsQuery) + '”.</div>' : '');
       return;
     }
-    body.innerHTML = '<div class="ls-head">All apps</div><div class="ls-grid">' +
-      window.LOS_APPS.map((a) => '<button class="ls-app" data-app="' + a.id + '">' + appTile(a, 44, 12) + '<span>' + esc(a.name) + '</span></button>').join('') + '</div>' +
-      '<div class="ls-head">Recent</div>' + (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 6).map(fileBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
+    if (classic) {
+      body.innerHTML = byLetter().map(([l, apps]) => '<div class="lc-letter">' + esc(l) + '</div>' + apps.map(row).join('')).join('');
+      renderClassicSide(cell, recentBtn);
+      return;
+    }
+    if (UI.lsView === 'all') {
+      body.innerHTML = '<div class="ls-head">All apps<button class="link" data-act="ls-back">' + ICON('back', 14) + 'Back</button></div>' +
+        // letters on a four-column grid, so every row lines up: a letter with one or two apps takes one column, with three
+        // or more two columns (four apps across at most, more wrap inside it); cells are a Popular cell's width
+        '<div class="ls-az">' + byLetter().map(([l, apps]) => {
+          const n = Math.min(apps.length, 4);
+          return '<div class="ls-grp" style="grid-column:span ' + (n > 2 ? 2 : 1) + '"><div class="ls-letter">' + esc(l) + '</div>' +
+            '<div class="ls-grid" style="--n:' + n + '">' + apps.map(cell).join('') + '</div></div>';
+        }).join('') + '</div>';
+      return;
+    }
+    body.innerHTML = '<div class="ls-head">Popular<button class="link" data-act="ls-all">All apps' + ICON('forward', 14) + '</button></div>' +
+      '<div class="ls-grid">' + popularApps().map(cell).join('') + '</div>' +
+      '<div class="ls-head">Recent' + (UI.recent.length ? '<button class="link" data-act="ls-recent">Show all' + ICON('forward', 14) + '</button>' : '') + '</div>' +
+      (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 6).map(recentBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
+  }
+
+  // ------------------------------------------------------------------ the classic launcher's right side
+  // Popular as in the modern launcher (the 10 apps opened most, two rows of five), then Recent with Show all.
+  function renderClassicSide(cell, recentBtn) {
+    const area = $('#pops .lc-side', root);
+    if (!area) return;
+    area.innerHTML = '<div class="ls-head">Popular</div><div class="ls-grid">' + popularApps().slice(0, 10).map(cell).join('') + '</div>' +
+      '<div class="ls-head">Recent' + (UI.recent.length ? '<button class="link" data-act="ls-recent">Show all' + ICON('forward', 14) + '</button>' : '') + '</div>' +
+      (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 8).map(recentBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
+  }
+
+  // the classic launcher's right edge widens or narrows it; the width is kept
+  function wireClassicLauncher(pop) {
+    if (!pop) return;
+    const grip = $('.lc-size', pop);
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const x0 = e.clientX;
+      const w0 = pop.offsetWidth;
+      const max = window.innerWidth - pop.getBoundingClientRect().left - 8;
+      const move = (ev) => { pop.style.width = Math.max(480, Math.min(max, w0 + ev.clientX - x0)) + 'px'; };
+      const up = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        grip.removeEventListener('pointercancel', up);
+        const w = Math.round(pop.offsetWidth);
+        S.settings = Object.assign({}, set(), { launcherWidth: w });
+        api('settings.save', { settings: { launcherWidth: w } }).catch(() => {});
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+      grip.addEventListener('pointercancel', up);
+    });
   }
 
   // ================================================================== windows
@@ -1672,6 +1791,7 @@
     args = args || {};
     opts = opts || {};
     closePops();
+    if (!deskRestoring) countOpen(appId);
     if (app.single) {
       const existing = [...wins.values()].find((x) => x.app.id === appId);
       if (existing) {
@@ -3166,6 +3286,19 @@
     if (t.dataset.menu != null) { closePops(); openTopMenu(t); return; }
     switch (t.dataset.act) {
       case 'launcher': togglePop('launcher'); break;
+      case 'ls-all': { // the launcher keeps the height of its first page; the list scrolls inside it
+        const pop = $('#pops .pop.launcher', root);
+        if (pop) pop.style.height = pop.offsetHeight + 'px';
+        UI.lsView = 'all'; renderLauncherBody();
+        const body = $('#pops .ls-body', root);
+        if (body) body.scrollTop = 0;
+        break;
+      }
+      case 'ls-back': { UI.lsView = 'home'; renderLauncherBody(); const pop = $('#pops .pop.launcher', root); if (pop) pop.style.height = ''; break; }
+      case 'ls-recent': openApp('files', { path: 'recent:' }); break;
+      case 'lc-docs': openApp('files', { path: '/Documents' }); break;
+      case 'lc-pics': openApp('files', { path: '/Pictures' }); break;
+      case 'lc-account': openApp('settings', { section: 'accounts' }); break;
       case 'launcher-search': if (UI.pop !== 'launcher') togglePop('launcher'); break;
       case 'qs': togglePop('qs'); break;
       case 'trash': openApp('files', { path: 'trash:' }); break;
@@ -3216,12 +3349,25 @@
 
   root.addEventListener('mousedown', (e) => {
     if (!UI.pop) return;
-    if (e.target.closest('.pop') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume],[data-act=net]')) return;
+    if (e.target.closest('.pop') || e.target.closest('.menu') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume],[data-act=net]')) return;
     closePops();
   });
 
   root.addEventListener('contextmenu', (e) => {
     if (e.target.closest('input, textarea')) return;
+    const recent = e.target.closest('#pops .ls-file[data-recent]');
+    if (recent) {
+      e.preventDefault();
+      const path = recent.dataset.file;
+      showMenu([
+        { label: 'Open file location', icon: 'open', action: () => openApp('files', { path: parent(path) || '/', select: path }) },
+        { label: 'Remove from list', icon: 'x', action: async () => {
+          try { UI.recent = await api('fs.forget', { path }); } catch (err) { notify(err.message, { type: 'error', title: 'Couldn’t remove it' }); return; }
+          renderLauncherBody();
+        } },
+      ], { x: e.clientX, y: e.clientY });
+      return;
+    }
     const appBtn = e.target.closest('.dock [data-app], .taskbar [data-app]');
     if (appBtn) { e.preventDefault(); appMenu(appBtn.dataset.app, appBtn); return; }
     const deskIcon = e.target.closest('.desk-icon');
