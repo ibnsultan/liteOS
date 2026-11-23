@@ -6,6 +6,9 @@
 *.md diff=markdown
 *.php diff=php
 
+# leave the app bundles out of GitHub's language stats
+/public/assets/apps/** linguist-vendored
+
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore

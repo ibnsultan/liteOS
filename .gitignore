@@ -22,6 +22,7 @@ public/fonts-manifest.dev.json
 public/hot
 public/storage
 public/icons
+public/assets/vendor/
 
 storage/*.key
 storage/pail
