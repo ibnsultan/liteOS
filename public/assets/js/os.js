@@ -1928,6 +1928,7 @@
     if (w.tile) tiledWins().forEach((x) => { if (x !== w && !x.min) x.el.style.zIndex = String(++zTop); });
     if (focusedId && focusedId !== w.id) snapLater(wins.get(focusedId)); // the window left behind: copy it while it shows
     w.el.style.zIndex = String(++zTop);
+    if (w.blocker) w.blocker.box.style.zIndex = String(++zTop);
     w.lastFocus = Date.now();
     focusedId = w.id;
     wins.forEach((x) => x.el.classList.toggle('focused', x === w));
@@ -1980,6 +1981,7 @@
       const ok = await confirmDialog({ title: 'Close ' + w.app.name + '?', message: 'You have unsaved changes in “' + w.title.replace(/ — .*$/, '') + '”. They will be lost.', okLabel: 'Close without saving', danger: true });
       if (!ok) return false;
     }
+    if (w.blocker) w.blocker.cancel();
     w.el.classList.add('closing');
     if (PV.peek === w) peekWin(null);
     dropSnap(w);
@@ -2662,43 +2664,193 @@
       (b.type ? ' type="' + b.type + '"' : ' type="button"') + (b.v != null ? ' data-v="' + b.v + '"' : '') + (b.focus ? ' autofocus' : '') + '>' + esc(b.label) + '</button>').join('') + '</div>';
   }
 
-  /**
-   * Confirm. With `danger: true` the action is destructive: its button shows danger text and Cancel becomes the
-   * default, so Enter never destroys anything by accident.
-   */
-  function confirmDialog(o) {
-    return modal((box, done) => {
-      const danger = !!o.danger;
-      box.innerHTML = '<h2 class="dlg-title">' + esc(o.title || 'Are you sure?') + '</h2>' +
-        (o.message ? '<p class="dlg-body">' + esc(o.message) + '</p>' : '') +
-        dlgButtons(danger
-          ? [{ label: o.okLabel || 'OK', v: 1, cls: 'btn-danger-text' }, { label: o.cancelLabel || 'Cancel', v: 0, cls: 'is-default', focus: true }]
-          : [{ label: o.cancelLabel || 'Cancel', v: 0 }, { label: o.okLabel || 'OK', v: 1, cls: 'is-default', focus: true }]);
-      box.addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) done(b.dataset.v === '1'); });
-    }).then((v) => v === true);
+  // ------------------------------------------------------------------ message boxes
+  // Alert, confirm and prompt look and behave like a desktop's message box: a small window of its own with the app's
+  // name in a title bar (drag it by that bar), led by an icon for the kind of message (error, warning…) or the app's
+  // own, and the buttons in a footer. Asked for by an app, it belongs to that app's window: only that window is blocked (no dimming of the
+  // screen; the rest of the desktop stays usable), it sits over it, and a click on the blocked window brings it back
+  // with a flash and a sound. Asked for by the shell itself, it blocks the whole desktop as before.
+  const MSG_ICON = { error: 'status.error', warning: 'status.warning', info: 'status.info', question: 'status.question' };
+  let msgAudio = null;
+  /** A short system sound: a low tone for errors and warnings, a soft one otherwise (and when a blocked window is clicked). */
+  function msgSound(kind) {
+    if (S.settings && S.settings.muted) return;
+    try {
+      msgAudio = msgAudio || new (window.AudioContext || window.webkitAudioContext)();
+      if (msgAudio.state === 'suspended') msgAudio.resume();
+      const t = msgAudio.currentTime + 0.01;
+      const tone = (f, at, len, vol) => {
+        const o = msgAudio.createOscillator();
+        const g = msgAudio.createGain();
+        o.type = 'sine';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0, at);
+        g.gain.linearRampToValueAtTime(vol, at + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+        o.connect(g).connect(msgAudio.destination);
+        o.start(at);
+        o.stop(at + len + 0.05);
+      };
+      if (kind === 'error' || kind === 'warning') { tone(660, t, 0.35, 0.18); tone(440, t + 0.09, 0.45, 0.16); }
+      else tone(880, t, 0.3, 0.12);
+    } catch (e) { /* no sound here */ }
   }
 
-  function promptDialog(o) {
-    return modal((box, done) => {
-      box.innerHTML = '<form method="dialog"><h2 class="dlg-title">' + esc(o.title || 'Enter a value') + '</h2><div class="dlg-body">' +
-        '<label class="field">' + (o.label ? '<span>' + esc(o.label) + '</span>' : '') + '<input class="input" autofocus type="' + esc(o.type || 'text') + '" value="' + esc(o.value || '') + '"></label></div>' +
-        dlgButtons([{ label: 'Cancel', v: 0 }, { label: o.okLabel || 'OK', type: 'submit', cls: 'is-default' }]) + '</form>';
-      const input = $('input', box);
-      $('form', box).addEventListener('submit', (e) => { e.preventDefault(); done(input.value); });
-      $('[data-v="0"]', box).addEventListener('click', () => done(null));
-      setTimeout(() => {
-        const dot = input.value.lastIndexOf('.');
-        try { input.setSelectionRange(0, o.selectStem && dot > 0 ? dot : input.value.length); } catch (e) { /* number inputs */ }
+  /**
+   * A message box. o: { kind ('error'|'warning'|'info'|'question'), title, message, bodyHtml, buttons
+   * ([{ label, v, cls, focus }]), cancel (the value Escape and the close button give) }; winId: the app window asking.
+   * build(box, done) may wire more (a prompt's field). -> the value of the button pressed.
+   */
+  function msgBox(o, winId, build) {
+    const owner = winId && wins.get(winId);
+    // the window that asked was closed meanwhile: its message goes with it
+    if (winId && !owner) return Promise.resolve(o.cancel);
+    const app = owner ? owner.app : null;
+    const kind = MSG_ICON[o.kind] ? o.kind : null;
+    const html =
+      // the title bar: the kind of message's icon (an error, a warning…) before the program's name, else the app's icon
+      '<div class="msg-head">' + (kind ? '<img src="' + esc(window.LOS_sysIcon(MSG_ICON[kind])) + '" alt="" width="16" height="16">' : app ? '<img src="' + esc(app.img) + '" alt="" width="16" height="16">' : '') +
+        '<span class="msg-cap">' + esc(app ? app.name : 'LiteOS') + '</span>' +
+        '<button class="ibtn msg-close" type="button" data-msg-close aria-label="Close">' + ICON('window.close', 14) + '</button></div>' +
+      '<div class="msg-main">' +
+        '<div class="msg-text">' + (o.title ? '<h2 class="dlg-title">' + esc(o.title) + '</h2>' : '') +
+        (o.bodyHtml != null ? '<div class="dlg-body">' + o.bodyHtml + '</div>' : o.message ? '<p class="dlg-body">' + esc(o.message) + '</p>' : '') + '</div></div>' +
+      dlgButtons(o.buttons).replace('class="dlg-actions"', 'class="dlg-actions msg-foot"');
+    const wire = (box, done) => {
+      box.innerHTML = html;
+      box.addEventListener('click', (e) => {
+        if (e.target.closest('[data-msg-close]')) { done(o.cancel); return; }
+        const b = e.target.closest('[data-v]');
+        if (b && b.type !== 'submit') done(b.dataset.v);
+      });
+      if (build) build(box, done);
+      if (kind === 'error' || kind === 'warning') msgSound(kind);
+    };
+    if (!owner) return modal(wire, 'msgbox').then((v) => (v === null ? o.cancel : v));
+    return ownedBox(owner, wire, o.cancel);
+  }
+
+  /** A message box that blocks one window: shown over it, its own z-order just above it, draggable by its title bar. */
+  function ownedBox(w, wire, cancelValue) {
+    return new Promise((resolve) => {
+      if (w.min) restore(w);
+      focus(w);
+      const box = document.createElement('dialog');
+      box.className = 'dlg msgbox owned';
+      // the blocked window: a sheet over it takes every click and points back to the box
+      const sheet = document.createElement('div');
+      sheet.className = 'win-blocked';
+      w.el.appendChild(sheet);
+      w.el.parentNode.appendChild(box);
+      const prevFocus = document.activeElement;
+      let closed = false;
+      const done = (v) => {
+        if (closed) return;
+        closed = true;
+        try { box.close(); } catch (e) { /* ignore */ }
+        box.remove();
+        sheet.remove();
+        if (w.blocker && w.blocker.box === box) w.blocker = null;
+        if (wins.has(w.id)) { focus(w); try { w.iframe.contentWindow.focus(); } catch (e) { /* ignore */ } }
+        else if (prevFocus && prevFocus.focus) try { prevFocus.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+        resolve(v);
+      };
+      w.blocker = { box, cancel: () => done(cancelValue) };
+      wire(box, done);
+      const title = $('.dlg-title', box) || $('.msg-cap', box);
+      title.id = 'dlg-t-' + Math.random().toString(36).slice(2, 8);
+      box.setAttribute('aria-labelledby', title.id);
+      box.setAttribute('role', 'alertdialog');
+      box.setAttribute('aria-modal', 'true');
+      box.show();
+      // over the middle of its window, kept on screen
+      const r = w.el.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      const left = Math.max(8, Math.min(window.innerWidth - b.width - 8, r.left + (r.width - b.width) / 2));
+      const top = Math.max(8, Math.min(window.innerHeight - b.height - 8, r.top + Math.min(r.height * 0.3, (r.height - b.height) / 2)));
+      Object.assign(box.style, { left: left + 'px', top: top + 'px', zIndex: String(++zTop) });
+      const want = $('[autofocus]', box) || $('.is-default', box) || $('button', box);
+      if (want) want.focus({ preventScroll: true });
+      const flash = () => {
+        focus(w);
+        box.style.zIndex = String(++zTop);
+        box.classList.remove('flash');
+        void box.offsetWidth;
+        box.classList.add('flash');
+        msgSound('info');
+        const f = $('[autofocus]', box) || $('.is-default', box) || $('button', box);
+        if (f) f.focus({ preventScroll: true });
+      };
+      sheet.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); flash(); });
+      w.blocker.flash = flash;
+      // keys stay in the box: Escape gives the cancel value, Tab goes round its controls
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(cancelValue); return; }
+        if (e.key !== 'Tab') return;
+        const list = [...box.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((x) => !x.disabled && x.offsetParent);
+        if (!list.length) return;
+        const i = list.indexOf(document.activeElement);
+        const next = e.shiftKey ? (i <= 0 ? list.length - 1 : i - 1) : (i === list.length - 1 ? 0 : i + 1);
+        e.preventDefault();
+        list[next].focus();
+      });
+      box.addEventListener('pointerdown', () => { box.style.zIndex = String(++zTop); });
+      // drag by the title bar
+      const head = $('.msg-head', box);
+      head.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || e.target.closest('button')) return;
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        const ox = box.offsetLeft, oy = box.offsetTop;
+        const move = (ev) => {
+          box.style.left = Math.max(-box.offsetWidth + 80, Math.min(window.innerWidth - 80, ox + ev.clientX - sx)) + 'px';
+          box.style.top = Math.max(0, Math.min(window.innerHeight - 40, oy + ev.clientY - sy)) + 'px';
+        };
+        const up = () => { window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); };
+        window.addEventListener('pointermove', move, true);
+        window.addEventListener('pointerup', up, true);
       });
     });
   }
 
-  function alertDialog(o) {
-    return modal((box, done) => {
-      box.innerHTML = '<h2 class="dlg-title">' + esc(o.title || 'LiteOS') + '</h2><p class="dlg-body">' + esc(o.message || '') + '</p>' +
-        dlgButtons([{ label: o.okLabel || 'OK', cls: 'is-default', focus: true }]);
-      $('button', box).addEventListener('click', () => done(true));
-    });
+  /**
+   * Confirm. With `danger: true` the action is destructive: its button shows danger text and Cancel becomes the
+   * default, so Enter never destroys anything by accident.
+   */
+  function confirmDialog(o, winId) {
+    const danger = !!o.danger;
+    return msgBox({
+      kind: o.kind || (danger ? 'warning' : 'question'), title: o.title || 'Are you sure?', message: o.message, cancel: '0',
+      buttons: danger
+        ? [{ label: o.okLabel || 'OK', v: 1, cls: 'btn-danger-text' }, { label: o.cancelLabel || 'Cancel', v: 0, cls: 'is-default', focus: true }]
+        : [{ label: o.cancelLabel || 'Cancel', v: 0 }, { label: o.okLabel || 'OK', v: 1, cls: 'is-default', focus: true }],
+    }, winId).then((v) => v === '1');
+  }
+
+  function promptDialog(o, winId) {
+    return msgBox({
+      title: o.title || 'Enter a value', cancel: null,
+      bodyHtml: '<form class="msg-form"><label class="field">' + (o.label ? '<span>' + esc(o.label) + '</span>' : '') +
+        '<input class="input" autofocus type="' + esc(o.type || 'text') + '" value="' + esc(o.value || '') + '"></label><button type="submit" hidden></button></form>',
+      buttons: [{ label: 'Cancel', v: 0 }, { label: o.okLabel || 'OK', v: 'ok', cls: 'is-default' }],
+    }, winId, (box, done) => {
+      const input = $('input', box);
+      const submit = () => done({ value: input.value });
+      $('form', box).addEventListener('submit', (e) => { e.preventDefault(); submit(); });
+      $('[data-v="ok"]', box).addEventListener('click', (e) => { e.stopPropagation(); submit(); });
+      setTimeout(() => {
+        input.focus();
+        const dot = input.value.lastIndexOf('.');
+        try { input.setSelectionRange(0, o.selectStem && dot > 0 ? dot : input.value.length); } catch (e) { /* number inputs */ }
+      });
+    }).then((v) => (v && typeof v === 'object' ? v.value : null));
+  }
+
+  function alertDialog(o, winId) {
+    return msgBox({
+      kind: o.kind || 'info', title: o.title || '', message: o.message || '', cancel: true,
+      buttons: [{ label: o.okLabel || 'OK', v: 1, cls: 'is-default', focus: true }],
+    }, winId).then(() => true);
   }
 
   // ================================================================== printing (LiteLink)
@@ -3621,9 +3773,9 @@
       open: (o, winId) => fileDialog('open', o, winId),
       save: (o, winId) => fileDialog('save', o, winId),
       folder: (o, winId) => fileDialog('folder', o, winId),
-      confirm: (o) => confirmDialog(o || {}),
-      prompt: (o) => promptDialog(o || {}),
-      alert: (o) => alertDialog(o || {}),
+      confirm: (o, winId) => confirmDialog(o || {}, winId),
+      prompt: (o, winId) => promptDialog(o || {}, winId),
+      alert: (o, winId) => alertDialog(o || {}, winId),
     },
     /** Printing on a LiteLink device (OS.print in the SDK): available() waits for the device to answer. */
     print: {

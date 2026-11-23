@@ -37,3 +37,26 @@ p.dlg-body { display: block; white-space: pre-line; }
 
 :root[data-contrast="dark"] .btn.is-default { color: #000; }
 .dlg-wide { width: 480px; }
+
+/* Message boxes (alert, confirm, prompt): a small window with a title bar, an icon for the kind of message, and the
+   buttons in a footer strip. .owned: it belongs to one app window (os.js ownedBox): no backdrop, placed over it. */
+.msgbox { width: 420px; }
+.msgbox.owned { position: fixed; margin: 0; inset: auto; pointer-events: auto; }
+.msg-head { display: flex; align-items: center; gap: 8px; height: 34px; padding-left: 12px; flex-shrink: 0; user-select: none; -webkit-user-select: none; cursor: default; }
+.msg-head > img { flex-shrink: 0; }
+.msg-cap { flex: 1; min-width: 0; font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg-close { align-self: stretch; width: 44px; height: auto; border-radius: 0; flex-shrink: 0; }
+.msg-close:hover { background: var(--danger); color: var(--on-danger); }
+.msg-main { display: flex; gap: 14px; padding: 10px 22px 16px; min-height: 0; overflow: auto; }
+.msg-ico { flex-shrink: 0; margin-top: 2px; }
+.msg-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.msgbox .dlg-title { padding: 0; font-size: 14px; }
+.msgbox .dlg-body { padding: 0; }
+.msg-form { display: contents; }
+/* a prompt's field label: quieter than the title above it */
+.msg-form .field > span { font-weight: 400; color: var(--muted); }
+.msg-foot { padding: 4px 16px 16px; } /* one surface: no band or line between the message and its buttons */
+.msg-foot .btn { min-width: 80px; }
+.msgbox.flash { animation: msgFlash .45s ease; }
+@keyframes msgFlash { 0%, 100% { box-shadow: var(--dlg-shadow); } 25%, 75% { box-shadow: var(--dlg-shadow), 0 0 0 2px var(--accent); } 50% { box-shadow: var(--dlg-shadow); } }
+.win-blocked { position: absolute; inset: 0; z-index: 1000; cursor: default; }
