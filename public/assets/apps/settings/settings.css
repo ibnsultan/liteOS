@@ -103,7 +103,10 @@ body { background: var(--page); }
 .st-combo[aria-expanded="true"] { border-bottom: 2px solid var(--accent); }
 .st-combo:disabled { cursor: default; opacity: .5; }
 .st-combo:disabled:hover { background: var(--field); }
-.dlg .st-combo { width: 100%; max-width: none; height: 36px; }
+/* in a dialog it looks like the text fields next to it (.input): same height, border, corners and fill */
+.dlg .st-combo { width: 100%; max-width: none; height: 32px; padding: 0 10px; background: var(--surface); border: 1px solid var(--line-strong); }
+.dlg .st-combo:hover, .dlg .st-combo:disabled:hover { background: var(--surface); }
+.dlg .st-combo[aria-expanded="true"] { border: 1px solid var(--accent); }
 /* Access for a Local account (Accounts › Other users): switches, then the apps it can open in a list that scrolls */
 .dlg .st-note { margin: 0 0 12px; }
 .dlg .st-h { margin: 18px 0 8px; font-size: var(--fs-m); }
