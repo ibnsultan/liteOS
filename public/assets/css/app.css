@@ -146,7 +146,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .tile { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-l); color: #fff; flex-shrink: 0; }
 
 /* Scrollbars */
-* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+/* Chrome drops its ::-webkit-scrollbar styling (and draws arrow buttons) once scrollbar-width is set, so that is only for
+   browsers without it (Firefox) */
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; } }
+::-webkit-scrollbar-button { display: none; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-l); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track { background: transparent; }

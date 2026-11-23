@@ -4,6 +4,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 body { font-family: var(--font); font-size: var(--fs-m); color: var(--text); background: color-mix(in srgb, var(--accent) 65%, #000); -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
+/* slim scroll bars, the same as in the apps (app.css): a thin thumb, no track, no arrow buttons */
+/* Chrome drops its ::-webkit-scrollbar styling (and draws arrow buttons) once scrollbar-width is set, so that is only for
+   browsers without it (Firefox) */
+@supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; } }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-l); border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* no focus ring on fields and selects: the caret, or the open flyout, shows where you are */
 input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-visible, .select:focus-visible { outline: none; }
