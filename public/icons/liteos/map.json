@@ -241,9 +241,9 @@
     "window.restore": "actions/xfce-wm-unmaximize"
   },
   "extensions": {
-    "txt": "mime.text", "md": "mime.markdown", "markdown": "mime.markdown", "log": "mime.log", "ini": "mime.ini", "cfg": "mime.ini", "conf": "mime.ini",
-    "html": "mime.html", "htm": "mime.html", "css": "mime.css", "js": "mime.javascript", "mjs": "mime.javascript", "cjs": "mime.javascript",
-    "ts": "mime.typescript", "tsx": "mime.typescript", "jsx": "mime.javascript", "json": "mime.json", "xml": "mime.xml", "yml": "mime.yaml", "yaml": "mime.yaml",
+    "txt": "mime.text", "md": "mime.markdown", "markdown": "mime.markdown", "log": "mime.log", "ini": "mime.ini", "cfg": "mime.ini", "conf": "mime.ini", "properties": "mime.ini",
+    "html": "mime.html", "htm": "mime.html", "xhtml": "mime.html", "css": "mime.css", "js": "mime.javascript", "mjs": "mime.javascript", "cjs": "mime.javascript",
+    "ts": "mime.typescript", "tsx": "mime.typescript", "mts": "mime.typescript", "cts": "mime.typescript", "jsx": "mime.javascript", "json": "mime.json", "xml": "mime.xml", "yml": "mime.yaml", "yaml": "mime.yaml",
     "php": "mime.php", "py": "mime.python", "c": "mime.c", "cpp": "mime.cpp", "cc": "mime.cpp", "h": "mime.header", "hpp": "mime.header", "java": "mime.java",
     "sh": "mime.shell", "bash": "mime.shell", "bat": "mime.script", "ps1": "mime.script", "sql": "mime.sql",
     "jpg": "mime.image", "jpeg": "mime.image", "png": "mime.image", "gif": "mime.image", "webp": "mime.image", "bmp": "mime.image", "ico": "mime.image", "avif": "mime.image", "svg": "mime.svg",
@@ -255,6 +255,7 @@
     "exe": "mime.executable", "msi": "mime.executable", "lnk": "mime.shortcut",
     "ldoc": "mime.document", "docx": "mime.docx", "doc": "mime.doc", "odt": "mime.odt", "rtf": "mime.document",
     "lsheet": "mime.spreadsheet", "xlsx": "mime.xlsx", "xlsm": "mime.xlsx", "xls": "mime.xls", "ods": "mime.ods", "csv": "mime.csv", "tsv": "mime.csv", "db": "mime.database", "sqlite": "mime.database", "sqlite3": "mime.database",
-    "lslides": "mime.presentation", "pptx": "mime.pptx", "ppt": "mime.ppt", "odp": "mime.odp"
+    "lslides": "mime.presentation", "pptx": "mime.pptx", "pptm": "mime.pptx", "ppsx": "mime.pptx", "ppsm": "mime.pptx", "potx": "mime.pptx", "potm": "mime.pptx",
+    "ppt": "mime.ppt", "pps": "mime.ppt", "pot": "mime.ppt", "odp": "mime.odp", "otp": "mime.odp"
   }
 }
