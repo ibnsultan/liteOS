@@ -783,6 +783,12 @@ LiteOS.ready((OS) => {
     if (e.pin) { folderMenu(e.path, at); return; }
     if (e.type === 'dir' && !multi) items.push({ label: 'Open in new window', icon: 'plus', action: () => OS.open('files', { path: e.path }) }, pinItem(e.path));
     if (!multi && window.LOS_opensWithCode(e.name, e.type === 'dir')) items.push({ label: 'Open with Code', icon: 'code', action: () => OS.open('code', e.type === 'dir' ? { folder: e.path } : { path: e.path }) });
+    // ZIP archives are unpacked by Archives, in the browser (it checks the admin's limits, then uploads file by file)
+    if (e.type === 'file' && !multi && ['zip', 'tar', 'tgz', 'gz', '7z', 'rar'].includes(e.ext)) {
+      items.push({ label: 'Extract Here', icon: 'archive', action: () => OS.open('archives', { path: e.path, extract: 'here' }) },
+        { label: 'Extract To…', icon: 'archive', action: () => OS.open('archives', { path: e.path, extract: 'to' }) });
+    }
+    items.push({ label: 'Compress to ZIP', icon: 'archive', action: () => OS.open('archives', { compress: [...st.sel].join(String.fromCharCode(10)) }) });
     if (mode() !== 'folder') items.push({ label: 'Show in folder', icon: 'folder', action: async () => { await load(util.dirname(e.path)); select([e.path]); } });
     items.push('sep',
       { label: 'Cut', icon: 'cut', key: 'Ctrl+X', action: () => { clip.set({ mode: 'cut', paths: [...st.sel] }); render(); } },

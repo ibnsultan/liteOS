@@ -1033,6 +1033,13 @@
       ...(window.LOS_opensWithCode(path, btn.dataset.type === 'dir') ? [{ label: 'Open with Code', icon: 'code', action: () => openApp('code', btn.dataset.type === 'dir' ? { folder: path } : { path }) }] : []),
       { label: 'Show in Files', icon: 'folder', action: () => openApp('files', { path: '/Desktop', select: path }) },
       'sep',
+      // archives are unpacked and made by Archives, in the browser, as from Files
+      ...(btn.dataset.type !== 'dir' && /\.(zip|tar|tgz|gz|7z|rar)$/i.test(path) ? [
+        { label: 'Extract Here', icon: 'archive', action: () => openApp('archives', { path, extract: 'here' }) },
+        { label: 'Extract To…', icon: 'archive', action: () => openApp('archives', { path, extract: 'to' }) },
+      ] : []),
+      { label: 'Compress to ZIP', icon: 'archive', action: () => openApp('archives', { compress: path }) },
+      'sep',
       { label: 'Rename', icon: 'rename', key: 'F2', action: () => deskRename(btn) },
       { label: 'Move to Trash', icon: 'trash', danger: true, action: async () => {
         try { await api('fs.delete', { paths: [path] }); notify('You can restore it from the Trash if you need it.', { type: 'success', title: 'Moved to Trash' }); }
@@ -1047,6 +1054,7 @@
       const files = sel.filter((b) => b.dataset.file);
       showMenu([
         { label: 'Open ' + sel.length + ' items', icon: 'forward', action: () => sel.forEach(openDeskIcon) },
+        { label: 'Compress ' + files.length + ' items to ZIP', icon: 'archive', disabled: files.length < 2, action: () => openApp('archives', { compress: files.map((b) => b.dataset.file).join(String.fromCharCode(10)) }) },
         'sep',
         { label: files.length === sel.length ? 'Move to Trash' : 'Move ' + files.length + ' files to Trash', icon: 'trash', danger: true, disabled: !files.length, action: () => trashDeskFiles(files) },
       ], at);
@@ -2483,6 +2491,12 @@
     } else if (appId === 'notes') {
       const notes = recent.filter((f) => f.path.startsWith('/Notes/')).slice(0, 6);
       section('Recent notes', notes.map((f) => ({ label: f.name.replace(/\.(md|txt)$/i, ''), icon: 'note', color: '#C98F05', title: f.path, action: () => openApp('notes', { path: f.path }) })));
+    } else if (appId === 'archives') {
+      // Archives keeps its own list of the archives opened (its state file), newest first
+      let opened = [];
+      try { opened = (JSON.parse((await api('fs.read', undefined, { path: '/.apps/archives/state.json', track: '0' })).content).recent || []).slice(0, 6); } catch (e) { opened = []; }
+      section('Recent', opened.map((p) => fileItem({ name: baseName(p), path: p, type: 'file' }, 'archives')));
+      if (!opened.length) items.push({ note: 'Archives you open will show up here.' });
     } else if (appId === 'media') {
       section('Library', [['Pictures', '/Pictures', 'image', '#C9306B'], ['Music', '/Music', 'music', '#DD630A'], ['Videos', '/Videos', 'video', '#6B4CCB']]
         .map(([n, path, ic, col]) => ({ label: n, icon: ic, color: col, action: () => openApp('files', { path }) })));
@@ -2499,9 +2513,10 @@
       notes: [['New note', 'plus', () => openApp('notes', { new: '1' })]],
       code: [['New file', 'plus', () => openApp('code')], ['Open folder…', 'open', async () => { const d = await fileDialog('folder', { title: 'Open folder' }); if (d) openApp('code', { folder: d }); }]],
       browser: [['New tab', 'plus', () => openApp('browser')]],
+      archives: [['New archive', 'plus', () => openApp('archives', { new: '1' })]],
     };
     if (TASKS[appId]) section('Tasks', TASKS[appId].map(([n, ic, fn]) => ({ label: n, icon: ic, action: fn })));
-    if (items.length && !mine.length && !['files', 'settings', 'media', 'notes'].includes(appId) && app.exts.length) {
+    if (items.length && !mine.length && !['files', 'settings', 'media', 'notes', 'archives'].includes(appId) && app.exts.length) {
       items.push({ note: 'Files you open in ' + app.name + ' will show up here.' });
     }
 

@@ -31,6 +31,7 @@
     "app.calculator": "apps/accessories-calculator",
     "app.clock": "apps/accessories-clock",
     "app.pdf": "apps/liteos-pdf",
+    "app.archives": "apps/utilities-file-archiver",
     "app.monitor": "apps/utilities-system-monitor",
     "app.generic": "apps/applications-system",
 

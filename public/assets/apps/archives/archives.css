@@ -1,0 +1,121 @@
+/* LiteOS Archives: a toolbar, the path inside the archive, its files as a list with columns, and a status bar. */
+html, body { height: 100%; }
+body { margin: 0; background: var(--surface); color: var(--text); overflow: hidden; }
+.arc { height: 100%; display: flex; flex-direction: column; min-height: 0; position: relative; user-select: none; -webkit-user-select: none; }
+.arc input { user-select: text; -webkit-user-select: text; }
+
+/* title bar (chrome: custom): the app's icon, the window's name (at most 15 characters), the menus when the shell has
+   no top bar to show them in, then the window buttons */
+.arc-title { height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding-left: 12px; user-select: none; -webkit-user-select: none; }
+.arc-title-icon { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; }
+.arc-title-icon img { display: block; }
+.arc-title-name { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* with the menus beside it, the name takes the room of 15 characters, so the menus always start in the same place */
+body.arc-menus-in .arc-title-name { flex: 0 0 15ch; }
+.arc-title-controls { flex-shrink: 0; height: 100%; }
+.arc-menubar { display: flex; align-items: center; gap: 0; }
+.arc-menubar[hidden] { display: none; }
+.arc-mb { height: 26px; padding: 0 9px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: default; display: inline-flex; align-items: center; }
+.arc-mb:hover, .arc-mb.open { background: var(--hover); }
+.arc-mb-more { width: 30px; padding: 0; justify-content: center; }
+
+/* toolbar: text buttons with their icons, as a desktop archive manager has them */
+.arc-bar { height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.arc-tb { height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+.arc-tb:hover:not(:disabled) { background: var(--hover); }
+.arc-tb:disabled { color: var(--disabled); cursor: default; }
+.arc-tb[aria-pressed="true"] { background: var(--nav-on); }
+.arc-tb.arc-icon { width: 32px; padding: 0; justify-content: center; }
+.arc-split { display: inline-flex; }
+.arc-split .arc-tb:first-child { border-radius: var(--radius) 0 0 var(--radius); padding-right: 6px; }
+.arc-caret { width: 22px; padding: 0; justify-content: center; border-radius: 0 var(--radius) var(--radius) 0 !important; }
+.arc-sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
+
+/* find bar, under the toolbar while finding */
+.arc-find { flex-shrink: 0; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.arc-find[hidden] { display: none; }
+.arc-find .search { width: min(360px, 100%); }
+.arc-find .input { height: 30px; background: var(--field); border-color: var(--field-line); }
+
+/* location bar: Back, Forward, Up, Home, then the path */
+.arc-loc { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.arc-loc[hidden] { display: none; }
+.arc-locl { color: var(--text-2); margin: 0 6px 0 2px; white-space: nowrap; }
+.arc-locbox { flex: 1 1 auto; min-width: 0; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: var(--radius); background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line); }
+.arc-locbox:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.arc-locin { flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; color: var(--text); font: inherit; }
+
+/* the list: Name, Size, Type, Modified (and Packed when shown) */
+.arc-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.arc-list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.arc-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 140px 190px; align-items: center; height: 28px; padding: 0 8px; cursor: default; }
+:root.arc-packed .arc-row { grid-template-columns: minmax(0, 1fr) 100px 120px 180px 90px; }
+.arc-head { height: 28px; flex-shrink: 0; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.arc-h { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 100%; padding: 0 8px; border: none; border-left: 1px solid var(--line); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; text-align: left; min-width: 0; }
+.arc-h:first-child { border-left: none; }
+.arc-h > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-h:hover { background: var(--hover); color: var(--text); }
+.arc-h.on { color: var(--text); font-weight: 600; }
+.arc-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 0 6px; }
+.arc-body .arc-row:hover { background: var(--hover); }
+.arc-body .arc-row.on { background: var(--nav-on); }
+/* the list has the keyboard: its current row is outlined */
+.arc-body { outline: none; }
+.arc-body:focus-visible .arc-row.cur { box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius); }
+.arc-row.dim .arc-name > span, .arc-row.dim .arc-c { color: var(--muted); }
+.arc-name { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 8px; }
+.arc-name > img, .arc-name > svg { flex-shrink: 0; }
+.arc-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-name small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-name .ico { color: var(--muted); flex-shrink: 0; }
+.arc-c { padding: 0 9px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.arc-none { padding: 32px 12px; color: var(--muted); text-align: center; }
+
+/* status bar */
+.arc-status { height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 12px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); }
+.arc-status[hidden] { display: none; }
+.arc-dot { margin: 0 6px; color: var(--muted); }
+.arc-warnline { display: inline-flex; align-items: center; gap: 6px; color: var(--danger, #C62828); }
+
+/* nothing open */
+.arc-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; }
+.arc-empty h2 { margin: 8px 0 0; font-size: 17px; font-weight: 600; }
+.arc-empty p { margin: 0 0 8px; color: var(--text-2); line-height: 1.5; }
+
+/* dialogs */
+.arc-prog { width: min(440px, calc(100vw - 32px)); }
+.arc-prog-file { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 10px; }
+.arc-meter { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.arc-meter i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .15s linear; }
+.arc-prog-sub { display: flex; margin-top: 8px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.arc-all { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; }
+/* the app's own dialogs block only this window, as a desktop's do: no dimming behind them */
+.arc-dlg::backdrop { background: transparent; }
+.arc-dlg .msg-foot .spacer { flex: 1; }
+.arc-cm { width: min(480px, calc(100vw - 32px)); }
+.arc-comment { width: 100%; min-height: 120px; resize: vertical; margin-top: 8px; font: inherit; background: var(--field); border-color: var(--field-line); }
+body.arc-busy .arc-bar .btn { pointer-events: none; }
+
+/* dropping an archive anywhere in the window */
+.arc-dropveil { position: absolute; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; pointer-events: none; background: color-mix(in srgb, var(--surface) 75%, transparent); }
+.arc-dropveil span { padding: 24px 40px; border: 2px dashed var(--accent); border-radius: 14px; background: var(--surface); font-weight: 600; }
+body.arc-dropping .arc-dropveil { display: flex; }
+
+/* narrow windows: Name and Size only, and the location bar without its label */
+@media (max-width: 700px) {
+  .arc-row, :root.arc-packed .arc-row { grid-template-columns: minmax(0, 1fr) 90px; }
+  .arc-row > :nth-child(n+3) { display: none; }
+  .arc-locl, .arc-loc .arc-tb span { display: none; }
+}
+
+/* transparency (mica): bars on the glass, the list on one pale layer */
+:root.in-shell:not([data-glass="off"]),
+:root.in-shell:not([data-glass="off"]) body { background: transparent; }
+:root.in-shell:not([data-glass="off"]) .arc-main { background: var(--mica-layer); }
+:root.in-shell:not([data-glass="off"]) .arc-locbox,
+:root.in-shell:not([data-glass="off"]) .arc-find .input { background: var(--mica-field); }
+:root.in-shell:not([data-glass="off"]) .arc-bar,
+:root.in-shell:not([data-glass="off"]) .arc-loc,
+:root.in-shell:not([data-glass="off"]) .arc-find { border-bottom-color: var(--mica-card-sep); }
+:root.in-shell:not([data-glass="off"]) .arc-status { border-top-color: var(--mica-card-sep); }
+:root.in-shell:not([data-glass="off"]) .arc-head { border-bottom-color: var(--mica-card-sep); }

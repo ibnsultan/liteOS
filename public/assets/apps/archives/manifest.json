@@ -1,0 +1,36 @@
+{
+  "id": "archives",
+  "name": "Archives",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "See what is inside ZIP, TAR, GZIP, 7z and RAR archives, extract them safely, and make your own.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "archive",
+  "colors": [
+    "#A1887F",
+    "#795548"
+  ],
+  "opens": [
+    "zip",
+    "tar",
+    "tgz",
+    "gz",
+    "7z",
+    "rar"
+  ],
+  "window": {
+    "size": [
+      880,
+      580
+    ],
+    "chrome": "custom",
+    "material": "mica",
+    "single": false
+  },
+  "permissions": [
+    "files.pick"
+  ]
+}

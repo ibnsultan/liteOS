@@ -28,6 +28,12 @@ class ClientConfig
             'can' => auth()->user() ? Capabilities::for(auth()->user()) : null,
             'guestQuota' => (int) config('liteos.guest_quota_mb') * 1024 * 1024,
             'kinds' => config('liteos.kinds'),
+            // what Archives may extract (Settings › System › Archives), checked in the browser before and while unpacking
+            'archiveLimits' => auth()->user() ? (function () {
+                $s = SystemSettings::all();
+
+                return ['totalMB' => $s['archiveMaxTotalMB'], 'fileMB' => $s['archiveMaxFileMB'], 'ratio' => $s['archiveMaxRatio'], 'entries' => $s['archiveMaxEntries']];
+            })() : null,
             'wallpapers' => array_map(fn (array $w) => [
                 'id' => $w['id'],
                 'name' => $w['name'],

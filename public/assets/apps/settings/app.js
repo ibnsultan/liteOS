@@ -51,7 +51,7 @@ LiteOS.ready((OS) => {
     ['system/sound', 'Sound', 'settings.sound', 'Volume levels, output, input, sound devices'],
     ['system/notifications', 'Notifications', 'settings.notifications', 'Alerts from apps and the system, do not disturb'],
     ['system/power', 'Power', 'settings.power', 'Lock, sign out, restart, shut down'],
-    ['system/storage', 'Storage', 'settings.storage', 'Storage space, Trash, USB drives'],
+    ['system/storage', 'Storage', 'settings.storage', 'Storage space, Trash, USB drives, limits for new accounts and archives'],
     ['system/about', 'About', 'settings.about', 'Device specifications, rename this computer, LiteOS version'],
     ['bluetooth', 'Bluetooth & devices', 'settings.bluetooth'],
     ['bluetooth/devices', 'Devices', 'settings.bluetooth', 'Bluetooth devices: pair, connect, remove'],
@@ -104,10 +104,10 @@ LiteOS.ready((OS) => {
 
   // older section names (other apps and the shell open Settings with these)
   const OLD = { personalisation: 'personalisation', taskbar: 'personalisation/taskbar', apps: 'apps', notifications: 'system/notifications',
-    storage: 'system/storage', accessibility: 'accessibility', account: 'accounts', users: 'accounts/users', system: 'system/about', about: 'system/about' };
+    storage: 'system/storage', archives: 'system/storage', 'system/archives': 'system/storage', accessibility: 'accessibility', account: 'accounts', users: 'accounts/users', system: 'system/about', about: 'system/about' };
   function startPage() {
     if (OS.args.focus === 'desktop') return 'personalisation/desktop';
-    const a = OS.args.page || OLD[OS.args.section] || OS.args.section;
+    const a = (OS.args.page && !PAGES[OS.args.page] && OLD[OS.args.page]) || OS.args.page || OLD[OS.args.section] || OS.args.section;
     return PAGES[a] && allowed(a) ? a : 'home';
   }
 
@@ -147,6 +147,24 @@ LiteOS.ready((OS) => {
   /** A row that opens a page, with the page's own icon and subtitle. */
   const goRow = (id, extra) => row(Object.assign({ go: id, icon: PAGES[id].icon, title: PAGES[id].title, sub: PAGES[id].sub }, extra || {}));
   const rows = (...r) => '<div class="st-rows">' + r.join('') + '</div>';
+  /** Storage › for administrators: how much space new accounts get, and how much an archive may extract (Archives
+   * unpacks in the browser; these limits stop zip bombs). System settings defaultQuotaMB, defaultLocalQuotaMB, archiveMax*. */
+  function adminStorage() {
+    const x = data.system;
+    // field: the input's name (the quota forms read "quota"); key: the system setting it shows
+    const num = (form, key, label, unit, min, field, max) => x ? '<form data-form="' + form + '" class="st-inline"><input class="input st-num-in" name="' + (field || key) + '" type="number" min="' + min + '"' + (max ? ' max="' + max + '"' : '') + ' value="' + esc(x[key]) + '" aria-label="' + esc(label) + '">' +
+      (unit ? '<span class="hint">' + unit + '</span>' : '') + '<button class="btn">Save</button></form>' : '';
+    // archives can't extract more than the default storage, nor one file more than an extraction
+    const ceiling = x ? Math.max(+x.defaultQuotaMB, +x.defaultLocalQuotaMB) : 0;
+    return h('New accounts') +
+      rows(row({ icon: 'settings.storage', title: 'Storage for each new user', sub: 'Users without their own limit get this much space', ctl: num('quota', 'defaultQuotaMB', 'Storage per user in MB', 'MB', 10, 'quota') }),
+        row({ icon: 'settings.storage', title: 'Storage for each new Local account', sub: 'Local accounts without their own limit get this much space', ctl: num('localQuota', 'defaultLocalQuotaMB', 'Storage per Local account in MB', 'MB', 10, 'quota') })) +
+      h('Archives') +
+      rows(row({ icon: 'app.archives', title: 'Most data per extraction', sub: 'All files from one archive together, up to ' + (x ? ceiling + ' MB' : 'the default storage'), ctl: num('archive', 'archiveMaxTotalMB', 'Most data per extraction in MB', 'MB', 1, null, ceiling) }),
+        row({ icon: 'mime.archive', title: 'Largest file in an archive', sub: 'Larger files aren’t extracted. Up to the most data per extraction', ctl: num('archive', 'archiveMaxFileMB', 'Largest file in MB', 'MB', 1, null, x ? x.archiveMaxTotalMB : 0) }),
+        row({ icon: 'app.archives', title: 'Highest compression ratio', sub: 'How many times a file may grow when extracted. Normal files stay under 20; zip bombs reach thousands.', ctl: num('archive', 'archiveMaxRatio', 'Highest compression ratio', 'to 1', 2) }),
+        row({ icon: 'place.folder', title: 'Most files in an archive', sub: 'Files and folders together', ctl: num('archive', 'archiveMaxEntries', 'Most files and folders in an archive', '', 1) }));
+  }
   const h = (t) => '<h2 class="st-h">' + t + '</h2>';
   /** Toggle with its On/Off label, as Windows shows it. */
   const sw = (on, attrs, label, dis) => '<span class="st-tog"><span>' + (on ? 'On' : 'Off') + '</span><button class="switch" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' + attrs + ' aria-label="' + esc(label) + '"' + (dis ? ' disabled' : '') + '></button></span>';
@@ -343,9 +361,11 @@ LiteOS.ready((OS) => {
           row({ icon: 'app.files', title: 'Files', sub: 'Browse and manage everything on your drive', ctl: '<button class="btn" data-launch="files">Open Files</button>' })) +
         (can('usb') ? h('USB drives') +
         rows(...(offUsb ? [row({ icon: 'settings.usb', title: 'USB drives', off: offUsb })]
-          : drives.length ? drives.map(usbRow) : [row({ icon: 'settings.usb', title: 'No USB drives', sub: 'Plug a USB drive into this device to see it here' })])) : '');
+          : drives.length ? drives.map(usbRow) : [row({ icon: 'settings.usb', title: 'No USB drives', sub: 'Plug a USB drive into this device to see it here' })])) : '') +
+        (isAdmin() ? adminStorage() : '');
     },
 
+    /** Storage settings for everyone, on Storage for administrators: new accounts' space, and Archives' limits. */
     'system/about'() {
       const x = data.system;
       const i = data.info;
@@ -665,11 +685,6 @@ LiteOS.ready((OS) => {
             ctl: sw(!!x.guestWeb, ' data-guest="guestWeb"', 'Web access for guests') }) : '',
           x && x.guestEnabled ? row({ icon: 'settings.apps', title: 'Apps guests can open', sub: plural((Array.isArray(x.guestApps) ? x.guestApps : x.localApps || []).length, 'app'),
             ctl: '<button class="btn" data-act="guest-apps">Choose</button>' }) : '') +
-        h('Storage') +
-        rows(row({ icon: 'settings.storage', title: 'Storage for each new user', sub: 'Users without their own limit get this much space',
-          ctl: x ? '<form data-form="quota" class="st-inline"><input class="input st-num-in" name="quota" type="number" min="10" value="' + esc(x.defaultQuotaMB) + '" aria-label="Storage per user in MB"><span class="hint">MB</span><button class="btn">Save</button></form>' : '' }),
-          row({ icon: 'settings.storage', title: 'Storage for each new Local account', sub: 'Local accounts without their own limit get this much space',
-            ctl: x ? '<form data-form="localQuota" class="st-inline"><input class="input st-num-in" name="quota" type="number" min="10" value="' + esc(x.defaultLocalQuotaMB) + '" aria-label="Storage per Local account in MB"><span class="hint">MB</span><button class="btn">Save</button></form>' : '' })) +
         // the people who sign in here, last on the page
         h('Other users') +
         (!others ? rows(row({ title: 'Loading…' }))
@@ -865,7 +880,7 @@ LiteOS.ready((OS) => {
     if (can('files') && (id === 'home' || id === 'system' || id === 'system/storage')) set('usage', OS.fs.usage());
     if (can('files') && id === 'system/storage') set('trash', OS.fs.trash.list());
     if ((id === 'accounts' || id === 'accounts/users') && isAdmin()) set('users', OS.api('users.list', undefined, {}));
-    if ((id === 'system/about' || id === 'accounts/users') && isAdmin()) set('system', OS.api('system.get', undefined, {}));
+    if ((id === 'system/about' || id === 'accounts/users' || id === 'system/storage') && isAdmin()) set('system', OS.api('system.get', undefined, {}));
     if (want('system') && data.info === undefined && ['home', 'system', 'system/about', 'bluetooth'].includes(id)) set('info', LL.system.info());
     if (want('network') && (id === 'home' || top === 'network' || id === 'system')) set('net', LL.network.state());
     if (want('network') && id === 'network/wifi') set('wifi', LL.network.wifi());
@@ -1485,6 +1500,11 @@ LiteOS.ready((OS) => {
         const sys = data.system;
         data.system = Object.assign(sys, await OS.api('system.save', { system: { instanceName: sys.instanceName, defaultQuotaMB: +f.quota.value } }));
         OS.notify('New users get ' + f.quota.value + ' MB unless you give them their own limit.', { type: 'success', title: 'Storage saved' });
+        render();
+      } else if (f.dataset.form === 'archive') {
+        const input = f.querySelector('input');
+        data.system = Object.assign(data.system, await OS.api('system.save', { system: { [input.name]: +input.value } }));
+        OS.notify('Archives use the new limit from the next archive opened.', { type: 'success', title: 'Limit saved' });
         render();
       } else if (f.dataset.form === 'localQuota') {
         data.system = Object.assign(data.system, await OS.api('system.save', { system: { defaultLocalQuotaMB: +f.quota.value } }));

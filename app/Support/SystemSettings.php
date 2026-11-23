@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 class SystemSettings
 {
     /**
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
      */
     public static function defaults(): array
     {
@@ -25,19 +25,48 @@ class SystemSettings
             'guestWeb' => true,
             'guestApps' => null,           // null: config liteos.local_apps
             'createdAt' => null,
+            // Archives (public/assets/apps/archives): the most one extraction may write in all and for one file, the
+            // highest compression ratio a file may have, and the most entries an archive may hold. Archives are
+            // unpacked in the browser, never here; these stop zip bombs before they fill a drive.
+            'archiveMaxTotalMB' => 4096,
+            'archiveMaxFileMB' => 1024,
+            'archiveMaxRatio' => 100,
+            'archiveMaxEntries' => 20000,
         ];
     }
 
     /**
      * Every setting, stored values over the defaults.
      *
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
      */
     public static function all(): array
     {
         $stored = SystemSetting::query()->pluck('value', 'key')->all();
 
-        return array_merge(self::defaults(), array_intersect_key($stored, self::defaults()));
+        return self::capArchive(array_merge(self::defaults(), array_intersect_key($stored, self::defaults())));
+    }
+
+    /**
+     * Archives may never extract more than a new account's drive holds: the most per extraction is capped at the
+     * larger default storage (users or Local accounts), and the largest file at the most per extraction. Applied to
+     * what is stored too, so lowering the default storage lowers these with it.
+     *
+     * @param  array<string, mixed>  $s
+     * @return array<string, mixed>
+     */
+    private static function capArchive(array $s): array
+    {
+        $s['archiveMaxTotalMB'] = min((int) $s['archiveMaxTotalMB'], self::archiveCeiling($s));
+        $s['archiveMaxFileMB'] = min((int) $s['archiveMaxFileMB'], $s['archiveMaxTotalMB']);
+
+        return $s;
+    }
+
+    /** @param  array<string, mixed>  $s */
+    private static function archiveCeiling(array $s): int
+    {
+        return max((int) $s['defaultQuotaMB'], (int) $s['defaultLocalQuotaMB']);
     }
 
     public static function get(string $key): mixed
@@ -49,7 +78,7 @@ class SystemSettings
      * Validates and stores the changes an administrator made; unknown keys are ignored.
      *
      * @param  array<string, mixed>  $changes
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
      *
      * @throws ValidationException
      */
@@ -70,6 +99,29 @@ class SystemSettings
                 }
                 $clean[$key] = max(10, min(1024 * 1024, (int) $changes[$key]));
             }
+        }
+
+        $archive = [
+            'archiveMaxTotalMB' => [1, 1024 * 1024, 'Enter the most an extraction may write, in MB.'],
+            'archiveMaxFileMB' => [1, 1024 * 1024, 'Enter the largest file an archive may hold, in MB.'],
+            'archiveMaxRatio' => [2, 100000, 'Enter the highest compression ratio, such as 100.'],
+            'archiveMaxEntries' => [1, 10000000, 'Enter the most files and folders an archive may hold.'],
+        ];
+        foreach ($archive as $key => [$min, $max, $message]) {
+            if (array_key_exists($key, $changes)) {
+                if (! is_numeric($changes[$key])) {
+                    throw ValidationException::withMessages([$key => $message]);
+                }
+                $clean[$key] = max($min, min($max, (int) $changes[$key]));
+            }
+        }
+        // an extraction can't be larger than the default storage, nor one file larger than an extraction
+        $next = array_merge(self::all(), $clean);
+        if (array_key_exists('archiveMaxTotalMB', $clean) && $clean['archiveMaxTotalMB'] > self::archiveCeiling($next)) {
+            throw ValidationException::withMessages(['archiveMaxTotalMB' => 'Most data per extraction can’t be more than the default storage ('.self::archiveCeiling($next).' MB).']);
+        }
+        if (array_key_exists('archiveMaxFileMB', $clean) && $clean['archiveMaxFileMB'] > min((int) $next['archiveMaxTotalMB'], self::archiveCeiling($next))) {
+            throw ValidationException::withMessages(['archiveMaxFileMB' => 'The largest file can’t be more than the most data per extraction ('.min((int) $next['archiveMaxTotalMB'], self::archiveCeiling($next)).' MB).']);
         }
 
         foreach (['guestEnabled', 'guestWeb'] as $key) {

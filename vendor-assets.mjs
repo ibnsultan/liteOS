@@ -21,5 +21,16 @@ const pdflib = version('pdf-lib');
 cpSync('node_modules/pdf-lib/dist/pdf-lib.min.js', 'public/assets/vendor/pdf-lib-' + pdflib + '.min.js');
 console.log('copied pdf-lib ' + pdflib);
 
+// libarchive.js: Archives' reader for 7z and RAR (and password-protected ZIPs), loaded only when one is opened;
+// the module, its worker and the WebAssembly sit side by side, where the worker looks for them
+const la = version('libarchive.js');
+const laOut = 'public/assets/vendor/libarchive-' + la;
+rmSync(laOut, { recursive: true, force: true });
+mkdirSync(laOut, { recursive: true });
+for (const f of ['dist/libarchive.js', 'dist/worker-bundle.js', 'dist/libarchive.wasm', 'LICENSE']) {
+    cpSync('node_modules/libarchive.js/' + f, laOut + '/' + f.replace('dist/', ''));
+}
+console.log('copied libarchive.js ' + la);
+
 cpSync('node_modules/hls.js/dist/hls.min.js', 'public/assets/vendor/hls.min.js');
 console.log('copied hls.js ' + version('hls.js'));
