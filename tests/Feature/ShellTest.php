@@ -38,8 +38,8 @@ class ShellTest extends TestCase
             ->assertOk()
             ->assertSee('<title>Sheets</title>', false)
             ->assertSee('window.LOS_CONFIG', false)
-            ->assertSeeInOrder(['assets/js/sdk.js?v=', 'assets/apps/sheets/formula.js?v=', 'assets/apps/sheets/app.js?v='], false)
-            ->assertSee('assets/apps/sheets/sheets.css?v=', false);
+            ->assertSeeInOrder(['assets/js/sdk.js?v=', 'assets/apps/sheets/app.js?v='], false)
+            ->assertSee('assets/apps/sheets/index.css?v=', false);
     }
 
     public function test_documents_loads_its_app_and_opens_its_own_and_word_files(): void
