@@ -3522,6 +3522,16 @@
     }
     const appBtn = e.target.closest('.dock [data-app], .taskbar [data-app]');
     if (appBtn) { e.preventDefault(); appMenu(appBtn.dataset.app, appBtn); return; }
+    // the bar itself (empty space, the launcher button, the tray): Task Manager (not built yet) and the taskbar settings
+    if (e.target.closest('.taskbar, .dock')) {
+      e.preventDefault();
+      showMenu([
+        { label: 'Task Manager', icon: 'tb-taskmgr', disabled: true, title: 'Not available yet' },
+        'sep',
+        { label: 'Taskbar settings', icon: 'tb-cog', action: () => openApp('settings', { section: 'taskbar' }) },
+      ], { x: e.clientX, y: e.clientY });
+      return;
+    }
     const deskIcon = e.target.closest('.desk-icon');
     if (deskIcon) { e.preventDefault(); deskIconMenu(deskIcon, { x: e.clientX, y: e.clientY }); return; }
     if (e.target.classList.contains('wall') || e.target.classList.contains('desk-icons')) {
