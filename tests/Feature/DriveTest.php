@@ -68,6 +68,24 @@ class DriveTest extends TestCase
             ->assertJsonPath('result.size', 0);
     }
 
+    public function test_a_drive_wiped_while_signed_in_starts_again_with_the_standard_folders(): void
+    {
+        File::deleteDirectory(Drive::root('amina'));
+
+        $this->getJson('/os/fs/list?path=/Documents')->assertOk()->assertJsonPath('result', []);
+        foreach (Drive::HOME_FOLDERS as $folder) {
+            $this->assertDirectoryExists(Drive::root('amina').'/'.$folder);
+        }
+    }
+
+    public function test_a_standard_folder_the_user_deleted_is_not_brought_back(): void
+    {
+        File::deleteDirectory(Drive::root('amina').'/Music');
+
+        $this->getJson('/os/fs/list?path=/')->assertOk();
+        $this->assertDirectoryDoesNotExist(Drive::root('amina').'/Music');
+    }
+
     public function test_pictures_are_written_from_base64(): void
     {
         $png = base64_encode("\x89PNG\r\n\x1a\nfake");

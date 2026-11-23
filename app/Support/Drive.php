@@ -28,6 +28,11 @@ class Drive
     public function __construct(private User $user)
     {
         $this->root = self::root($user->username);
+        // a drive that's gone while its owner is still signed in (storage wiped by a redeploy, or the folder removed
+        // by hand) starts again with the standard folders, as at sign-in; a folder the user deleted stays deleted
+        if (! is_dir($this->root)) {
+            self::ensureHome($user->username);
+        }
         File::ensureDirectoryExists($this->root, 0775);
     }
 
