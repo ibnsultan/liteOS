@@ -30,8 +30,15 @@ class RecentFiles
         RecentFile::query()->where('user_id', $user->id)->whereNotIn('id', $keep)->delete();
     }
 
+    /** Takes a file off the list (the file itself stays where it is). */
+    public static function forget(User $user, string $path): void
+    {
+        RecentFile::query()->where('user_id', $user->id)->where('path_hash', hash('sha256', $path))->delete();
+    }
+
     /**
-     * The recent files that still exist, newest first, as drive entries.
+     * The recent files that still exist, newest first, as drive entries, each with when it was last opened (`opened`,
+     * Unix seconds).
      *
      * @return list<array<string, mixed>>
      */
@@ -39,10 +46,10 @@ class RecentFiles
     {
         $drive = new Drive($user);
         $entries = [];
-        foreach (RecentFile::query()->where('user_id', $user->id)->orderByDesc('id')->pluck('path') as $path) {
-            $abs = $drive->abs($drive->clean($path));
+        foreach (RecentFile::query()->where('user_id', $user->id)->orderByDesc('id')->get(['path', 'opened_at']) as $row) {
+            $abs = $drive->abs($drive->clean($row->path));
             if (is_file($abs)) {
-                $entries[] = $drive->entry($drive->clean($path), $abs);
+                $entries[] = $drive->entry($drive->clean($row->path), $abs) + ['opened' => $row->opened_at ? strtotime((string) $row->opened_at) : null];
             }
             if (count($entries) >= self::SHOW) {
                 break;

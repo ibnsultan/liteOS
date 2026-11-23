@@ -176,6 +176,14 @@ class DriveController extends Controller
         return $this->jsonSuccess();
     }
 
+    public function forget(Request $request): JsonResponse
+    {
+        RecentFiles::forget($request->user(), (new Drive($request->user()))->clean((string) $request->input('path')));
+        $this->result = RecentFiles::list($request->user());
+
+        return $this->jsonSuccess();
+    }
+
     private function drive(Request $request): Drive
     {
         return new Drive($request->user());
@@ -201,6 +209,7 @@ class DriveController extends Controller
         Route::get('/usage', [self::class, 'usage'])->name('fs.usage');
         Route::get('/drives', [self::class, 'drives'])->name('fs.drives');
         Route::get('/recent', [self::class, 'recent'])->name('fs.recent');
+        Route::post('/forget', [self::class, 'forget'])->name('fs.forget');
         Route::post('/write', [self::class, 'write'])->name('fs.write');
         Route::post('/mkdir', [self::class, 'mkdir'])->name('fs.mkdir');
         Route::post('/rename', [self::class, 'rename'])->name('fs.rename');

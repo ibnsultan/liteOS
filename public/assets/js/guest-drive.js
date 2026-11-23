@@ -298,6 +298,12 @@ const ROUTES = {
     return ok(out);
   },
 
+  async 'POST fs/forget'(req) {
+    const p = clean((await body(req)).path);
+    await writeMeta('recent.json', (await readMeta('recent.json', [])).filter((x) => x !== p));
+    return ROUTES['GET fs/recent']();
+  },
+
   // ---------------------------------------------------------------- changing
   async 'POST fs/write'(req) {
     const b = await body(req);
