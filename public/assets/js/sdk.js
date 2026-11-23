@@ -393,12 +393,12 @@
   }
 
   if (host) {
-    host.subscribe((state) => {
+    host.subscribe(function onState(state) {
       current = state;
       applyTheme(state.settings);
       applyAllVolumes();
       listeners.forEach((fn) => { try { fn(state.settings, state); } catch (e) { console.error(e); } });
-    });
+    }, winId);
   }
 
   // ------------------------------------------------------------------ popup menu helper

@@ -15,7 +15,10 @@
 
   const S = { csrf: window.LOS_CONFIG.csrf, user: null, settings: null, system: {}, setupNeeded: false };
   const UI = { pop: null, lsQuery: '', recent: [], results: [], usage: null, lockShown: false };
-  const subs = new Set();
+  // what each app window asked to hear about (settings and theme changes): listener -> its window. A window's
+  // listeners go when it closes or loads again: a function of a page that has gone still runs when called, and
+  // holding it keeps that whole page in memory.
+  const subs = new Map();
   const wins = new Map();
   let zTop = 100;
   let focusedId = null;
@@ -432,7 +435,7 @@
     if (UI.pop) renderPop();
     relayout();
     const state = hostState();
-    subs.forEach((fn) => { try { fn(state); } catch (e) { subs.delete(fn); } });
+    subs.forEach((win, fn) => { try { fn(state); } catch (e) { subs.delete(fn); } });
   }
 
   async function saveSettings(changes) {
@@ -1864,6 +1867,7 @@
   // loaded (it failed while starting, say) is uncovered then rather than after the full wait.
   const LOAD_WAIT = 15000, QUIET_WAIT = 3000;
   function winLoading(w) {
+    forgetPage(w);
     const c = $('.win-load', w.el);
     if (!c) return;
     c.classList.remove('done');
@@ -1996,6 +2000,7 @@
     const qi = snapQ.indexOf(w);
     if (qi >= 0) snapQ.splice(qi, 1);
     wins.delete(w.id);
+    forgetPage(w);
     if (w.tile) untile(w); // after leaving the list, so the closing window stays where it is while it fades
     if (assistEl) showSnapAssist(); // the closed window may have been one of its choices
     setTimeout(() => w.el.remove(), 120);
@@ -3579,7 +3584,7 @@
     }
     S.settings = Object.assign({}, set(), { volume: v, muted: false });
     const st = hostState();
-    subs.forEach((fn) => { try { fn(st); } catch (x) { subs.delete(fn); } });
+    subs.forEach((win, fn) => { try { fn(st); } catch (x) { subs.delete(fn); } });
     saveVolume(v);
   });
   root.addEventListener('change', (e) => { if (e.target.classList && e.target.classList.contains('qrange')) renderBars(); });
@@ -3720,11 +3725,17 @@
 
   function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
 
+  /** A window's page has gone (closed, or loading again): forget everything it handed the desktop. */
+  function forgetPage(w) {
+    subs.forEach((win, fn) => { if (win === w.id) subs.delete(fn); });
+    w.menus = [];
+  }
+
   // ================================================================== host API for apps
   window.LiteOSHost = {
     api,
     get state() { return hostState(); },
-    subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+    subscribe(fn, winId) { subs.set(fn, winId || null); return () => subs.delete(fn); },
     openApp(id, args) { return !!openApp(id, args); },
     openFile(path, isDir) { openFile(path, isDir); },
     notify(msg, o) { return notify(msg, o); },
