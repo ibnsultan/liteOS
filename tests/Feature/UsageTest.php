@@ -105,6 +105,29 @@ class UsageTest extends TestCase
         $this->actingAs($admin)->getJson('/os/usage/of?user=nobody&'.$q)->assertNotFound();
     }
 
+    public function test_everyone_has_a_chart_of_apps_per_day_and_people_per_quarter_hour(): void
+    {
+        SystemSettings::put(['usageTracking' => true]);
+        // amina in slots 100 and 101, baraka in 99 and 102: 99 to 101 are one quarter of an hour (33), 102 the next
+        $this->actingAs($this->amina)->postJson('/os/usage/add', $this->report(['slots' => [['slot' => 100, 'app' => 'documents', 'seconds' => 50], ['slot' => 101, 'app' => 'documents', 'seconds' => 40]]]))->assertOk();
+        $this->actingAs($this->baraka)->postJson('/os/usage/add', $this->report(['slots' => [['slot' => 99, 'app' => 'browser', 'seconds' => 30], ['slot' => 102, 'app' => 'documents', 'seconds' => 20]]]))->assertOk();
+        $admin = User::factory()->create(['username' => 'admin', 'role' => Role::Admin->value]);
+        $day = Carbon::today()->toDateString();
+
+        $one = $this->actingAs($admin)->getJson('/os/usage/everyone?from='.$day.'&to='.$day)->assertOk();
+        $active = $one->json('result.active');
+        $this->assertCount(96, $active);
+        $this->assertSame(2, $active[33]);
+        $this->assertSame(1, $active[34]);
+        $this->assertSame(3, array_sum($active));
+        $one->assertJsonPath('result.days.'.$day.'.documents', 110)->assertJsonPath('result.days.'.$day.'.browser', 30);
+
+        // a stretch of days has no quarter hours, only the days
+        $week = $this->actingAs($admin)->getJson('/os/usage/everyone?from='.Carbon::today()->subDays(6)->toDateString().'&to='.$day)->assertOk();
+        $this->assertSame([], $week->json('result.active'));
+        $week->assertJsonPath('result.days.'.$day.'.documents', 110);
+    }
+
     public function test_impossible_reports_are_refused(): void
     {
         SystemSettings::put(['usageTracking' => true]);

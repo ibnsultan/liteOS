@@ -122,9 +122,11 @@ class Usage
 
     /**
      * For administrators: everyone's usage from one day to another. Each account (the guest last, never recorded) with
-     * its time, the app and the website it spent most time in, then the apps and websites used most across everyone.
+     * its time, the app and the website it spent most time in, then the apps and websites used most across everyone,
+     * everyone's seconds per day and app (for the chart), and for one day how many people were using LiteOS in each
+     * quarter of an hour (96 counts, midnight first).
      *
-     * @return array{from: string, to: string, users: list<array<string, mixed>>, apps: list<array{app: string, seconds: int}>, sites: list<array{item: string, seconds: int}>}
+     * @return array{from: string, to: string, users: list<array<string, mixed>>, apps: list<array{app: string, seconds: int}>, sites: list<array{item: string, seconds: int}>, days: array<string, array<string, int>>, active: list<int>}
      *
      * @throws ValidationException
      */
@@ -159,6 +161,23 @@ class Usage
         arsort($apps);
         arsort($sites);
 
+        $days = [];
+        foreach (DB::table('usage_slots')->whereBetween('day', $range)
+            ->select('day', 'app', DB::raw('SUM(seconds) as seconds'))->groupBy('day', 'app')->get() as $r) {
+            $days[substr((string) $r->day, 0, 10)][$r->app] = (int) $r->seconds;
+        }
+        // a quarter of an hour is three five-minute slots: someone counts once in it however many they used
+        $active = [];
+        if ($range[0] === $range[1]) {
+            $seen = [];
+            foreach (DB::table('usage_slots')->where('day', $range[0])->select('user_id', 'slot')->distinct()->get() as $r) {
+                $seen[intdiv((int) $r->slot, 3)][$r->user_id] = true;
+            }
+            for ($q = 0; $q < 96; $q++) {
+                $active[] = count($seen[$q] ?? []);
+            }
+        }
+
         $users = User::query()->orderBy('name')->get()
             ->sortBy(fn (User $u) => $u->isGuest() ? 1 : 0)->values()
             ->map(fn (User $u) => [
@@ -177,6 +196,7 @@ class Usage
             'from' => $range[0], 'to' => $range[1], 'users' => $users,
             'apps' => array_map(fn ($a, $s) => ['app' => (string) $a, 'seconds' => $s], array_keys(array_slice($apps, 0, 10, true)), array_slice($apps, 0, 10, true)),
             'sites' => array_map(fn ($i, $s) => ['item' => (string) $i, 'seconds' => $s], array_keys(array_slice($sites, 0, 10, true)), array_slice($sites, 0, 10, true)),
+            'days' => $days, 'active' => $active,
         ];
     }
 

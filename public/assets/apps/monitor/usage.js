@@ -37,6 +37,8 @@ window.SMUsage = function (OS, host) {
   }
   const durShort = (s) => { const m = Math.round((s || 0) / 60); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + pad(m % 60); };
   const appOf = (id) => window.LOS_app(id) || { id, name: id, c: ['#8C929C', '#8C929C'] };
+  // websites have no colour of their own: these tell them apart in the share bar
+  const SITE_COLOURS = ['#1A7F9E', '#5B5BD6', '#C2410C', '#0F8A5F', '#B4235A', '#8A6D00'];
   const colour = (id) => { const a = appOf(id); return (a.c && (a.c[1] || a.c[0])) || '#8C929C'; };
   const matches = (s) => !st.query || String(s || '').toLowerCase().includes(st.query);
 
@@ -133,19 +135,84 @@ window.SMUsage = function (OS, host) {
         '<span class="sm-who"><span class="sm-av" style="background:' + esc(u.color || '#2F6FD6') + '">' + esc(initials(u.name)) + '</span><span><b>' + esc(u.name) + '</b><small>' + esc(u.roleLabel) + '</small></span></span>' +
         '<span class="r">' + (u.seconds ? dur(u.seconds) : '<span class="sm-muted">None</span>') + '</span>' +
         '<button type="button" class="icon-btn" data-user="' + esc(u.username) + '" aria-label="Open ' + esc(u.name) + '’s usage">' + ico('forward', 15) + '</button></div>').join('');
-    const bars = (title, list, name, colourOf) => {
+    // one bar shares the time out between the six used most (and the rest, in grey); under it each one's name and time
+    const bars = (title, list, name, colourOf, foot) => {
       const shown = list.filter((x) => matches(name(x)));
-      const max = shown.length ? shown[0].seconds : 1;
-      return '<h2 class="sm-sec">' + title + '</h2>' + (shown.length ? shown.slice(0, 6).map((x) => '<div class="sm-r"><span>' + esc(name(x)) + '</span><span class="t">' + dur(x.seconds) + '</span><span class="sm-bar"><i style="width:' + Math.max(2, Math.round(x.seconds / max * 100)) + '%;background:' + colourOf(x) + '"></i></span></div>').join('')
-        : '<p class="sm-muted sm-small">None.</p>');
+      const top = shown.slice(0, 6);
+      const all = shown.reduce((n, x) => n + x.seconds, 0);
+      const rest = all - top.reduce((n, x) => n + x.seconds, 0);
+      const segs = top.map((x, i) => [name(x), x.seconds, colourOf(x, i)]).concat(rest > 0 ? [['Other', rest, 'var(--sm-other)']] : []);
+      return '<section><h2 class="sm-sec">' + title + '</h2>' + (top.length
+        ? '<div class="sm-share" role="img" aria-label="' + esc(segs.map((g) => g[0] + ' ' + dur(g[1])).join(', ')) + '">' +
+          segs.map((g) => '<i style="flex:' + Math.max(g[1], all * 0.004) + ';background:' + g[2] + '" title="' + esc(g[0] + ', ' + dur(g[1])) + '"></i>').join('') + '</div>' +
+          segs.map((g) => '<div class="sm-r"><span><i class="sm-sw" style="background:' + g[2] + '"></i>' + esc(g[0]) + '</span><span class="t">' + dur(g[1]) + '</span></div>').join('')
+        : '<p class="sm-muted sm-small">None.</p>') + (foot ? '<p class="sm-muted sm-small">' + foot + '</p>' : '') + '</section>';
     };
-    return '<div class="sm-total"><b>' + dur(total) + '</b><span>' + esc(when()) + ', everyone together</span></div>' +
-      '<div class="sm-everyone"><div><h2 class="sm-sec">Users</h2>' +
+    const appsBar = bars('Apps, everyone', d.apps || [], (x) => appOf(x.app).name, (x) => colour(x.app));
+    const sitesBar = bars('Websites, everyone', d.sites || [], (x) => x.item, (x, i) => SITE_COLOURS[i % SITE_COLOURS.length], 'Only the site’s name is kept, never the page.');
+    const head = '<div class="sm-total"><b>' + dur(total) + '</b><span>' + esc(when()) + ', everyone together</span></div>' + everyoneChart(d);
+    // a few accounts: they sit side by side across the top, the apps and the websites next to each other under them;
+    // ten or more: the accounts as a list on the left, the apps and websites down the right
+    if ((d.users || []).length < 10) {
+      return head + '<h2 class="sm-sec sm-sec-gap">Users</h2><div class="sm-ufl">' + (rows || '<p class="sm-muted sm-small">Nobody matches.</p>') + '</div>' +
+        '<div class="sm-ev2">' + appsBar + sitesBar + '</div>';
+    }
+    return head + '<div class="sm-everyone"><div><h2 class="sm-sec">Users</h2>' +
       '<div class="sm-uh"><span>Name</span><span class="r">' + col + '</span><span></span></div>' +
       (rows || '<p class="sm-muted sm-small">Nobody matches.</p>') + '</div>' +
-      '<div>' + bars('Apps, everyone', d.apps || [], (x) => appOf(x.app).name, (x) => colour(x.app)) +
-      '<div style="height:12px"></div>' + bars('Websites, everyone', d.sites || [], (x) => x.item, () => colour('browser')) +
-      '<p class="sm-muted sm-small">Only the site’s name is kept, never the page.</p></div></div>';
+      '<div class="sm-cards-col">' + appsBar + sitesBar + '</div></div>';
+  }
+
+  /**
+   * Everyone's main chart. A day: how many people were using LiteOS through it, each quarter of an hour. A week or 30
+   * days: everyone's time each day, stacked by the three apps used most and the rest, as on one person's page.
+   */
+  function everyoneChart(d) {
+    if (st.period === 'day') {
+      const active = d.active || [];
+      return active.some((n) => n > 0) ? activeChart(active) : '';
+    }
+    const days = [];
+    for (let i = 0; i < span(); i++) { const k = key(addDays(startOf(st.end), i)); days.push({ k, date: addDays(startOf(st.end), i), apps: (d.days && d.days[k]) || {} }); }
+    const apps = appTotals(d.days);
+    if (!sum(apps)) return '';
+    const top = apps.slice(0, 3).map(([a]) => a);
+    const layers = top.concat(apps.length > 3 ? ['other'] : []);
+    return chart(days, top) + '<div class="sm-legend">' + layers.map((a) => '<span><i style="background:' + layerColour(a) + '"></i>' + esc(a === 'other' ? 'Other apps' : appOf(a).name) + '</span>').join('') + '</div>';
+  }
+
+  /** People using LiteOS each quarter of an hour, as steps (a count is a count, not a curve), 8:00 to 18:00 at least. */
+  function activeChart(active) {
+    const used = active.map((n, q) => (n ? q : -1)).filter((q) => q >= 0);
+    let h0 = Math.min(8, Math.floor(used[0] / 4));
+    let h1 = Math.max(18, Math.ceil((used[used.length - 1] + 1) / 4));
+    if ((h1 - h0) % 2) h1 < 24 ? h1++ : h0--;
+    const W = 790, H = 196, L = 40, R = 780, T = 14, B = 166;
+    const q0 = h0 * 4, nq = (h1 - h0) * 4;
+    const peak = Math.max(...active);
+    const maxP = peak <= 4 ? Math.max(2, peak) : Math.ceil(peak / 2) * 2;
+    const x = (q) => L + (R - L) * (q - q0) / nq;
+    const y = (n) => B - (B - T) * n / maxP;
+    let d = 'M' + x(q0) + ',' + B;
+    for (let q = q0; q < q0 + nq; q++) d += ' L' + x(q).toFixed(1) + ',' + y(active[q]).toFixed(1) + ' L' + x(q + 1).toFixed(1) + ',' + y(active[q]).toFixed(1);
+    d += ' L' + x(q0 + nq) + ',' + B + ' Z';
+    const step = maxP <= 4 ? 1 : maxP <= 10 ? 2 : Math.ceil(maxP / 5);
+    const grid = [];
+    for (let n = step; n <= maxP; n += step) grid.push(n);
+    const hours = [];
+    for (let h = h0; h <= h1; h += 2) hours.push(h);
+    const at = (q) => String(Math.floor(q / 4)).padStart(2, '0') + ':' + String(q % 4 * 15).padStart(2, '0');
+    const people = (n) => n + (n === 1 ? ' person' : ' people');
+    const busiest = active.indexOf(peak);
+    return '<div class="sm-ach"><h2 class="sm-sec">People using LiteOS</h2><span class="sm-muted">Busiest ' + at(busiest) + ' to ' + at(busiest + 1) + ', ' + people(peak) + '</span></div>' +
+      '<svg class="sm-chart sm-active" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc('People using LiteOS each quarter of an hour; at most ' + people(peak)) + '">' +
+      '<g class="sm-grid">' + grid.map((n) => '<line x1="' + L + '" y1="' + y(n) + '" x2="' + R + '" y2="' + y(n) + '"></line>').join('') + '</g>' +
+      '<g class="sm-yl">' + grid.map((n) => '<text x="0" y="' + (y(n) + 4) + '">' + n + '</text>').join('') + '</g>' +
+      '<path class="sm-act" d="' + d + '"></path>' +
+      '<line class="sm-base" x1="' + L + '" y1="' + B + '" x2="' + R + '" y2="' + B + '"></line>' +
+      '<g class="sm-hours">' + hours.map((h, i) => '<text x="' + x(h * 4) + '" y="' + (H - 8) + '" text-anchor="' + (i === 0 ? 'start' : i === hours.length - 1 ? 'end' : 'middle') + '">' + String(h).padStart(2, '0') + ':00</text>').join('') + '</g>' +
+      Array.from({ length: nq }, (_, i) => q0 + i).map((q) => '<rect class="sm-hit" x="' + x(q) + '" y="' + T + '" width="' + (x(q + 1) - x(q)) + '" height="' + (B - T) + '"><title>' + at(q) + ' to ' + at(q + 1) + ': ' + people(active[q]) + '</title></rect>').join('') +
+      '</svg>';
   }
 
   /** One day: the total, the timeline, then apps, files and websites. */

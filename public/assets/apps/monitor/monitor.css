@@ -104,6 +104,14 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
 .sm-days text { fill: var(--text); font-size: 12px; font-weight: 600; }
 .sm-areas path { stroke: var(--surface); stroke-width: 1.5; stroke-linejoin: round; }
 .sm-base { stroke: var(--line-strong); stroke-width: 1; }
+/* everyone, one day: people using LiteOS each quarter of an hour */
+.sm-ach { display: flex; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin-top: 14px; }
+.sm-ach .sm-sec { margin: 0; }
+.sm-ach .sm-muted { font-size: 12px; text-align: right; }
+/* a small screen: the busiest time under the title */
+@media (max-width: 560px) { .sm-ach { flex-direction: column; align-items: flex-start; } .sm-ach .sm-muted { text-align: left; } }
+.sm-act { fill: var(--accent); fill-opacity: .22; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+.sm-hours text { fill: var(--muted); font-size: 11px; }
 .sm-hit { fill: transparent; }
 .sm-hit:hover { fill: var(--hover); fill-opacity: .35; }
 .sm-tbl { margin-top: 14px; }
@@ -232,6 +240,10 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
 .sm-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .sm-who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sm-who small { display: block; font-size: 11px; color: var(--muted); }
+/* fewer than ten accounts: side by side, each taking a share of the row; apps and websites in two columns */
+.sm-ufl { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-bottom: 18px; }
+.sm-ufl .sm-ur { flex: 1 1 240px; max-width: 340px; grid-template-columns: minmax(0, 1fr) auto 30px; }
+.sm-ev2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; align-items: start; }
 .sm-av { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; }
 :root.in-shell:not([data-glass="off"]) .sm-combo { background: var(--mica-field); }
 
@@ -251,6 +263,8 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
   .sm-pdet { padding: 0 8px; }
   .sm-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sm-everyone { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .sm-ev2 { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .sm-ufl .sm-ur { max-width: none; }
   .sm-uh, .sm-ur { grid-template-columns: minmax(0, 1fr) 90px 30px; }
   .sm-three.sm-two { grid-template-columns: minmax(0, 1fr); }
   .sm-th, .sm-tr { grid-template-columns: minmax(0, 1fr) 96px 84px; }
