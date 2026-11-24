@@ -23,6 +23,9 @@
   let zTop = 100;
   let focusedId = null;
   let winSeq = 0;
+  // tasks: who watches the windows (System Monitor), and the asking of each window whether it still answers
+  const TASKS = { subs: new Map(), timer: 0, queued: 0, since: Date.now(), input: Date.now(), leave: new Set() };
+  const PING_EVERY = 2000, PING_LATE = 5000;
   const DEFAULTS = {
     theme: 'light', accent: '#2F6FD6', wallpaper: 'siamese', wallpaperFit: 'cover', taskbar: 'floating', align: 'center',
     iconSize: 'medium', autohide: false, labels: false, topbar: true, magnify: true, transparency: true, nightLight: false,
@@ -47,6 +50,7 @@
       // Form data from an app window belongs to that iframe's realm, so `instanceof FormData` is false there.
       if (Object.prototype.toString.call(data) === '[object FormData]') opts.body = data;
       else { opts.body = JSON.stringify(data || {}); opts.headers['Content-Type'] = 'application/json'; }
+      if (window.LOS_perfSent) window.LOS_perfSent(opts.body);
     }
     let res;
     try { res = await fetch(url, opts); } catch (e) { throw new Error('Can’t reach the server. Check your connection.'); }
@@ -1111,6 +1115,7 @@
   }
 
   function renderBars() {
+    tasksChanged();
     const bars = $('#bars', root);
     if (!bars) return;
     const s = set();
@@ -1844,7 +1849,7 @@
       '<p class="ld-text" aria-live="polite"></p><span class="ld-bar" aria-hidden="true"><i></i></span></div>' +
       '<div class="win-shield"></div></div>' +
       ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => '<div class="rz ' + d + '" data-rz="' + d + '"></div>').join('');
-    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null, args, keep: opts.keep || null };
+    const win = { id, app, el, iframe: $('iframe', el), title: app.name, dirty: false, max: false, min: false, rect, prev: null, tile: null, args, keep: opts.keep || null, opened: Date.now() };
     wins.set(id, win);
     $('.windows', root).appendChild(el);
     win.iframe.addEventListener('load', () => winPaged(win));
@@ -1873,6 +1878,9 @@
     c.classList.remove('done');
     w.covered = true;
     w.heard = false;
+    w.pingAt = 0;
+    w.responding = true;
+    tasksChanged();
     winLoadText(w, '', null);
     clearTimeout(w.loadTimer);
     w.loadTimer = setTimeout(() => winLoaded(w), LOAD_WAIT); // never leave a window covered
@@ -1890,6 +1898,7 @@
   function winLoaded(w) {
     clearTimeout(w.loadTimer);
     w.covered = false;
+    tasksChanged();
     const c = $('.win-load', w.el);
     if (c) requestAnimationFrame(() => c.classList.add('done'));
   }
@@ -1929,6 +1938,7 @@
     w.title = title || w.app.name;
     const t = $('.title', w.el);
     t.innerHTML = esc(w.title) + (w.dirty ? '<span class="dirty" title="Unsaved changes"></span>' : '');
+    tasksChanged();
   }
 
   function focus(w) {
@@ -3411,6 +3421,7 @@
     if (!canLock() && alreadyLocked !== true) { signOut(); return; }
     closePops();
     hideMenu();
+    if (alreadyLocked !== true) await beforeLeaving();
     let url = window.LOS_BASE + 'lock?embed=1';
     if (alreadyLocked !== true) {
       try { url = (await api('auth.lock', {})).lock; } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t lock' }); return; }
@@ -3440,6 +3451,7 @@
     }
     forgetDesk();
     showBoot('Signing out…');
+    await beforeLeaving();
     let next = window.LOS_BASE + 'login';
     try { next = (await api('auth.logout', {})).next || next; } catch (e) { /* ignore */ }
     setTimeout(() => location.assign(next), 600);
@@ -3546,7 +3558,7 @@
     if (e.target.closest('.taskbar, .dock')) {
       e.preventDefault();
       showMenu([
-        { label: 'Task Manager', icon: 'tb-taskmgr', disabled: true, title: 'Not available yet' },
+        { label: 'System Monitor', icon: 'tb-taskmgr', key: 'Ctrl+Shift+Esc', disabled: !window.LOS_app('monitor'), action: openMonitor },
         'sep',
         { label: 'Taskbar settings', icon: 'tb-cog', action: () => openApp('settings', { section: 'taskbar' }) },
       ], { x: e.clientX, y: e.clientY });
@@ -3593,6 +3605,7 @@
     if (switcherKey(e)) return;
     if (e.key === 'Escape') { hideMenu(); previewHide(); if (UI.pop) closePops(); }
     if (S.user && !UI.lockShown && e.altKey && e.code === 'Space') { e.preventDefault(); togglePop('launcher'); }
+    if (e.ctrlKey && e.shiftKey && e.key === 'Escape') { e.preventDefault(); openMonitor(); }
   });
 
   document.addEventListener('keyup', (e) => { if (e.key === 'Alt') switcherCommit(); });
@@ -3725,10 +3738,94 @@
 
   function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
 
+  // ================================================================== tasks (OS.tasks in the SDK: System Monitor)
+  // The open windows as apps see them, and whether each one's page still answers. While something watches (System
+  // Monitor is open), every started window is asked every 2 seconds over postMessage and the SDK in it answers; a window
+  // that hasn't answered for 5 seconds is not responding. Every window shares the desktop's page, so one busy with a long
+  // piece of work holds the whole desktop up while it lasts; what this finds is a page that no longer answers at all (it
+  // broke off while starting, or its page isn't a working app any more).
+  function taskInfo(w) {
+    const r = w.el.getBoundingClientRect();
+    return {
+      id: w.id, app: { id: w.app.id, name: w.app.name, img: w.app.img }, title: w.title, dirty: !!w.dirty,
+      min: !!w.min, max: !!w.max, focused: w.id === focusedId && !w.min, asleep: !!w.asleep, starting: !!w.covered && !w.asleep,
+      responding: w.responding !== false, opened: w.opened || 0,
+      // the file it was opened with, unless the app said otherwise; Files is opened with a folder, never a file
+      item: w.item === false ? null : w.item || (w.app.id !== 'files' && w.args && typeof w.args.path === 'string' && w.args.path ? { kind: 'file', name: w.args.path } : null),
+      rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+    };
+  }
+  const taskList = () => [...wins.values()].map(taskInfo);
+  /** What LiteOS itself keeps running in the background of the desktop. */
+  function taskServices() {
+    const out = [];
+    if (S.user) out.push({ id: 'reminders', name: 'Reminders', detail: 'Rings Clock’s alarms and timers', since: TASKS.since });
+    if (DEV.ll) out.push({ id: 'litelink', name: 'LiteLink device', detail: 'This computer’s drives, sound, network and printers', since: TASKS.since });
+    if (window.LOS_CONFIG.guest) out.push({ id: 'guest-drive', name: 'Guest drive', detail: 'Keeps the guest’s files in this browser', since: TASKS.since });
+    return out;
+  }
+  function tasksChanged() {
+    if (!TASKS.subs.size || TASKS.queued) return;
+    TASKS.queued = setTimeout(() => {
+      TASKS.queued = 0;
+      const list = taskList();
+      TASKS.subs.forEach((winId, fn) => {
+        if (winId && !wins.has(winId)) { TASKS.subs.delete(fn); return; } // its window has closed
+        try { fn(list); } catch (e) { TASKS.subs.delete(fn); }
+      });
+      if (!TASKS.subs.size) stopPings();
+    }, 60);
+  }
+  function pingWindows() {
+    const now = Date.now();
+    let changed = false;
+    wins.forEach((w) => {
+      if (w.asleep || w.covered) return; // not started, or still starting: nothing to ask yet
+      if (!w.pingAt) {
+        w.pingAt = now;
+        try { w.iframe.contentWindow.postMessage({ los: 'ping' }, location.origin); } catch (e) { /* its page is elsewhere */ }
+      } else if (now - w.pingAt > PING_LATE && w.responding !== false) { w.responding = false; changed = true; }
+    });
+    if (changed) tasksChanged();
+  }
+  function stopPings() {
+    clearInterval(TASKS.timer);
+    TASKS.timer = 0;
+    wins.forEach((w) => { w.pingAt = 0; w.responding = true; });
+  }
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || !e.data || e.data.los !== 'pong') return;
+    for (const w of wins.values()) {
+      if (w.iframe.contentWindow !== e.source) continue;
+      w.pingAt = 0;
+      if (w.responding === false) { w.responding = true; tasksChanged(); }
+      break;
+    }
+  });
+  // someone is using the desktop: any key, click, scroll or move on it, or in an app (the SDK passes those on)
+  const inputSeen = () => { TASKS.input = Date.now(); };
+  ['pointerdown', 'keydown', 'wheel', 'pointermove'].forEach((t) => document.addEventListener(t, inputSeen, { capture: true, passive: true }));
+  /** Before the screen locks or the session ends (the server refuses then): the usage recorder hands in its last minute. */
+  async function beforeLeaving() {
+    const all = [...TASKS.leave].map((fn) => Promise.resolve().then(fn).catch(() => {}));
+    await Promise.race([Promise.all(all), new Promise((r) => setTimeout(r, 1500))]);
+  }
+
   /** A window's page has gone (closed, or loading again): forget everything it handed the desktop. */
   function forgetPage(w) {
     subs.forEach((win, fn) => { if (win === w.id) subs.delete(fn); });
+    TASKS.subs.forEach((win, fn) => { if (win === w.id) TASKS.subs.delete(fn); });
+    if (TASKS.timer && !TASKS.subs.size) stopPings();
+    if (window.LiteOSHost && window.LiteOSHost.perf && window.LiteOSHost.perf.forget) window.LiteOSHost.perf.forget(w.id);
     w.menus = [];
+    w.item = null;
+  }
+
+  /** Ctrl+Shift+Esc, and the taskbar's menu. */
+  function openMonitor() {
+    if (!S.user || UI.lockShown || !window.LOS_app('monitor')) return;
+    closePops(); hideMenu();
+    openApp('monitor');
   }
 
   // ================================================================== host API for apps
@@ -3804,6 +3901,13 @@
       },
       toggleMax(id) { const w = wins.get(id); if (w) toggleMax(w); },
       isMax(id) { const w = wins.get(id); return !!(w && w.max); },
+      /** What the window has open, for usage: { kind: 'file', name: path } or { kind: 'site', name: domain }, or null. */
+      setItem(id, item) {
+        const w = wins.get(id);
+        if (!w) return;
+        const ok = item && (item.kind === 'file' || item.kind === 'site') && typeof item.name === 'string' && item.name;
+        w.item = ok ? { kind: item.kind, name: item.name.slice(0, 1024) } : (item === null ? false : null);
+      },
     },
     dialog: {
       open: (o, winId) => fileDialog('open', o, winId),
@@ -3813,6 +3917,31 @@
       prompt: (o, winId) => promptDialog(o || {}, winId),
       alert: (o, winId) => alertDialog(o || {}, winId),
     },
+    /** OS.tasks: the open windows, and switching to, closing and ending them. */
+    tasks: {
+      list: () => taskList(),
+      services: () => taskServices(),
+      /** fn(list) on every change, from the window winId (dropped when it closes). Returns the way to stop. */
+      subscribe(fn, winId) {
+        TASKS.subs.set(fn, winId || null);
+        if (!TASKS.timer) { TASKS.timer = setInterval(pingWindows, PING_EVERY); pingWindows(); }
+        return () => { TASKS.subs.delete(fn); if (!TASKS.subs.size) stopPings(); };
+      },
+      focus(id) { const w = wins.get(id); if (!w) return false; closePops(); hideMenu(); if (w.min) restore(w); else focus(w); return true; },
+      /** As its own close button: asks first about unsaved changes. -> whether it closed */
+      close(id) { const w = wins.get(id); return w ? closeWin(w) : Promise.resolve(false); },
+      /** Closes it without asking (the app has asked the person first). */
+      end(id) { const w = wins.get(id); return w ? closeWin(w, true) : Promise.resolve(false); },
+      openMonitor: () => openMonitor(),
+      /** How long since anyone used the desktop (ms). */
+      idle: () => Date.now() - TASKS.input,
+      /** An app's page saw input: someone is using the desktop. */
+      input: () => inputSeen(),
+      locked: () => !!UI.lockShown,
+      /** fn runs (and is waited for, briefly) before the screen locks or the session ends. */
+      beforeLeaving(fn) { TASKS.leave.add(fn); return () => TASKS.leave.delete(fn); },
+    },
+    get csrf() { return S.csrf; },
     /** Printing on a LiteLink device (OS.print in the SDK): available() waits for the device to answer. */
     print: {
       available: async () => { if (DEV.readyP) await DEV.readyP; return canPrint(); },

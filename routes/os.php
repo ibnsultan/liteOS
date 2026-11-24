@@ -6,6 +6,7 @@ use App\Http\Controllers\Os\SettingsController;
 use App\Http\Controllers\Os\StreamController;
 use App\Http\Controllers\Os\SystemController;
 use App\Http\Controllers\Os\TrashController;
+use App\Http\Controllers\Os\UsageController;
 use App\Http\Controllers\Os\UsersController;
 use App\Http\Controllers\Os\WebController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 // is refused here even when an app calls the API directly; the account routes ask per route (AccountController).
 Route::prefix('settings')->group(fn () => SettingsController::routes());
 Route::prefix('account')->group(fn () => AccountController::routes());
+Route::prefix('usage')->group(fn () => UsageController::routes());
 Route::middleware('can:drive')->group(function () {
     Route::prefix('fs')->group(fn () => DriveController::routes());
     Route::prefix('trash')->group(fn () => TrashController::routes());

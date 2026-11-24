@@ -28,7 +28,7 @@ class AuthController extends Controller
             'csrf' => csrf_token(),
             'user' => $user?->toPublic(),
             'settings' => $user ? UserSettings::for($user) : null,
-            'system' => ['instanceName' => $system['instanceName'], 'version' => config('liteos.version')],
+            'system' => ['instanceName' => $system['instanceName'], 'version' => config('liteos.version'), 'usageTracking' => (bool) $system['usageTracking']],
         ];
 
         return $this->jsonSuccess();

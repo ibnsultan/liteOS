@@ -53,6 +53,7 @@ LiteOS.ready((OS) => {
     ['system/power', 'Power', 'settings.power', 'Lock, sign out, restart, shut down'],
     ['system/storage', 'Storage', 'settings.storage', 'Storage space, Trash, USB drives, limits for new accounts and archives'],
     ['system/about', 'About', 'settings.about', 'Device specifications, rename this computer, LiteOS version'],
+    ['system/usage', 'Usage tracking', 'app.monitor', 'Time in apps, files and websites, for System Monitor'],
     ['bluetooth', 'Bluetooth & devices', 'settings.bluetooth'],
     ['bluetooth/devices', 'Devices', 'settings.bluetooth', 'Bluetooth devices: pair, connect, remove'],
     ['bluetooth/usb', 'USB drives', 'settings.usb', 'Drives plugged into this device'],
@@ -94,7 +95,7 @@ LiteOS.ready((OS) => {
   const parentOf = (id) => (id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : null);
   const NAV = ['home', 'system', 'bluetooth', 'network', 'personalisation', 'apps', 'accounts', 'time', 'accessibility'];
   // pages that need a capability; a page's subpages need it too (network covers network/wifi)
-  const NEEDS = { 'accounts/users': 'admin', network: 'settingsDevice', 'bluetooth/devices': 'settingsDevice', 'bluetooth/printers': 'settingsDevice',
+  const NEEDS = { 'accounts/users': 'admin', 'system/usage': 'admin', network: 'settingsDevice', 'bluetooth/devices': 'settingsDevice', 'bluetooth/printers': 'settingsDevice',
     'time/typing': 'settingsDevice', 'bluetooth/usb': 'usb', 'apps/browser': 'web', 'system/storage': 'files' };
   function allowed(id) {
     if (isGuest() && id === 'accounts/signin') return false;
@@ -166,6 +167,7 @@ LiteOS.ready((OS) => {
         row({ icon: 'place.folder', title: 'Most files in an archive', sub: 'Files and folders together', ctl: num('archive', 'archiveMaxEntries', 'Most files and folders in an archive', '', 1) }));
   }
   const h = (t) => '<h2 class="st-h">' + t + '</h2>';
+  const USAGE_NOTE = 'Your time in apps, files and websites is recorded. Administrators can see it.';
   /** Toggle with its On/Off label, as Windows shows it. */
   const sw = (on, attrs, label, dis) => '<span class="st-tog"><span>' + (on ? 'On' : 'Off') + '</span><button class="switch" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' + attrs + ' aria-label="' + esc(label) + '"' + (dis ? ' disabled' : '') + '></button></span>';
   /** A row with a toggle for one of the user's settings (invert: the toggle shows the opposite, "Animation effects"). */
@@ -273,13 +275,14 @@ LiteOS.ready((OS) => {
         row({ icon: 'settings.colour', title: 'Colour mode', ctl: sel(' data-set="theme" aria-label="Colour mode"', [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Automatic']], s.theme) }) +
         row({ title: 'Browse more backgrounds, colours and themes', go: 'personalisation' }));
       const device = can('settingsDevice');
-      return hero() + (device ? bridgeInfo(['network', 'bluetooth', 'system']) : '') +
+      return hero() + (OS.system.usageTracking && !isGuest() ? info(USAGE_NOTE, '<button class="btn" data-launch="monitor">Open System Monitor</button>') : '') +
+        (device ? bridgeInfo(['network', 'bluetooth', 'system']) : '') +
         '<div class="st-home"><div class="st-col">' + recommended + devInfo + '</div><div class="st-col">' + (device ? btCard : '') + theme + '</div></div>';
     },
 
     // ---------------------------------------------------------------- System
     system() {
-      return hero() + rows(goRow('system/display'), goRow('system/sound'), goRow('system/notifications'), goRow('system/power'), goRow('system/storage'), goRow('system/about'));
+      return hero() + rows(goRow('system/display'), goRow('system/sound'), goRow('system/notifications'), goRow('system/power'), goRow('system/storage'), goRow('system/usage'), goRow('system/about'));
     },
 
     'system/display'() {
@@ -366,6 +369,21 @@ LiteOS.ready((OS) => {
     },
 
     /** Storage settings for everyone, on Storage for administrators: new accounts' space, and Archives' limits. */
+    /** Usage tracking, for administrators (system settings usageTracking, usageKeepDays; App\Support\Usage). */
+    'system/usage'() {
+      const x = data.system;
+      if (!x) return '<p class="hint">Loading…</p>';
+      const keep = [[30, '30 days'], [90, '90 days'], [180, '180 days'], [365, 'A year']];
+      return '<p class="st-note">Records how long each person spends in apps, files and websites, for System Monitor’s Usage view. People see only their own; administrators see everyone’s. Websites are kept by name only, never the page.</p>' +
+        rows(row({ icon: 'app.monitor', title: 'Usage tracking', sub: 'Off until you turn it on. Everyone is told while it is on.', ctl: sw(!!x.usageTracking, ' data-usage="usageTracking"', 'Usage tracking') }),
+          row({ icon: 'settings.time', title: 'Keep usage for', sub: 'Older days are deleted', ctl: sel(' data-sysset="usageKeepDays" aria-label="Keep usage for"', keep, x.usageKeepDays) }),
+          row({ icon: 'settings.user', title: 'Guests', sub: 'The Guest account is never recorded' })) +
+        h('What is recorded') +
+        rows(row({ title: 'Apps and files', sub: 'Time each app and file is in front while someone is using the desktop. Idle time (5 minutes), a locked screen and signing out aren’t counted.' }),
+          row({ title: 'Websites', sub: 'The site’s name, such as github.com. Never the address of the page, what was typed or what was seen.' })) +
+        h('What everyone sees while it is on') + info(USAGE_NOTE);
+    },
+
     'system/about'() {
       const x = data.system;
       const i = data.info;
@@ -832,7 +850,7 @@ LiteOS.ready((OS) => {
     ['Transparency effects', 'personalisation/colours'], ['Wallpaper', 'personalisation/background'], ['Night light', 'system/display'], ['Brightness', 'system/display'],
     ['Resolution', 'system/display'], ['Volume', 'system/sound'], ['Microphone', 'system/sound'], ['Do not disturb', 'system/notifications'],
     ['Lock', 'system/power'], ['Sign out', 'system/power'], ['Restart', 'system/power'], ['Shut down', 'system/power'], ['Trash', 'system/storage'],
-    ['Rename this computer', 'system/about'], ['Version', 'system/about'], ['Password', 'accounts/signin'], ['Display name', 'accounts/info'],
+    ['Usage tracking', 'system/usage'], ['Rename this computer', 'system/about'], ['Version', 'system/about'], ['Password', 'accounts/signin'], ['Display name', 'accounts/info'],
     ['Add user', 'accounts/users'], ['Time zone', 'time/datetime'], ['24-hour clock', 'time/datetime'], ['Keyboard layout', 'time/typing'],
     ['Pinned apps', 'personalisation/taskbar'], ['Auto-hide taskbar', 'personalisation/taskbar'], ['Home page', 'apps/browser'], ['Pointer size', 'accessibility/pointer'],
     ['High contrast', 'accessibility/contrast'], ['Greyscale', 'accessibility/filters'], ['Animations', 'accessibility/effects'], ['Pair a device', 'bluetooth/devices'],
@@ -880,7 +898,7 @@ LiteOS.ready((OS) => {
     if (can('files') && (id === 'home' || id === 'system' || id === 'system/storage')) set('usage', OS.fs.usage());
     if (can('files') && id === 'system/storage') set('trash', OS.fs.trash.list());
     if ((id === 'accounts' || id === 'accounts/users') && isAdmin()) set('users', OS.api('users.list', undefined, {}));
-    if ((id === 'system/about' || id === 'accounts/users' || id === 'system/storage') && isAdmin()) set('system', OS.api('system.get', undefined, {}));
+    if ((id === 'system/about' || id === 'accounts/users' || id === 'system/storage' || id === 'system/usage') && isAdmin()) set('system', OS.api('system.get', undefined, {}));
     if (want('system') && data.info === undefined && ['home', 'system', 'system/about', 'bluetooth'].includes(id)) set('info', LL.system.info());
     if (want('network') && (id === 'home' || top === 'network' || id === 'system')) set('net', LL.network.state());
     if (want('network') && id === 'network/wifi') set('wifi', LL.network.wifi());
@@ -892,6 +910,11 @@ LiteOS.ready((OS) => {
     if (want('input') && (top === 'time')) set('input', LL.input.state());
     if (want('time') && id === 'time/datetime') set('time', LL.time.state());
     await Promise.all(jobs);
+    if (editAsked && id === 'accounts/users' && data.users) {
+      const x = data.users.find((u) => u.username === editAsked);
+      editAsked = '';
+      if (x) setTimeout(() => editUser(x), 0);
+    }
   }
 
   function render() {
@@ -1016,15 +1039,21 @@ LiteOS.ready((OS) => {
     wireSwitches(d.form);
   }
 
+  /** Name, account type and storage of one account (also opened by System Monitor › Storage: OS.open('settings', { page: 'accounts/users', user })). */
+  function editUser(x) {
+    dialog('Edit ' + x.name, userForm(x), 'Save', async (f) => {
+      await OS.api('users.update', { username: x.username, changes: { name: f.name.value, role: f.role.value, quotaMB: f.quotaMB.value === '' ? null : +f.quotaMB.value } });
+      OS.notify('Changes to ' + x.name + ' were saved.', { type: 'success', title: 'User updated' }); await refreshUsers();
+    });
+  }
+  // the account another app asked to change, once its list has loaded
+  let editAsked = OS.args.user || '';
   function userMenu(username, at) {
     const x = (data.users || []).find((p) => p.username === username);
     if (!x) return;
     const me = x.username === OS.user.username;
     const items = [
-      { label: 'Edit', icon: 'rename', action: () => dialog('Edit ' + x.name, userForm(x), 'Save', async (f) => {
-        await OS.api('users.update', { username: x.username, changes: { name: f.name.value, role: f.role.value, quotaMB: f.quotaMB.value === '' ? null : +f.quotaMB.value } });
-        OS.notify('Changes to ' + x.name + ' were saved.', { type: 'success', title: 'User updated' }); await refreshUsers();
-      }) },
+      { label: 'Edit', icon: 'rename', action: () => editUser(x) },
       ...(x.role === 'local' ? [{ label: 'Change access', icon: 'settings', action: () => accessDialog(x) }] : []),
       { label: 'Reset password', icon: 'lock', action: () => dialog('Reset password for ' + x.name, '<label class="field"><span>New password</span><input class="input" type="password" name="pw" minlength="6" required autocomplete="new-password"></label>', 'Reset password', async (f) => {
         await OS.api('users.update', { username: x.username, changes: { password: f.pw.value } });
@@ -1049,6 +1078,21 @@ LiteOS.ready((OS) => {
       data.system = Object.assign(data.system, await OS.api('system.save', { system: { [key]: value } }));
       if (key === 'guestEnabled') OS.notify(value ? 'The sign-in screen now offers “Sign in as guest”.' : 'Guests can no longer sign in, and anyone signed in as a guest is signed out.', { type: 'success', title: value ? 'Guest account on' : 'Guest account off' });
     } catch (e) { OS.notify(e.message, { type: 'error', title: 'Couldn’t change the guest account' }); }
+    render();
+  }
+  // Usage tracking's switch and how long it is kept (system settings); the desktop starts or stops recording at once
+  async function setUsage(changes) {
+    try {
+      if (changes.usageKeepDays && changes.usageKeepDays < (data.system.usageKeepDays || 0)) {
+        const ok = await OS.dialog.confirm({ title: 'Keep usage for ' + changes.usageKeepDays + ' days?', message: 'Days older than that are deleted now, for everyone.', okLabel: 'Delete older days', danger: true });
+        if (!ok) { render(); return; }
+      }
+      data.system = Object.assign(data.system, await OS.api('system.save', { system: changes }));
+      if ('usageTracking' in changes) {
+        try { if (window.parent !== window && window.parent.LiteOSHost) window.parent.LiteOSHost.refreshSystem({ usageTracking: !!data.system.usageTracking }); } catch (e) { /* not in the desktop */ }
+        OS.notify(data.system.usageTracking ? 'Time in apps, files and websites is now recorded. Everyone is told.' : 'Nothing more is recorded. What was recorded is kept for ' + data.system.usageKeepDays + ' days.', { type: 'success', title: data.system.usageTracking ? 'Usage tracking on' : 'Usage tracking off' });
+      }
+    } catch (e) { OS.notify(e.message, { type: 'error', title: 'Couldn’t change usage tracking' }); }
     render();
   }
   async function refreshUsers() { data.users = await OS.api('users.list', undefined, {}); render(); }
@@ -1191,6 +1235,7 @@ LiteOS.ready((OS) => {
     if (b.dataset.set && b.dataset.val) { save({ [b.dataset.set]: b.dataset.val }); return; }
     if (b.dataset.toggle) { save({ [b.dataset.toggle]: !st()[b.dataset.toggle] }); return; }
     if (b.dataset.guest) { setGuest(b.dataset.guest, !data.system[b.dataset.guest]); return; }
+    if (b.dataset.usage) { setUsage({ usageTracking: !data.system.usageTracking }); return; }
     if (b.dataset.wall) { save({ wallpaper: b.dataset.wall }); return; }
     if (b.dataset.accent) { save({ accent: b.dataset.accent }); return; }
     if (b.dataset.launch) { OS.open(b.dataset.launch, b.dataset.args === 'device' ? { path: 'device:' } : undefined); return; }
@@ -1444,6 +1489,7 @@ LiteOS.ready((OS) => {
     const hidden = btn.dataset.name && btn.parentNode.querySelector('input[type=hidden][name="' + btn.dataset.name + '"]');
     if (hidden) hidden.value = v;
     if (btn.dataset.set) save({ [btn.dataset.set]: v });
+    else if (btn.dataset.sysset === 'usageKeepDays') setUsage({ usageKeepDays: +v });
     else if (btn.dataset.dev) onDevChange(btn.dataset.dev, v);
   }
   document.addEventListener('mousedown', (e) => { if (flyout && !flyout.el.contains(e.target) && e.target.closest('.st-combo') !== flyout.btn) closeCombo(); }, true);

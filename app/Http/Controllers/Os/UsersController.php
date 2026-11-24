@@ -8,6 +8,7 @@ use App\Support\Accounts;
 use App\Support\Drive;
 use App\Support\Role;
 use App\Support\SecurityLog;
+use App\Support\StorageReport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -90,9 +91,18 @@ class UsersController extends Controller
             ->where('role', '!=', Role::Guest->value)->first();
     }
 
+    /** Every account's drive, split into Desktop, Documents, Downloads and other (System Monitor › Storage). */
+    public function storage(): JsonResponse
+    {
+        $this->result = StorageReport::everyone();
+
+        return $this->jsonSuccess();
+    }
+
     public static function routes(): void
     {
         Route::get('/list', [self::class, 'list'])->name('users.list');
+        Route::get('/storage', [self::class, 'storage'])->name('users.storage');
         Route::post('/create', [self::class, 'create'])->name('users.create');
         Route::post('/update', [self::class, 'update'])->name('users.update');
         Route::post('/delete', [self::class, 'delete'])->name('users.delete');

@@ -219,6 +219,13 @@
     /** Mark unsaved changes; the shell asks before closing a dirty window. */
     setDirty(dirty) { if (host && winId) host.win.setDirty(winId, !!dirty); },
     /**
+     * What the window has open, for usage tracking (System Monitor's Usage): a file (its drive path) or a website (its
+     * domain only, such as 'github.com'; never the page's address), or null when nothing is open. Without it, the
+     * file the window was opened with counts.
+     *   OS.win.setItem({ kind: 'file', name: path })  OS.win.setItem({ kind: 'site', name: 'github.com' })
+     */
+    setItem(item) { if (host && winId && host.win.setItem) host.win.setItem(winId, item || null); },
+    /**
      * For apps whose manifest sets window.reportsReady: the window stays covered by the opening screen after the page
      * loads, until loaded() is called. Until then, loading(text, progress) shows what the app is doing under its icon
      * ("Reading the workbook", 0.45). Each call keeps the cover up another 15 seconds.
@@ -321,6 +328,58 @@
     }, true);
     document.addEventListener('keyup', (e) => { if (e.key === 'Alt' && host.switcher.open) host.switcher.release(); }, true);
   }
+
+  // ------------------------------------------------------------------ tasks
+  // The desktop asks every window now and then whether its page still answers (System Monitor's Not responding):
+  // the answer goes back from here. Ctrl+Shift+Esc in an app opens System Monitor, as it does on the desktop.
+  if (host) {
+    window.addEventListener('message', (e) => {
+      if (e.source === window.parent && e.data && e.data.los === 'ping') window.parent.postMessage({ los: 'pong' }, location.origin);
+    });
+    // input in the app counts as someone using the desktop (usage tracking stops after 5 minutes without any)
+    if (host.tasks && host.tasks.input) {
+      let told = 0;
+      const seen = () => { const now = Date.now(); if (now - told > 5000) { told = now; host.tasks.input(); } };
+      ['pointerdown', 'keydown', 'wheel', 'pointermove'].forEach((t) => document.addEventListener(t, seen, { capture: true, passive: true }));
+    }
+    // bytes this window's page received (System Monitor › Performance › Network), handed over every 2 seconds
+    if (host.perf && typeof PerformanceObserver === 'function') {
+      let got = 0;
+      try {
+        new PerformanceObserver((list) => { list.getEntries().forEach((e) => { got += e.transferSize || 0; }); }).observe({ type: 'resource', buffered: true });
+        setInterval(() => { if (got) { host.perf.received(got); got = 0; } }, 2000);
+      } catch (e) { /* not in this browser */ }
+    }
+    if (host.tasks && host.tasks.openMonitor) {
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'Escape') { e.preventDefault(); host.tasks.openMonitor(); }
+      }, true);
+    }
+  }
+  const tasks = {
+    /** The open windows: [{ id, app: { id, name, img }, title, dirty, min, max, focused, asleep, starting, responding, opened, rect }] */
+    list: () => (host && host.tasks ? host.tasks.list() : []),
+    /** What LiteOS keeps running in the background: [{ id, name, detail, since }] */
+    services: () => (host && host.tasks ? host.tasks.services() : []),
+    /** fn(list) whenever a window opens, closes, changes or stops answering. Returns a function that stops it. */
+    watch: (fn) => (host && host.tasks ? host.tasks.subscribe(fn, winId) : () => {}),
+    /** Bring a window to the front (restoring it when minimised). */
+    focus: (id) => !!(host && host.tasks && host.tasks.focus(id)),
+    /** Close a window as its close button does, asking about unsaved changes. -> Promise<boolean> */
+    close: (id) => (host && host.tasks ? host.tasks.close(id) : Promise.resolve(false)),
+    /** Close a window without asking. Ask the person first: unsaved changes are lost. -> Promise<boolean> */
+    end: (id) => (host && host.tasks ? host.tasks.end(id) : Promise.resolve(false)),
+  };
+
+  /** How the desktop's page is doing (System Monitor › Performance): the whole desktop, never one app. */
+  const perf = {
+    /** The last 5 minutes, every 2 seconds, oldest first: [{ t, mem, busy, lag, longest, tasks, rx, tx, fps }] */
+    history: () => (host && host.perf ? host.perf.history() : []),
+    /** { since, received, sent, memHigh } since the desktop started. */
+    totals: () => (host && host.perf ? host.perf.totals() : null),
+    /** fn(sample) every 2 seconds; the frame rate is counted only while something watches. Returns a function that stops it. */
+    watch: (fn) => (host && host.perf ? host.perf.watch(fn, winId) : () => {}),
+  };
 
   // ------------------------------------------------------------------ dialogs
   const dialog = {
@@ -453,6 +512,8 @@
     api,
     fs,
     win,
+    tasks,
+    perf,
     dialog,
     menu,
     closeMenu,

@@ -261,6 +261,7 @@ LiteOS.ready((OS) => {
     await closeDoc();
     current = file;
     setTitle(file.name);
+    if (OS.win.setItem) OS.win.setItem(file.path ? { kind: 'file', name: file.path } : null);
     task = lib.getDocument(Object.assign({
       cMapUrl: PDFJS + 'cmaps/',
       cMapPacked: true,
@@ -336,6 +337,7 @@ LiteOS.ready((OS) => {
     await closeDoc();
     current = null;
     setTitle('');
+    if (OS.win.setItem) OS.win.setItem(null);
     $('#toolbar').hidden = true;
     $('#body').hidden = true;
     renderStart();

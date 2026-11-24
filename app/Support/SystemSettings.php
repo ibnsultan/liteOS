@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 class SystemSettings
 {
     /**
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int, usageTracking: bool, usageKeepDays: int}
      */
     public static function defaults(): array
     {
@@ -32,13 +32,17 @@ class SystemSettings
             'archiveMaxFileMB' => 1024,
             'archiveMaxRatio' => 100,
             'archiveMaxEntries' => 20000,
+            // usage tracking (App\Support\Usage, System Monitor's Usage): off until an administrator turns it on, and how
+            // many days are kept
+            'usageTracking' => false,
+            'usageKeepDays' => 90,
         ];
     }
 
     /**
      * Every setting, stored values over the defaults.
      *
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int, usageTracking: bool, usageKeepDays: int}
      */
     public static function all(): array
     {
@@ -78,7 +82,7 @@ class SystemSettings
      * Validates and stores the changes an administrator made; unknown keys are ignored.
      *
      * @param  array<string, mixed>  $changes
-     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int}
+     * @return array{instanceName: string, defaultQuotaMB: int, defaultLocalQuotaMB: int, guestEnabled: bool, guestWeb: bool, guestApps: list<string>|null, createdAt: string|null, archiveMaxTotalMB: int, archiveMaxFileMB: int, archiveMaxRatio: int, archiveMaxEntries: int, usageTracking: bool, usageKeepDays: int}
      *
      * @throws ValidationException
      */
@@ -124,7 +128,14 @@ class SystemSettings
             throw ValidationException::withMessages(['archiveMaxFileMB' => 'The largest file can’t be more than the most data per extraction ('.min((int) $next['archiveMaxTotalMB'], self::archiveCeiling($next)).' MB).']);
         }
 
-        foreach (['guestEnabled', 'guestWeb'] as $key) {
+        if (array_key_exists('usageKeepDays', $changes)) {
+            if (! in_array((int) $changes['usageKeepDays'], [30, 90, 180, 365], true)) {
+                throw ValidationException::withMessages(['usageKeepDays' => 'Keep usage for 30, 90, 180 or 365 days.']);
+            }
+            $clean['usageKeepDays'] = (int) $changes['usageKeepDays'];
+        }
+
+        foreach (['guestEnabled', 'guestWeb', 'usageTracking'] as $key) {
             if (array_key_exists($key, $changes)) {
                 $clean[$key] = (bool) $changes[$key];
             }
@@ -137,6 +148,9 @@ class SystemSettings
         }
 
         self::put($clean);
+        if (array_key_exists('usageKeepDays', $clean)) {
+            Usage::prune();
+        }
         if (array_key_exists('guestEnabled', $clean)) {
             Guest::sync($clean['guestEnabled']);
         }

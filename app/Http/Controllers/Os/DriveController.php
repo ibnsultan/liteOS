@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Os;
 use App\Http\Controllers\Controller;
 use App\Support\Drive;
 use App\Support\RecentFiles;
+use App\Support\StorageReport;
 use App\Support\Trash;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -169,6 +170,14 @@ class DriveController extends Controller
         return $this->jsonSuccess();
     }
 
+    /** What fills the drive: by top folder, the largest files, the Trash (System Monitor › Storage). */
+    public function summary(Request $request): JsonResponse
+    {
+        $this->result = StorageReport::mine($request->user());
+
+        return $this->jsonSuccess();
+    }
+
     public function recent(Request $request): JsonResponse
     {
         $this->result = RecentFiles::list($request->user());
@@ -207,6 +216,7 @@ class DriveController extends Controller
         Route::get('/raw', [self::class, 'raw'])->name('fs.raw');
         Route::get('/search', [self::class, 'search'])->name('fs.search');
         Route::get('/usage', [self::class, 'usage'])->name('fs.usage');
+        Route::get('/summary', [self::class, 'summary'])->name('fs.summary');
         Route::get('/drives', [self::class, 'drives'])->name('fs.drives');
         Route::get('/recent', [self::class, 'recent'])->name('fs.recent');
         Route::post('/forget', [self::class, 'forget'])->name('fs.forget');

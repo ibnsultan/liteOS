@@ -1,0 +1,29 @@
+{
+  "id": "monitor",
+  "name": "System Monitor",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "See the open apps and windows, switch to them, and end one that stops responding.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "chart",
+  "colors": [
+    "#5B93EA",
+    "#2F6FD6"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      960,
+      620
+    ],
+    "chrome": "custom",
+    "material": "mica",
+    "single": true
+  },
+  "permissions": [
+    "tasks"
+  ]
+}

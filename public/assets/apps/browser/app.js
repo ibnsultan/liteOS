@@ -178,6 +178,10 @@ LiteOS.ready((OS) => {
     progress.hidden = !t.loading;
     $('#downloads').classList.toggle('busy', data.downloads.some((d) => d.status === 'busy'));
     OS.win.setTitle(t.title + ' — Browser');
+    // usage tracking: the site's name only, never the page's address
+    let host = '';
+    try { host = isInternal(t.url) ? '' : new URL(t.url).hostname.replace(/^www\./, ''); } catch (e) { host = ''; }
+    if (OS.win.setItem) OS.win.setItem(host ? { kind: 'site', name: host } : null);
   }
 
   function setLoading(t, on) {

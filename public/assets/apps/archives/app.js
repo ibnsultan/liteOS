@@ -144,6 +144,7 @@ LiteOS.ready((OS) => {
     st.sel.clear();
     $('#search').value = '';
     setTitle(name);
+    if (OS.win.setItem) OS.win.setItem(path ? { kind: 'file', name: path } : null);
     if (path) { st.recent = [path].concat(st.recent.filter((x) => x !== path)).slice(0, 10); saveState(); }
     render();
     return true;
@@ -202,6 +203,7 @@ LiteOS.ready((OS) => {
     setMenus();
     if (!open) {
       setTitle('Archives'); // nothing open: the window is just the app
+      if (OS.win.setItem) OS.win.setItem(null);
       $('#findBar').hidden = true;
       $('#main').innerHTML = '<div class="arc-empty">' + OS.fileTile({ name: 'a.zip', type: 'file' }, 64) +
         '<h2>No archive open</h2><p>Open an archive (ZIP, TAR, GZIP, 7z or RAR) to see what’s inside, or drop one on this window.</p>'  + '</div>';

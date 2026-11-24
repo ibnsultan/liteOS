@@ -24,7 +24,7 @@ return [
 
     // the apps a Local account may open unless an administrator picks others (App\Support\Capabilities); Settings is
     // always allowed, and the Browser only with web access
-    'local_apps' => ['files', 'documents', 'sheets', 'slides', 'notes', 'pdf', 'media', 'board', 'calculator', 'clock', 'archives', 'settings', 'browser'],
+    'local_apps' => ['files', 'documents', 'sheets', 'slides', 'notes', 'pdf', 'media', 'board', 'calculator', 'clock', 'archives', 'monitor', 'settings', 'browser'],
 
     // what one account may ask of the server's web connection, so nobody can use it as an unmetered proxy: requests a
     // minute for signing relay links, relayed requests (HLS asks for a segment every few seconds per stream, and
@@ -43,7 +43,7 @@ return [
 
     // the launcher's order for the bundled apps; apps not listed (installed later) follow, by name. Which apps are part
     // of the OS and can't be removed is "system": true in their manifest.
-    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'settings'],
+    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'settings'],
 
     // file-type groups, by extension; the SDK hands these to apps as OS.kinds
     'kinds' => [
