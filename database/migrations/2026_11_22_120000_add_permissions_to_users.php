@@ -11,10 +11,6 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // A Local account's switches set by an administrator (web access, allowed apps, changing its own name and
-        // password; App\Support\Capabilities). Null means the role's defaults, which is what every existing account
-        // gets, so administrators and standard users behave exactly as before. The role column is already a string,
-        // so "local" needs no change there.
         Schema::table('users', function (Blueprint $table) {
             $table->json('permissions')->nullable()->after('quota_mb');
         });
