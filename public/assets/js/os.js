@@ -3554,7 +3554,7 @@
     }
     const appBtn = e.target.closest('.dock [data-app], .taskbar [data-app]');
     if (appBtn) { e.preventDefault(); appMenu(appBtn.dataset.app, appBtn); return; }
-    // the bar itself (empty space, the launcher button, the tray): Task Manager (not built yet) and the taskbar settings
+    // the bar itself (empty space, the launcher button, the tray): System Monitor and the taskbar settings
     if (e.target.closest('.taskbar, .dock')) {
       e.preventDefault();
       showMenu([
