@@ -135,7 +135,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .launcher .ls-body { flex: 1; min-height: 0; }
 .ls-head { display: flex; align-items: center; padding: 10px 24px 2px; font-size: var(--fs-m); font-weight: 600; color: var(--text-2); }
 /* "All apps", "Back", "Show all": transparent, filled on hover, the chevron centred on the text */
-.ls-head .link { margin-left: auto; height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); font-size: var(--fs-s); font-weight: 500; line-height: 1; cursor: pointer; }
+.ls-head .link { margin-left: auto; height: 26px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; border: none; border-radius: var(--radius); background: transparent; color: var(--text); font-size: var(--fs-s); font-weight: 500; line-height: 1; cursor: pointer; }
 .ls-head .link:hover { background: var(--hover); }
 .ls-head .link .ico { width: 12px; height: 12px; flex: none; color: var(--text-2); }
 .ls-head .link .ico:first-child { margin-left: -2px; }
@@ -178,9 +178,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .input:focus-
 .lc-app:hover { background: var(--hover); }
 .lc-app img.appicon { width: 28px; height: 28px; filter: none; }
 .lc-app span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lc-side { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 0 16px; }
+.lc-side { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 0 16px; container-type: inline-size; }
 .lc-side .ls-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.lc-side .ls-files { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.lc-side .ls-files { grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
+/* too narrow for five readable tiles (a small screen, or the launcher made narrow): Recent only */
+@container (max-width: 380px) { .lc-pop { display: none; } }
+@container (max-width: 260px) { .lc-side .ls-head { padding: 10px 8px 2px 14px; } .lc-side .ls-head .link { padding: 0 4px 0 6px; } .lc-side .ls-files { padding: 6px 6px 14px; } }
+/* a small screen: the classic launcher is the app list only */
+@media (max-width: 600px) { .launcher.classic { width: auto !important; } .lc-side, .lc-size { display: none; } .lc-list { border-right: none; } }
 .lc-size { position: absolute; top: 0; right: 0; bottom: 0; width: 6px; cursor: ew-resize; }
 
 .qs { width: 348px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }

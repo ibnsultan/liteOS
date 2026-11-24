@@ -1748,7 +1748,7 @@
   function renderClassicSide(cell, recentBtn) {
     const area = $('#pops .lc-side', root);
     if (!area) return;
-    area.innerHTML = '<div class="ls-head">Popular</div><div class="ls-grid">' + popularApps().slice(0, 10).map(cell).join('') + '</div>' +
+    area.innerHTML = '<div class="lc-pop"><div class="ls-head">Popular</div><div class="ls-grid">' + popularApps().slice(0, 10).map(cell).join('') + '</div></div>' +
       '<div class="ls-head">Recent' + (UI.recent.length ? '<button class="link" data-act="ls-recent">Show all' + ICON('forward', 14) + '</button>' : '') + '</div>' +
       (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 8).map(recentBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
   }
