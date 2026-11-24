@@ -3558,7 +3558,7 @@
     if (e.target.closest('.taskbar, .dock')) {
       e.preventDefault();
       showMenu([
-        { label: 'System Monitor', icon: 'tb-taskmgr', key: 'Ctrl+Shift+Esc', disabled: !window.LOS_app('monitor'), action: openMonitor },
+        { label: 'System Monitor', icon: 'tb-taskmgr', key: 'Ctrl+Shift+`', disabled: !window.LOS_app('monitor'), action: openMonitor },
         'sep',
         { label: 'Taskbar settings', icon: 'tb-cog', action: () => openApp('settings', { section: 'taskbar' }) },
       ], { x: e.clientX, y: e.clientY });
@@ -3605,7 +3605,8 @@
     if (switcherKey(e)) return;
     if (e.key === 'Escape') { hideMenu(); previewHide(); if (UI.pop) closePops(); }
     if (S.user && !UI.lockShown && e.altKey && e.code === 'Space') { e.preventDefault(); togglePop('launcher'); }
-    if (e.ctrlKey && e.shiftKey && e.key === 'Escape') { e.preventDefault(); openMonitor(); }
+    // Ctrl+Shift+Esc, and Ctrl+Shift+` where the system keeps Esc for its own task manager (Windows)
+    if (e.ctrlKey && e.shiftKey && (e.key === 'Escape' || e.code === 'Backquote' || e.key === '`' || e.key === '~')) { e.preventDefault(); openMonitor(); }
   });
 
   document.addEventListener('keyup', (e) => { if (e.key === 'Alt') switcherCommit(); });
@@ -3821,7 +3822,7 @@
     w.item = null;
   }
 
-  /** Ctrl+Shift+Esc, and the taskbar's menu. */
+  /** Ctrl+Shift+` or Ctrl+Shift+Esc, and the taskbar's menu. */
   function openMonitor() {
     if (!S.user || UI.lockShown || !window.LOS_app('monitor')) return;
     closePops(); hideMenu();

@@ -331,7 +331,7 @@
 
   // ------------------------------------------------------------------ tasks
   // The desktop asks every window now and then whether its page still answers (System Monitor's Not responding):
-  // the answer goes back from here. Ctrl+Shift+Esc in an app opens System Monitor, as it does on the desktop.
+  // the answer goes back from here. Ctrl+Shift+` or Ctrl+Shift+Esc in an app opens System Monitor, as on the desktop.
   if (host) {
     window.addEventListener('message', (e) => {
       if (e.source === window.parent && e.data && e.data.los === 'ping') window.parent.postMessage({ los: 'pong' }, location.origin);
@@ -352,7 +352,7 @@
     }
     if (host.tasks && host.tasks.openMonitor) {
       document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'Escape') { e.preventDefault(); host.tasks.openMonitor(); }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'Escape' || e.code === 'Backquote' || e.key === '`' || e.key === '~')) { e.preventDefault(); host.tasks.openMonitor(); }
       }, true);
     }
   }

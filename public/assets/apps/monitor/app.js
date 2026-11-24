@@ -192,7 +192,7 @@ LiteOS.ready((OS) => {
       '<div class="sm-list" role="grid" aria-label="Processes" tabindex="0">' + rows.join('') + '</div>' +
       '<div class="sm-status"><span>' + all.length + (all.length === 1 ? ' app, ' : ' apps, ') + winCount + (winCount === 1 ? ' window' : ' windows') + '</span>' +
       (bad ? '<span class="sm-bad">' + bad + ' not responding</span>' : '') +
-      '<span class="end">Ctrl+Shift+Esc opens System Monitor</span></div>';
+      '<span class="end">Ctrl+Shift+` or Ctrl+Shift+Esc opens System Monitor</span></div>';
     const nl = $('.sm-list', main);
     nl.scrollTop = scroll;
     if (hadFocus) nl.focus();
