@@ -76,8 +76,9 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
 .sm-off b { color: var(--text); font-size: 15px; font-weight: 600; }
 .sm-off .btn { margin-top: 6px; }
 .sm-usage { padding: 4px 24px 0; }
-.sm-total { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
-.sm-total b { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sm-total { display: flex; align-items: baseline; gap: 2px 12px; flex-wrap: wrap; margin-bottom: 6px; }
+/* the total on its own line, what it covers under it */
+.sm-total b { flex-basis: 100%; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .sm-total span { color: var(--muted); }
 .sm-total .end { margin-left: auto; }
 .sm-tl { display: block; width: 100%; height: 22px; border-radius: 4px; margin-top: 8px; }
@@ -119,7 +120,8 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
 .sm-mt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: none; border-radius: var(--radius-l); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .sm-mt:hover { background: var(--hover); }
 .sm-mt.on { background: var(--accent-soft); }
-.sm-mt b { display: block; font-weight: 600; }
+.sm-mt { min-width: 0; }
+.sm-mt b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sm-mt small { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sm-mt > span { min-width: 0; }
 .sm-spark { width: 64px; height: 36px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
@@ -261,6 +263,7 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
   .sm-cols > :nth-child(3), .sm-cols > :nth-child(4), .sm-row > :nth-child(3), .sm-row > :nth-child(4) { display: none; }
 }
 @media (max-width: 560px) {
+  .sm-plist { grid-template-columns: minmax(0, 1fr); }
   .sm-title-name { display: none; }
   .sm-search { margin-left: 0; flex: 1 1 auto; width: auto; }
   .sm-status .end { display: none; }
