@@ -6,7 +6,7 @@
     <button class="icon-btn" data-c="forward" aria-label="Forward"></button>
     <button class="icon-btn" data-c="up" aria-label="Up one level"></button>
     <div class="crumbs" id="crumbs"></div>
-    <label class="search" style="width:240px"><span id="search-ico"></span><input class="input" id="search" type="search" placeholder="Search My drive" aria-label="Search My drive"></label>
+    <label class="search"><span id="search-ico"></span><input class="input" id="search" type="search" placeholder="Search My drive" aria-label="Search My drive"></label>
   </div>
   <div class="toolbar cmd" id="cmdbar"></div>
   <div class="split">

@@ -2,6 +2,9 @@
 .crumbs { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line-strong); overflow: hidden; white-space: nowrap; margin: 0 6px; }
 /* opening a folder that takes a moment: the pointer says it's working and a bar runs along the address bar */
 .crumbs { position: relative; }
+/* the address bar keeps most of a narrow window; the search box gives way first, down to a usable width */
+.toolbar.nav .crumbs { flex: 3 1 0; }
+.toolbar.nav .search { flex: 1 1 0; max-width: 240px; min-width: 120px; }
 body.loading, body.loading * { cursor: progress !important; }
 body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 0; width: 30%; height: 2px; border-radius: var(--radius-full); background: var(--accent); animation: crumbsBusy 1s ease-in-out infinite; }
 @keyframes crumbsBusy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
@@ -206,3 +209,15 @@ body.loading .crumbs::after { content: ''; position: absolute; left: 0; bottom: 
 :root.in-shell:not([data-glass="off"]) .thead { background: var(--mica-layer); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
 :root.in-shell:not([data-glass="off"]) .details .preview { background: var(--mica-layer); }
 :root.in-shell:not([data-glass="off"]) .statusbar { border-top-color: transparent; }
+
+/* a narrow window: search is an icon that widens while it has focus and folds back when it loses it */
+@media (max-width: 560px) {
+  .toolbar.nav .search { flex: 0 0 34px; min-width: 34px; max-width: none; transition: flex-basis .15s ease; }
+  .toolbar.nav .search:focus-within { flex-basis: 150px; }
+  .toolbar.nav .search:not(:focus-within) .input { padding-right: 0; border-color: transparent; background: transparent; color: transparent; cursor: pointer; }
+  .toolbar.nav .search:not(:focus-within):hover .input { background: var(--hover); }
+  .toolbar.nav .search:not(:focus-within) .input::placeholder { color: transparent; }
+  .toolbar.nav .search:not(:focus-within) .input::-webkit-search-cancel-button { display: none; }
+  .toolbar.nav .search .ico { color: var(--text); }
+}
+@media (max-width: 560px) and (prefers-reduced-motion: reduce) { .toolbar.nav .search { transition: none; } }

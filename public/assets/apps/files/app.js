@@ -1198,6 +1198,14 @@ LiteOS.ready((OS) => {
     else if (st.path === 'search:') { st.fwd = []; load(st.back.pop() || '/', { keepHistory: true }); }
   }, 300));
 
+  // The command bar scrolls sideways when the window is too narrow for it: a mouse wheel moves it along (touch swipes)
+  const cmdbar = $('#cmdbar');
+  cmdbar.addEventListener('wheel', (ev) => {
+    if (cmdbar.scrollWidth <= cmdbar.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+    ev.preventDefault();
+    cmdbar.scrollLeft += ev.deltaY;
+  }, { passive: false });
+
   // Upload input
   $('#upload').addEventListener('change', (ev) => { upload(ev.target.files); ev.target.value = ''; });
 
