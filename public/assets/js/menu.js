@@ -15,14 +15,24 @@
   // a glyph name the system icon set has an icon for is drawn from the set (LOS_sysGlyph), anything else as the glyph
   const icon = (n, s) => (window.LOS_sysGlyph ? window.LOS_sysGlyph(n, s) : window.LOS_icon ? window.LOS_icon(n, s) : '');
   let current = null;
+  let lastOutside = null; // { el, at }: the button an outside press closed the menu on
 
   /**
    * Opens a menu at {x, y} (or a MouseEvent); {above: true} puts it above y. Returns a function that closes it.
    * opts: { onClose, cls, parent (element to add it to; default document.body) }
    */
   function open(items, at, opts) {
-    close();
     opts = opts || {};
+    // the same button pressed again while its menu was open: that press closed it (outside, below), so the click it
+    // ends with doesn't open it again. A drop-down toggles.
+    const ev = window.event;
+    if (lastOutside && ev && ev.type === 'click' && Date.now() - lastOutside.at < 800 && ev.target && lastOutside.el.contains(ev.target)) {
+      lastOutside = null;
+      if (opts.onClose) opts.onClose();
+      return () => {};
+    }
+    lastOutside = null;
+    close();
     const host = opts.parent || document.body;
     const levels = []; // open menus, the root first
     const x = at.clientX != null ? at.clientX : at.x;
@@ -145,7 +155,13 @@
         if (it.items) { openSub(list[at], level); const first = enabled(level + 1)[0]; if (first) first.focus(); } else run(it);
       }
     }
-    function outside(e) { if (!levels.some((m) => m.contains(e.target))) close(); }
+    function outside(e) {
+      if (levels.some((m) => m.contains(e.target))) return;
+      // a press on the button that opened it closes it, and the click that follows mustn't open it again
+      const t = e.target && e.target.closest ? e.target.closest('button, [role="button"], [data-act], [aria-haspopup]') : null;
+      lastOutside = t ? { el: t, at: Date.now() } : null;
+      close();
+    }
 
     const root = build(items, 0);
     levels.push(root);
