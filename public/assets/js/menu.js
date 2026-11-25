@@ -94,6 +94,7 @@
       const r = el.getBoundingClientRect();
       el.style.left = Math.max(4, Math.min(px, window.innerWidth - r.width - 4)) + 'px';
       el.style.top = Math.max(4, Math.min(above ? py - r.height : py, window.innerHeight - r.height - 4)) + 'px';
+      if (above) el.classList.add('up'); // it grows from the side it opens on
     }
 
     function openSub(btn, level) {
@@ -116,7 +117,12 @@
       while (levels.length > level) {
         const m = levels.pop();
         if (m._from) m._from.classList.remove('open');
-        m.remove();
+        // it fades away (menu.css); gone once that ends, or soon after if motion is reduced and nothing plays
+        m.classList.add('closing');
+        let gone = false;
+        const drop = () => { if (!gone) { gone = true; m.remove(); } };
+        m.addEventListener('animationend', drop, { once: true });
+        setTimeout(drop, 180);
       }
     }
 

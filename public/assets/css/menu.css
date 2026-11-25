@@ -15,3 +15,14 @@
 /* system icons from the icon set are pictures: they dim with a disabled item instead of taking its colour */
 .menu-item img.sysico { width: 16px; height: 16px; object-fit: contain; }
 .menu-item:disabled img.sysico, .menu-item:disabled .mi-img { opacity: .45; }
+
+/* Menus fade in from the side they open on, and fade away when they close (menu.js) */
+.menu { animation: menuIn .14s cubic-bezier(.2, .9, .25, 1) both; transform-origin: 50% 0; }
+.menu.up { transform-origin: 50% 100%; animation-name: menuInUp; }
+.menu-sub { animation-name: menuInSide; transform-origin: 0 0; }
+.menu.closing { animation: menuOut .12s ease-in both; pointer-events: none; }
+@keyframes menuIn { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes menuInUp { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes menuInSide { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@keyframes menuOut { to { opacity: 0; transform: scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .menu, .menu.closing { animation: none; } }

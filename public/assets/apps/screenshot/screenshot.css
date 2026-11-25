@@ -103,3 +103,4 @@ body { margin: 0; background: var(--page); color: var(--text); overflow: hidden;
 .ss-fly-size { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
 .ss-fly-size input { flex: 1; accent-color: var(--accent); }
 .ss-fly-size output { min-width: 20px; text-align: right; color: var(--text); }
+.ss-fly { animation: menuIn .14s cubic-bezier(.2, .9, .25, 1) both; transform-origin: 50% 0; } /* as the menus (menu.css) */
