@@ -7,8 +7,12 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
-// The app list comes from the manifest.json files: the bundled apps in public/assets/apps, in launcher order, and
-// broken folders are skipped rather than breaking the desktop.
+/**
+ * AppRegistryTest
+ *
+ * The app list comes from the manifest.json files: the bundled apps in public/assets/apps, in launcher order, and
+ * broken folders are skipped rather than breaking the desktop.
+ */
 class AppRegistryTest extends TestCase
 {
     private string $tmp;
@@ -31,7 +35,7 @@ class AppRegistryTest extends TestCase
         $registry = app(AppRegistry::class);
 
         $this->assertSame(
-            ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'settings'],
+            ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'settings'],
             $registry->ids(),
         );
     }
@@ -43,6 +47,9 @@ class AppRegistryTest extends TestCase
         $this->assertSame(['files', 'settings'], $system);
     }
 
+    /**
+     * LiteOS's own apps take their icon from the system icon set.
+     */
     public function test_the_shell_gets_each_app_with_its_icon_window_and_file_types(): void
     {
         $media = collect(app(AppRegistry::class)->forClient())->firstWhere('id', 'media');
@@ -52,7 +59,6 @@ class AppRegistryTest extends TestCase
         $this->assertSame([1040, 660], $media['size']);
         $this->assertContains('mp4', $media['exts']);
         $this->assertContains('m3u8', $media['exts']);
-        // LiteOS's own apps take their icon from the system icon set
         $this->assertSame('app.media', $media['role']);
         $this->assertStringEndsWith('/icons/liteos/light/apps/scalable/multimedia-video-player.svg', $media['img']);
         $this->assertStringEndsWith('/apps/media', $media['entry']);

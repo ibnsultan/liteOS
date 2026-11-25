@@ -5,9 +5,9 @@
 
   const root = document.getElementById('os');
   const endpoint = (action) => window.LOS_endpoint(action);
-  // a file on the user's drive as a URL (pictures, wallpapers, downloads)
+  /** A file on the user's drive as a URL (pictures, wallpapers, downloads). */
   const rawUrl = (path, download) => endpoint('fs.raw') + '?path=' + encodeURIComponent(path) + (download ? '&download=1' : '');
-  // system icons come from the icon set where it has one for the glyph name (LOS_sysGlyph), the glyph otherwise
+  /** System icons come from the icon set where it has one for the glyph name (LOS_sysGlyph), the glyph otherwise. */
   const ICON = (n, s, c) => window.LOS_sysGlyph(n, s, c);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (sel, el) => (el || document).querySelector(sel);
@@ -15,15 +15,17 @@
 
   const S = { csrf: window.LOS_CONFIG.csrf, user: null, settings: null, system: {}, setupNeeded: false };
   const UI = { pop: null, lsQuery: '', recent: [], results: [], usage: null, lockShown: false };
-  // what each app window asked to hear about (settings and theme changes): listener -> its window. A window's
-  // listeners go when it closes or loads again: a function of a page that has gone still runs when called, and
-  // holding it keeps that whole page in memory.
+  /**
+   * What each app window asked to hear about (settings and theme changes): listener -> its window. A window's
+   * listeners go when it closes or loads again: a function of a page that has gone still runs when called, and
+   * holding it keeps that whole page in memory.
+   */
   const subs = new Map();
   const wins = new Map();
   let zTop = 100;
   let focusedId = null;
   let winSeq = 0;
-  // tasks: who watches the windows (System Monitor), and the asking of each window whether it still answers
+  /** Tasks: who watches the windows (System Monitor), and the asking of each window whether it still answers. */
   const TASKS = { subs: new Map(), timer: 0, queued: 0, since: Date.now(), input: Date.now(), leave: new Set() };
   const PING_EVERY = 2000, PING_LATE = 5000;
   const DEFAULTS = {
@@ -35,10 +37,21 @@
     launcherWidth: 0, appUsage: {},
   };
 
-  // ================================================================== api
-  // An action ('fs.list') is a route (/os/fs/list, see LOS_endpoint): GET with `query` for reads (data undefined),
-  // POST with a JSON or FormData body for changes. Replies are { success, message, result }; this returns `result`,
-  // or throws the message (a plain sentence, shown to the user).
+  /*
+  |--------------------------------------------------------------------------
+  | API
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * api
+   *
+   * An action ('fs.list') is a route (/os/fs/list, see LOS_endpoint): GET with `query` for reads (data undefined),
+   * POST with a JSON or FormData body for changes. Replies are { success, message, result }; this returns `result`,
+   * or throws the message (a plain sentence, shown to the user). Form data from an app window belongs to that
+   * iframe's realm, so `instanceof FormData` is false there. A 423 means the session was locked in another tab: lock
+   * here too.
+   */
   async function api(action, data, query, retried) {
     const read = data === undefined;
     let url = endpoint(action);
@@ -47,7 +60,6 @@
     if (!read) {
       opts.method = 'POST';
       opts.headers['X-CSRF-TOKEN'] = S.csrf || '';
-      // Form data from an app window belongs to that iframe's realm, so `instanceof FormData` is false there.
       if (Object.prototype.toString.call(data) === '[object FormData]') opts.body = data;
       else { opts.body = JSON.stringify(data || {}); opts.headers['Content-Type'] = 'application/json'; }
       if (window.LOS_perfSent) window.LOS_perfSent(opts.body);
@@ -62,7 +74,7 @@
         return api(action, data, query, true);
       }
       if (res.status === 401 && S.user) sessionLost();
-      if (res.status === 423 && S.user) lockScreen(true); // locked in another tab: lock here too
+      if (res.status === 423 && S.user) lockScreen(true);
       throw new Error(json.message || 'Request failed');
     }
     if (!read && /^(fs|trash)\./.test(action) && typeof deskFilesChanged === 'function') deskFilesChanged();
@@ -75,21 +87,28 @@
     notify('You were signed out. Sign in again to continue.', { type: 'error', title: 'Signed out' });
     setTimeout(() => location.reload(), 1500);
   }
-  // A refused request (401) tells the desktop its session ended, but a desktop that asks the server little (a guest's
-  // files are answered in the browser) could go on looking signed in, and the next app window would then show the
-  // sign-in page. So it also asks every minute and whenever the tab comes back into view; an ended session, or an
-  // account an administrator disabled or that was turned off (the guest), goes back to the sign-in page.
+  /**
+   * A refused request (401) tells the desktop its session ended, but a desktop that asks the server little (a guest's
+   * files are answered in the browser) could go on looking signed in, and the next app window would then show the
+   * sign-in page. So it also asks every minute and whenever the tab comes back into view; an ended session, or an
+   * account an administrator disabled or that was turned off (the guest), goes back to the sign-in page. Offline, it
+   * tries again later.
+   */
   async function checkSession() {
     if (!S.user || UI.lockShown || document.hidden) return;
     let st;
-    try { st = await api('auth.status'); } catch (e) { return; } // offline: try again later
+    try { st = await api('auth.status'); } catch (e) { return; }
     if (st && st.csrf) S.csrf = st.csrf;
     if (!st || !st.user || st.user.disabled || st.user.username !== S.user.username) sessionLost();
   }
   setInterval(checkSession, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkSession(); });
 
-  // ================================================================== helpers
+  /*
+  |--------------------------------------------------------------------------
+  | Helpers
+  |--------------------------------------------------------------------------
+  */
   const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
   const avatar = (u, size) => '<span class="avatar" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.38) + 'px;background:' + esc(u.color || '#2F6FD6') + '">' + esc(initials(u.name)) + '</span>';
   const tileBg = (c) => 'background:linear-gradient(180deg,' + c[0] + ',' + c[1] + ')';
@@ -127,17 +146,29 @@
     return wp.css;
   }
 
-  // ================================================================== the device (LiteLink)
-  // On a LiteLink thin client, LiteLink gives this page window.LiteLink (docs/litelink-integration.md). The shell
-  // uses it for the device's power (restart, shut down, End session), its sound (the volume in the top bar, the tray
-  // and Quick settings), its network (an icon with its state) and Bluetooth (a Quick settings tile): each only once
-  // LiteLink answered and allows that area. Anywhere else DEV.ll stays null, none of this shows, and nothing calls it.
+  /*
+  |--------------------------------------------------------------------------
+  | The device (LiteLink)
+  |--------------------------------------------------------------------------
+  |
+  | On a LiteLink thin client, LiteLink gives this page window.LiteLink (docs/litelink-integration.md). The shell
+  | uses it for the device's power (restart, shut down, End session), its sound (the volume in the top bar, the tray
+  | and Quick settings), its network (an icon with its state) and Bluetooth (a Quick settings tile): each only once
+  | LiteLink answered and allows that area. Anywhere else DEV.ll stays null, none of this shows, and nothing calls it.
+  |
+  */
   const DEV = { ll: null, caps: {}, audio: null, net: null, bt: null, started: false };
-  // what this account may do with the device (OS.user.can): restarting, shutting down and Bluetooth change the device
-  // for everyone, so Local accounts and guests don't get them; USB drives need can.usb
+  /**
+   * What this account may do with the device (OS.user.can): restarting, shutting down and Bluetooth change the device
+   * for everyone, so Local accounts and guests don't get them; USB drives need can.usb.
+   */
   const DEV_NEEDS = { power: 'settingsDevice', bluetooth: 'settingsDevice', storage: 'usb', print: 'print' };
   const devHas = (area) => !!(DEV.ll && DEV.caps[area]) && !(DEV_NEEDS[area] && S.user && S.user.can && !S.user.can[DEV_NEEDS[area]]);
   const devAudio = () => (devHas('audio') && DEV.caps.audio.output && DEV.audio ? DEV.audio : null);
+  /**
+   * Ask LiteLink, once, what it allows, then follow the device's sound, network and Bluetooth. A volume changed
+   * elsewhere (LiteLink's volume menu, a headset, Settings) is followed, unless a slider is being dragged.
+   */
   function startDevice() {
     if (DEV.started) return;
     DEV.started = true;
@@ -151,7 +182,6 @@
       const redraw = () => { renderBars(); if (UI.pop && UI.pop !== 'launcher') renderPop(); };
       if (caps.audio && caps.audio.output) {
         LL.audio.state().then((a) => { DEV.audio = a; redraw(); }).catch(() => {});
-        // changed elsewhere (LiteLink's volume menu, a headset, Settings): follow, unless a slider is being dragged
         LL.on('audio', (a) => { DEV.audio = a; if (!(document.activeElement && document.activeElement.matches('.qrange[data-k=volume]'))) redraw(); });
       }
       if (caps.network) {
@@ -162,7 +192,7 @@
       redraw();
     }, () => {});
   }
-  // the volume shown: the device's on a LiteLink device, LiteOS's own app volume otherwise
+  /** The volume shown: the device's on a LiteLink device, LiteOS's own app volume otherwise. */
   function volIconName() {
     const a = devAudio();
     if (a) return a.muted || !a.volume ? 'mute' : 'volume';
@@ -173,7 +203,7 @@
     if (!devAudio()) return;
     DEV.ll.audio.set(changes).then((a) => { DEV.audio = a; }).catch((e) => notify(e.message, { type: 'error', title: 'Sound' }));
   }, 120);
-  // the network icon: wired, Wi-Fi or offline (from the icon set's tray icons)
+  /** The network icon: wired, Wi-Fi or offline (from the icon set's tray icons). */
   function netIcon(size) {
     const n = DEV.net;
     const role = !n || !n.connected ? 'tray.offline' : n.kind === 'wifi' ? 'tray.wifi-good' : 'tray.wired';
@@ -203,19 +233,28 @@
     } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t ' + words[1].toLowerCase() }); }
   }
 
-  // ================================================================== boot
+  /*
+  |--------------------------------------------------------------------------
+  | Boot
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * boot
+   *
+   * If the server can't be reached, keep the boot screen up and retry: the server may still be starting. Setup and
+   * signing in are pages of their own (resources/views/auth); this page is only served signed in.
+   */
   async function boot() {
     try {
       const s = await api('auth.status');
       Object.assign(S, { csrf: s.csrf, user: s.user, settings: s.settings, system: s.system || {}, setupNeeded: s.setupNeeded });
     } catch (e) {
-      // Keep the boot screen up and retry: the server may still be starting.
       const msg = document.querySelector('#boot .boot-msg');
       if (msg) { msg.textContent = e.message + ' Retrying…'; msg.style.opacity = '.9'; }
       setTimeout(boot, 5000);
       return;
     }
-    // setup and signing in are pages of their own (resources/views/auth); this page is only served signed in
     if (!S.user) { location.assign(window.LOS_BASE + (S.setupNeeded ? 'setup' : 'login')); return; }
     if (window.LOS_CONFIG.guest) await startGuestDrive();
     else dropGuestWorker();
@@ -223,18 +262,25 @@
     prepareDesktop(!!window.LOS_CONFIG.welcome);
   }
 
-  // The Guest account's files, Trash and settings live in this browser: LOS_endpoint sends the drive's actions to
-  // os/guestfs/..., which assets/js/guest-drive.js answers in every guest page. Where the browser allows a service
-  // worker, the same code also runs there (public/guest-sw.js), so <img>, <video> and downloads of a guest's files
-  // work too; without one only fetch() reaches them. The guest's own settings are kept there as well and laid over
-  // the defaults the server sent (only keys the server knows are kept).
+  /*
+  |--------------------------------------------------------------------------
+  | Guest drive
+  |--------------------------------------------------------------------------
+  |
+  | The Guest account's files, Trash and settings live in this browser: LOS_endpoint sends the drive's actions to
+  | os/guestfs/..., which assets/js/guest-drive.js answers in every guest page. Where the browser allows a service
+  | worker, the same code also runs there (public/guest-sw.js), so <img>, <video> and downloads of a guest's files
+  | work too; without one only fetch() reaches them. The guest's own settings are kept there as well and laid over
+  | the defaults the server sent (only keys the server knows are kept).
+  |
+  */
   S.guestBase = null;
   const guestSettings = (mine) => {
     const out = Object.assign({}, S.guestBase);
     Object.keys(mine || {}).forEach((k) => { if (k in S.guestBase) out[k] = mine[k]; });
     return out;
   };
-  // an account that isn't the guest has no use for a guest drive worker left on this browser by an earlier guest
+  /** An account that isn't the guest has no use for a guest drive worker left on this browser by an earlier guest. */
   function dropGuestWorker() {
     const sw = navigator.serviceWorker;
     if (!sw || !sw.getRegistrations) return;
@@ -243,9 +289,10 @@
       if (w && /\/guest-sw\.js(\?|$)/.test(new URL(w.scriptURL).pathname + new URL(w.scriptURL).search)) r.unregister();
     })).catch(() => {});
   }
+  /** Start the guest drive. A browser that can't keep one is reported once the desktop is up. */
   async function startGuestDrive() {
     S.guestBase = S.settings;
-    if (!window.LOS_guestDrive || !navigator.storage || !navigator.storage.getDirectory) return; // reported once the desktop is up
+    if (!window.LOS_guestDrive || !navigator.storage || !navigator.storage.getDirectory) return;
     const sw = navigator.serviceWorker;
     if (sw) {
       try {
@@ -259,12 +306,19 @@
     try { S.settings = guestSettings(await api('settings.get')); } catch (e) { /* the defaults, then */ }
   }
 
-  // The boot screen is also the waiting room: the desktop is built behind it with the user's data already in hand
-  // (what's on the desktop, recent files, storage), then it waits for the wallpaper, the icons and the fonts, so
-  // nothing pops in or moves once it fades. Each wait has a cap, so a slow request never keeps the user out.
+  /*
+  |--------------------------------------------------------------------------
+  | Preparing the desktop
+  |--------------------------------------------------------------------------
+  |
+  | The boot screen is also the waiting room: the desktop is built behind it with the user's data already in hand
+  | (what's on the desktop, recent files, storage), then it waits for the wallpaper, the icons and the fonts, so
+  | nothing pops in or moves once it fades. Each wait has a cap, so a slow request never keeps the user out.
+  |
+  */
   const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  // loaded, not decode(): a page in the background never finishes decode(), and loading is the slow part anyway
+  /** Loaded, not decode(): a page in the background never finishes decode(), and loading is the slow part anyway. */
   const loaded = (img) => (img.complete ? null : new Promise((r) => { img.addEventListener('load', r, { once: true }); img.addEventListener('error', r, { once: true }); }));
   const imagesReady = (scope) => Promise.all($$('img', scope).map(loaded));
   function wallpaperReady() {
@@ -274,11 +328,15 @@
     img.src = m[1];
     return loaded(img);
   }
+  /**
+   * Build the desktop behind the boot screen, restore the windows that were open (after a reload), then wait for
+   * the images and fonts before fading. A hidden tab draws no frames, so that wait is capped too. Whether the kite
+   * draws or shimmers is decided in the page itself, before the first paint (components/boot).
+   */
   async function prepareDesktop(firstRun) {
     const b = document.getElementById('boot');
     const say = (m) => { const el = b && b.querySelector('.boot-msg'); if (el) el.textContent = m; };
     if (b) b.classList.add('busy');
-    // (whether the kite draws or shimmers is decided in the page itself, before the first paint: components/boot)
     say('Welcome, ' + (S.user.name || S.user.username).split(' ')[0]);
     const wall = wallpaperReady();
     await capped(Promise.allSettled([
@@ -288,9 +346,9 @@
     ]), 6000);
     say('Setting up your desktop');
     startDesktop(false, true);
-    restoreDesk(); // after a reload: the windows that were open
+    restoreDesk();
     await capped(Promise.all([wall, imagesReady(root), document.fonts && document.fonts.ready]), 4000);
-    await capped(nextFrame(), 120); // a hidden tab draws no frames
+    await capped(nextFrame(), 120);
     bootDone();
     if (firstRun) setTimeout(() => notify('Open the launcher to find your apps.', { type: 'success', title: 'Welcome to LiteOS' }), 500);
     if (window.LOS_CONFIG.guest && !(navigator.storage && navigator.storage.getDirectory)) {
@@ -298,12 +356,21 @@
     }
   }
 
-  // ------------------------------------------------------------------ boot screen
-  const BOOT_MIN_MS = 2000; // let the kite finish drawing before revealing the OS
+  /*
+  |--------------------------------------------------------------------------
+  | Boot screen
+  |--------------------------------------------------------------------------
+  */
+
+  /** Let the kite finish drawing before revealing the OS. */
+  const BOOT_MIN_MS = 2000;
+  /**
+   * Fade the boot screen out. The kite draws in full on the first page of a visit; after signing in (a page before
+   * this one) it only fades.
+   */
   function bootDone() {
     const b = document.getElementById('boot');
     if (!b) return;
-    // the kite draws in full on the first page of a visit; after signing in (a page before this one) it only fades
     let seen = false;
     try { seen = sessionStorage.getItem('los_booted') === '1'; sessionStorage.setItem('los_booted', '1'); } catch (e) { /* storage blocked */ }
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -322,13 +389,13 @@
     b.setAttribute('aria-label', message || 'Please wait');
   }
 
+  /** Apply the theme, accent and accessibility modes. Colour filters apply to the whole desktop, apps included. */
   function applyTheme() {
     const r = document.documentElement;
     r.dataset.theme = S.user ? effectiveTheme() : 'light';
     r.dataset.glass = S.user && set().transparency === false ? 'off' : 'on';
     r.style.setProperty('--accent', S.user ? set().accent : '#2F6FD6');
     applyA11y(r, S.user ? set() : {});
-    // Colour filters apply to the whole desktop, apps included.
     const filters = { grayscale: 'grayscale(1)', invert: 'invert(1) hue-rotate(180deg)', 'grayscale-invert': 'grayscale(1) invert(1)' };
     root.style.filter = S.user && filters[set().colorFilter] ? filters[set().colorFilter] : '';
   }
@@ -349,7 +416,12 @@
   }
 
 
-  // ================================================================== setup & sign-in
+  /*
+  |--------------------------------------------------------------------------
+  | Setup & sign-in
+  |--------------------------------------------------------------------------
+  */
+
   /**
    * The one top bar used on every screen (setup, sign-in, lock, desktop).
    * o.launcher: brand opens the launcher · o.app: focused app name · o.menus: show app menus
@@ -379,6 +451,10 @@
   }
 
 
+  /**
+   * The power menu: lock, sign out and reload, plus the device's own (end session, restart, shut down), only on a
+   * LiteLink device that allows them.
+   */
   function powerMenu(btn, signedIn) {
     const r = btn.getBoundingClientRect();
     const items = [];
@@ -387,7 +463,6 @@
       items.push({ label: 'Sign out', icon: 'logout', action: signOut });
     }
     items.push({ label: 'Reload', icon: 'reload', action: () => { showBoot('Restarting…'); setTimeout(() => location.reload(), 700); } });
-    // the device's own: only on a LiteLink device that allows them
     if (devHas('session') || devHas('power')) items.push('sep');
     if (devHas('session')) items.push({ label: 'End session', icon: 'external', action: () => deviceAction('end') });
     if (devHas('power')) {
@@ -397,7 +472,11 @@
     showMenu(items, r.top > window.innerHeight / 2 ? { x: r.left, y: r.top - 6, above: true } : { x: r.right - 210, y: r.bottom + 6 });
   }
 
-  // ================================================================== desktop
+  /*
+  |--------------------------------------------------------------------------
+  | Desktop
+  |--------------------------------------------------------------------------
+  */
   let clockTimer = null;
 
   function startDesktop(firstRun, preloaded) {
@@ -442,19 +521,26 @@
     subs.forEach((win, fn) => { try { fn(state); } catch (e) { subs.delete(fn); } });
   }
 
+  /**
+   * Save settings and apply them at once. App usage is counted here and saved a little later (countOpen), so the
+   * shell's copy is the newest and is kept over the saved one.
+   */
   async function saveSettings(changes) {
     S.settings = Object.assign({}, set(), changes);
     applySettings();
     try {
       const saved = await api('settings.save', { settings: changes });
-      const usage = set().appUsage; // counted here and saved a little later (countOpen): the shell's copy is the newest
+      const usage = set().appUsage;
       S.settings = Object.assign({}, S.guestBase ? guestSettings(saved) : saved, usage ? { appUsage: usage } : {});
       applySettings();
     } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t save settings' }); }
     return S.settings;
   }
 
-  // How often each app is opened, for the modern launcher's Popular. Counted quietly (no redraw) and saved in a batch.
+  /**
+   * How often each app is opened, for the modern launcher's Popular. Counted quietly (no redraw) and saved in a
+   * batch.
+   */
   const saveUsage = debounce(() => { api('settings.save', { settings: { appUsage: set().appUsage } }).catch(() => {}); }, 4000);
   function countOpen(appId) {
     const usage = Object.assign({}, set().appUsage || {});
@@ -472,27 +558,37 @@
   }
 
 
-  // ------------------------------------------------------------------ desktop icons
-  // The shortcuts the user chose in Settings › Personalisation › Desktop icons, then what is in the Desktop folder.
+  /*
+  |--------------------------------------------------------------------------
+  | Desktop icons
+  |--------------------------------------------------------------------------
+  |
+  | The shortcuts the user chose in Settings › Personalisation › Desktop icons, then what is in the Desktop folder.
+  |
+  */
   let deskFiles = [];
+  /** The Desktop folder's items, folders first (none when there is no Desktop folder yet). */
   async function readDeskFiles() {
     let list = [];
-    try { list = await api('fs.list', undefined, { path: '/Desktop' }); } catch (e) { list = []; } // no Desktop folder yet
+    try { list = await api('fs.list', undefined, { path: '/Desktop' }); } catch (e) { list = []; }
     list = (Array.isArray(list) ? list : []).filter((f) => f && f.name && !f.name.startsWith('.'));
     return list.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   }
+  /** Reload the Desktop folder, unless an icon is being made and named: its own code reloads when done. */
   async function loadDeskFiles() {
-    if (!S.user || deskPending) return; // an icon is being made and named: its own code reloads when done
+    if (!S.user || deskPending) return;
     const list = await readDeskFiles();
     const key = (l) => l.map((f) => f.path + '|' + f.type).join('\n');
     if (key(list) === key(deskFiles)) return;
     deskFiles = list;
     renderDesktopIcons();
   }
-  /** Something on the drive changed: look at the Desktop folder again now, and once more if more changes came meanwhile
-   *  (no timer: background tabs hold timers back for a long time). */
   let deskLoading = null;
   let deskAgain = false;
+  /**
+   * Something on the drive changed: look at the Desktop folder again now, and once more if more changes came
+   * meanwhile (no timer: background tabs hold timers back for a long time).
+   */
   function deskFilesChanged() {
     if (deskLoading) { deskAgain = true; return; }
     deskLoading = loadDeskFiles().finally(() => { deskLoading = null; if (deskAgain) { deskAgain = false; deskFilesChanged(); } });
@@ -502,12 +598,12 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) deskFilesChanged(); });
 
   const thisPcIcon = () => (window.LOS_hasSysIcon('device.computer') ? window.LOS_sysIcon('device.computer') : window.LOS_app('files').img);
+  /** The desktop shortcuts. The Files shortcut is "This PC", as in Windows: the computer, opening on its drives. */
   function deskItems() {
     return (set().desktopIcons || []).map((id) => {
       if (id === 'trash') return { id, label: 'Trash', img: window.LOS_appIconUrl('trash'), open: () => openApp('files', { path: 'trash:' }) };
       const app = window.LOS_app(id);
       if (!app) return null;
-      // the Files shortcut is "This PC", as in Windows: the computer, opening on its drives
       if (id === 'files') return { id, label: 'This PC', img: thisPcIcon(), open: () => openApp('files', { path: 'device:' }) };
       return { id, label: app.name, img: app.img, open: () => openApp(id) };
     }).filter(Boolean);
@@ -526,19 +622,23 @@
     return deskFiles.slice().sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || cmp(a, b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
   }
 
-  // New items from the desktop menu go in the Desktop folder, like Explorer's New on the desktop.
+  /** New items from the desktop menu go in the Desktop folder, like Explorer's New on the desktop. */
   const DESK_NEW = [
     { label: 'Document', ext: 'ldoc', name: 'Untitled document', app: 'documents' },
     { label: 'Spreadsheet', ext: 'lsheet', name: 'Untitled spreadsheet', app: 'sheets' },
     { label: 'Presentation', ext: 'lslides', name: 'Untitled presentation', app: 'slides' },
     { label: 'Text file', ext: 'txt', name: 'New text file', app: 'code' },
   ];
-  // As in Explorer, a new item is made at once with a default name ("New folder", "New folder (2)"…), placed where the
-  // desktop was right-clicked, and its name is open for typing over; Escape keeps the default.
-  // The icon shows at once, its picture shimmering while the server makes the item, and its name is open for typing
-  // straight away; the rename waits for the item to exist. Meanwhile the desktop isn't reloaded from the drive (that
-  // would drop the icon being named).
   let deskPending = 0;
+  /**
+   * deskNew
+   *
+   * As in Explorer, a new item is made at once with a default name ("New folder", "New folder (2)"…), placed where the
+   * desktop was right-clicked, and its name is open for typing over; Escape keeps the default.
+   * The icon shows at once, its picture shimmering while the server makes the item, and its name is open for typing
+   * straight away; the rename waits for the item to exist. Meanwhile the desktop isn't reloaded from the drive (that
+   * would drop the icon being named). A failure to make it is handled once naming is done.
+   */
   async function deskNew(t, at) {
     const taken = new Set(deskFiles.map((f) => f.name.toLowerCase()));
     let name = '';
@@ -554,7 +654,7 @@
     deskPending++;
     renderDesktopIcons();
     const made = t ? api('fs.write', { path, content: '', overwrite: false }) : api('fs.mkdir', { path });
-    made.catch(() => {}); // handled below, once naming is done
+    made.catch(() => {});
     const btn = $$('.desk-icon', root).find((b) => b.dataset.file === path);
     const res = btn ? await deskRename(btn, { pending: made, entry }) : await made.then(() => ({ path }), (e) => ({ failed: e }));
     deskPending--;
@@ -589,14 +689,22 @@
     saveSettings({ deskLayout: layout });
   }
 
-  // Renaming in place, as in Explorer: the icon's name becomes an edit box over the label (the stem selected, so
-  // typing keeps the extension). Enter or a click elsewhere renames; Escape keeps the old name. The icon keeps its cell.
-  // A new item (opts.pending: the request making it) can be named before it exists: the rename waits for it. Resolves
-  // with { path } (where it ended up) or { failed } (the item couldn't be made).
+  /**
+   * deskRename
+   *
+   * Renaming in place, as in Explorer: the icon's name becomes an edit box over the label (the stem selected, so
+   * typing keeps the extension). Enter or a click elsewhere renames; Escape keeps the old name. The icon keeps its
+   * cell. A new item (opts.pending: the request making it) can be named before it exists: the rename waits for it.
+   * Resolves with { path } (where it ended up) or { failed } (the item couldn't be made).
+   */
   function deskRename(btn, opts) {
     opts = opts || {};
     return new Promise((resolve) => deskRenameBox(btn, opts, resolve));
   }
+  /**
+   * The edit box of deskRename. While the item is still being made, the name typed shows on its icon, then it waits
+   * for it; the renamed icon stays where it was.
+   */
   function deskRenameBox(btn, opts, resolve) {
     const path = btn.dataset.file;
     const label = btn && $('span', btn);
@@ -629,7 +737,6 @@
       const bad = /[\/\\]/.test(name);
       const wanted = keep || !name || name === old || bad ? '' : name;
       if (opts.pending) {
-        // show the name typed while the item is still being made, then wait for it
         if (opts.entry && wanted) { opts.entry.shown = wanted; renderDesktopIcons(); }
         try { await opts.pending; } catch (e) { resolve({ failed: e }); return; }
       }
@@ -640,7 +747,7 @@
       try {
         const res = await api('fs.rename', { path, name });
         const to = (res && res.path) || join('/Desktop', name);
-        if (cell) { // the renamed icon stays where it was
+        if (cell) {
           const next = Object.assign({}, lay, { ['file:' + to]: cell });
           delete next['file:' + path];
           S.settings = Object.assign({}, set(), { deskLayout: next });
@@ -670,7 +777,10 @@
     ['pointerdown', 'mousedown', 'click', 'dblclick', 'contextmenu'].forEach((ev) => ta.addEventListener(ev, (e) => e.stopPropagation()));
   }
 
-  /** "Next desktop background": the built-in wallpaper after the current one (from a picture of your own: the first). */
+  /**
+   * "Next desktop background": the built-in wallpaper after the current one (from a picture of your own: the
+   * first).
+   */
   function nextWallpaper() {
     const list = window.LOS_WALLPAPERS || [];
     if (!list.length) return;
@@ -678,11 +788,13 @@
     saveSettings({ wallpaper: list[(i + 1) % list.length].id });
   }
 
-  /** The desktop's own menu (right-click on the wallpaper), laid out like the Windows desktop menu. */
+  /**
+   * The desktop's own menu (right-click on the wallpaper), laid out like the Windows desktop menu. Add to desktop
+   * offers the shortcuts that can go on the desktop: the apps and the Trash, minus those already there.
+   */
   function desktopMenu(at) {
     selectDeskIcon(null);
     const s = set();
-    // shortcuts that can go on the desktop: the apps and the Trash, minus those already there
     const onDesk = s.desktopIcons || [];
     const addable = [{ id: 'trash', label: 'Trash', img: window.LOS_appIconUrl('trash') }]
       .concat(window.LOS_APPS.filter((a) => !a.system || a.id === 'files').map((a) => (a.id === 'files' ? { id: a.id, label: 'This PC', img: thisPcIcon() } : { id: a.id, label: a.name, img: a.img })))
@@ -730,8 +842,11 @@
     layoutDeskIcons();
   }
 
-  // Desktop icons sit on a grid, filled down then across like Explorer. An icon the user dragged keeps its cell
-  // (settings deskLayout: { "desk:files" | "file:/Desktop/a.txt": [column, row] }); the rest fill the free cells in order.
+  /**
+   * Desktop icons sit on a grid, filled down then across like Explorer. An icon the user dragged keeps its cell
+   * (settings deskLayout: { "desk:files" | "file:/Desktop/a.txt": [column, row] }); the rest fill the free cells in
+   * order.
+   */
   function deskGrid() {
     const box = $('.desk-icons', root);
     const first = box && $('.desk-icon', box);
@@ -775,20 +890,34 @@
     return [c, r];
   }
 
-  // Dragging icons: the selected icons move together, shown as a drag image above the windows. Dropped on a folder they
-  // move into it, on the Trash they go to the Trash, on a Files window into the folder under the pointer there;
-  // anywhere else on the desktop they take the nearest free cells and keep them.
+  /*
+  |--------------------------------------------------------------------------
+  | Dragging icons
+  |--------------------------------------------------------------------------
+  |
+  | The selected icons move together, shown as a drag image above the windows. Dropped on a folder they move into
+  | it, on the Trash they go to the Trash, on a Files window into the folder under the pointer there; anywhere else
+  | on the desktop they take the nearest free cells and keep them.
+  |
+  */
   let deskDragEnded = 0;
-  const filesSync = 'BroadcastChannel' in window ? new BroadcastChannel('liteos-files') : null; // open Files windows refresh
+  /** Tells open Files windows to refresh. */
+  const filesSync = 'BroadcastChannel' in window ? new BroadcastChannel('liteos-files') : null;
   const filesChanged = () => { if (filesSync) filesSync.postMessage('changed'); };
   /** The drop helper of an app window under the pointer (Files exposes window.__losDropAt), or null. */
   function frameDropAt(t) {
     if (!t || t.tagName !== 'IFRAME') return null;
     try { const fn = t.contentWindow && t.contentWindow.__losDropAt; return typeof fn === 'function' ? { frame: t, fn } : null; } catch (e) { return null; }
   }
+  /**
+   * Drag desktop icons. An icon still being made has nothing to move yet. The drag image is copies of the icons in a
+   * layer above the windows; the icons themselves stay, faded, and both let the pointer through, so what's under the
+   * pointer can be found. `inFrame` is { frame, fn, dest } while over a Files window. Dropped on the desktop, the
+   * icons get new cells: the same offset for each icon, the nearest free cell where that one is taken.
+   */
   root.addEventListener('pointerdown', (e) => {
     const b = e.button === 0 && e.target.closest && e.target.closest('.desk-icon');
-    if (!b || b.classList.contains('pending')) return; // still being made: nothing to move yet
+    if (!b || b.classList.contains('pending')) return;
     const g = deskGrid();
     if (!g) return;
     const sx = e.clientX;
@@ -796,7 +925,7 @@
     let drag = null;
     let over = null;
     let layer = null;
-    let inFrame = null; // { frame, fn, dest } while over a Files window
+    let inFrame = null;
     b.setPointerCapture(e.pointerId);
     const leaveFrame = () => { if (inFrame) { try { inFrame.fn(0, 0, 'leave'); } catch (err) { /* frame gone */ } inFrame = null; } };
     const move = (ev) => {
@@ -804,7 +933,6 @@
         if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5) return;
         if (!b.classList.contains('sel')) selectDeskIcon(b);
         drag = deskSel();
-        // the drag image: copies of the icons in a layer above the windows; the icons themselves stay, faded
         layer = document.createElement('div');
         layer.className = 'desk-drag-layer';
         drag.forEach((x) => {
@@ -821,7 +949,6 @@
       const dx = ev.clientX - sx;
       const dy = ev.clientY - sy;
       layer.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      // what's under the pointer (the drag image and the faded icons let the pointer through)
       const t = document.elementFromPoint(ev.clientX, ev.clientY);
       const fr = drag.some((x) => x.dataset.file) ? frameDropAt(t) : null;
       if (!fr || (inFrame && fr.frame !== inFrame.frame)) leaveFrame();
@@ -863,7 +990,6 @@
         return;
       }
       if (ev.type === 'pointercancel') return;
-      // new cells: the same offset for each icon, the nearest free cell where that one is taken
       const dc = Math.round((ev.clientX - sx) / g.cw);
       const dr = Math.round((ev.clientY - sy) / g.ch);
       if (!dc && !dr) return;
@@ -886,9 +1012,16 @@
     b.addEventListener('pointercancel', up);
   });
 
-  // Items dragged out of a Files window (their paths travel in the drag data) can be dropped on the desktop: on a
-  // folder or the Trash icon, or on empty desktop, where they move to the Desktop folder and land where they were
-  // dropped. Ctrl copies instead of moving, as in Files.
+  /*
+  |--------------------------------------------------------------------------
+  | Dropping from Files
+  |--------------------------------------------------------------------------
+  |
+  | Items dragged out of a Files window (their paths travel in the drag data) can be dropped on the desktop: on a
+  | folder or the Trash icon, or on empty desktop, where they move to the Desktop folder and land where they were
+  | dropped, each in the free cell nearest to where it was dropped. Ctrl copies instead of moving, as in Files.
+  |
+  */
   const DND = 'application/x-liteos-paths';
   const hasPaths = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes(DND);
   const onDesktop = (t) => !!(t && t.closest && t.closest('.wall, .desk-icons'));
@@ -924,7 +1057,6 @@
         await api(copy ? 'fs.copy' : 'fs.move', { paths: list, dest });
         done(list.length, baseName(dest));
       } else {
-        // onto empty desktop: into the Desktop folder, each in the free cell nearest to where it was dropped
         const list = paths.filter((x) => parent(x) !== '/Desktop' || copy);
         if (!list.length) return;
         const g = deskGrid();
@@ -954,10 +1086,12 @@
     if (btn) { btn.classList.add('sel'); btn.focus({ preventScroll: true }); }
     deskAnchor = btn;
   }
-  // Several icons can be selected: Ctrl+click adds or removes one, Shift+click takes the run from the last one
-  // clicked, and dragging on empty desktop draws a selection rectangle.
   let deskAnchor = null;
   const deskSel = () => $$('.desk-icon.sel', root);
+  /**
+   * Several icons can be selected: Ctrl+click adds or removes one, Shift+click takes the run from the last one
+   * clicked, and dragging on empty desktop draws a selection rectangle.
+   */
   function deskClickSelect(b, e) {
     const all = $$('.desk-icon', root);
     if (e.shiftKey && deskAnchor && all.includes(deskAnchor)) {
@@ -981,8 +1115,10 @@
     } catch (e) { notify(e.message, { type: 'error', title: 'Couldn’t move to Trash' }); }
   }
 
-  // The selection rectangle: drawn from a press on empty desktop; it selects every icon it touches (Ctrl keeps
-  // what was already selected). The click that ends the drag must not clear the selection again.
+  /**
+   * The selection rectangle: drawn from a press on empty desktop; it selects every icon it touches (Ctrl keeps
+   * what was already selected). The click that ends the drag must not clear the selection again.
+   */
   let deskMarqueeEnded = 0;
   root.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !(e.target.classList.contains('wall') || e.target.classList.contains('desk-icons'))) return;
@@ -1025,13 +1161,15 @@
     target.addEventListener('pointercancel', up);
   });
 
+  /** Open a desktop icon, unless it is still being made. */
   function openDeskIcon(btn) {
-    if (btn.classList.contains('pending')) return; // still being made
+    if (btn.classList.contains('pending')) return;
     if (btn.dataset.file) { selectDeskIcon(null); openFile(btn.dataset.file, btn.dataset.type === 'dir'); return; }
     const it = deskItems().find((x) => x.id === btn.dataset.desk);
     if (it) { selectDeskIcon(null); it.open(); }
   }
 
+  /** A desktop file's menu. Archives are unpacked and made by Archives, in the browser, as from Files. */
   function deskFileMenu(btn, at) {
     selectDeskIcon(btn);
     const path = btn.dataset.file;
@@ -1040,7 +1178,6 @@
       ...(window.LOS_opensWithCode(path, btn.dataset.type === 'dir') ? [{ label: 'Open with Code', icon: 'code', action: () => openApp('code', btn.dataset.type === 'dir' ? { folder: path } : { path }) }] : []),
       { label: 'Show in Files', icon: 'folder', action: () => openApp('files', { path: '/Desktop', select: path }) },
       'sep',
-      // archives are unpacked and made by Archives, in the browser, as from Files
       ...(btn.dataset.type !== 'dir' && /\.(zip|tar|tgz|gz|7z|rar)$/i.test(path) ? [
         { label: 'Extract Here', icon: 'archive', action: () => openApp('archives', { path, extract: 'here' }) },
         { label: 'Extract To…', icon: 'archive', action: () => openApp('archives', { path, extract: 'to' }) },
@@ -1107,13 +1244,22 @@
     }
   });
 
-  // ------------------------------------------------------------------ bars
+  /*
+  |--------------------------------------------------------------------------
+  | Bars
+  |--------------------------------------------------------------------------
+  */
   function dockApps() {
     const pinned = (set().pinned || []).filter((id) => window.LOS_app(id));
     const running = [...new Set([...wins.values()].map((w) => w.app.id))];
     return pinned.concat(running.filter((id) => !pinned.includes(id))).map(window.LOS_app);
   }
 
+  /**
+   * Draw the dock or the classic taskbar (and the top bar). On the taskbar, the apps take the room the launcher, tray
+   * and clock leave; when they don't fit, the strip scrolls (tbStrip). The bar is redrawn on every focus change, so
+   * the strip stays where it was, and tbStrip runs after the clock has its text: that sets how much room the apps get.
+   */
   function renderBars() {
     tasksChanged();
     const bars = $('#bars', root);
@@ -1142,7 +1288,6 @@
     } else {
       html += '<div class="taskbar glass' + (s.autohide ? ' hide' : '') + '">' +
         '<button class="start' + (UI.pop === 'launcher' ? ' open' : '') + '" data-act="launcher" aria-label="Open launcher" title="Launcher"><span class="tile"><img src="assets/img/kite-white.svg" alt=""></span></button>' +
-        // the apps take the room the launcher, tray and clock leave; when they don't fit, the strip scrolls (tbStrip)
         '<div class="tb-apps"><button class="tb-scroll prev" data-act="tb-prev" aria-label="Earlier apps" tabindex="-1">' + ICON('back', 14) + '</button>' +
         '<div class="apps">' + apps.map((a) => '<button class="tb-btn' + (runningIds.has(a.id) ? ' running' : '') + (fApp === a.id ? ' focused' : '') + '" data-app="' + a.id + '"' + (runningIds.has(a.id) ? '' : ' title="' + esc(a.name) + '"') + ' aria-label="' + esc(a.name) + '">' +
           '<img class="tile appicon" src="' + a.img + '" alt="" draggable="false"><span class="bar"></span></button>').join('') + '</div>' +
@@ -1153,10 +1298,10 @@
         (s.autohide ? '<div class="dock-hotzone"></div>' : '');
     }
     const oldStrip = $('.taskbar .apps', bars);
-    const keepScroll = oldStrip ? oldStrip.scrollLeft : 0; // the bar is redrawn on every focus change: stay where it was
+    const keepScroll = oldStrip ? oldStrip.scrollLeft : 0;
     bars.innerHTML = html;
     tickClock(bars);
-    tbStrip(keepScroll); // after the clock has its text: that sets how much room the apps get
+    tbStrip(keepScroll);
     updateImmersive();
     if (s.autohide) {
       const zone = $('.dock-hotzone', bars);
@@ -1169,9 +1314,12 @@
     }
   }
 
-  /** The classic taskbar's app strip, when its apps overflow: arrows at its ends (only where there's more to see), the
-   *  mouse wheel scrolls it sideways, and the focused app is kept in view. */
   let tbObserver = null;
+  /**
+   * The classic taskbar's app strip, when its apps overflow: arrows at its ends (only where there's more to see), the
+   * mouse wheel scrolls it sideways, and the focused app is kept in view. The arrows are set first: showing them
+   * narrows the strip.
+   */
   function tbStrip(scroll) {
     if (tbObserver) { tbObserver.disconnect(); tbObserver = null; }
     const wrap = $('#bars .taskbar .tb-apps', root);
@@ -1184,7 +1332,7 @@
       wrap.classList.toggle('can-next', strip.scrollLeft < max - 1);
     };
     strip.scrollLeft = scroll || 0;
-    sync(); // the arrows first: showing them narrows the strip
+    sync();
     const f = $('.tb-btn.focused', strip);
     if (f) {
       const s = strip.getBoundingClientRect();
@@ -1209,7 +1357,11 @@
     if (strip) strip.scrollBy({ left: dir * Math.max(44, strip.clientWidth - 44), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
 
-  // ------------------------------------------------------------------ popovers
+  /*
+  |--------------------------------------------------------------------------
+  | Popovers
+  |--------------------------------------------------------------------------
+  */
   function togglePop(name) {
     UI.pop = UI.pop === name ? null : name;
     UI.lsQuery = '';
@@ -1275,6 +1427,15 @@
     if (back) back.focus({ preventScroll: true });
   }
 
+  /**
+   * drawPop
+   *
+   * A closing popup is removed when its animation ends, or after a moment when animations are off. The volume popup
+   * drops down from the top bar and rises from the taskbar's tray. The network popup shows the device's network, read
+   * only: joining and switching networks stay in LiteLink. The classic launcher is Windows 10 style: a rail, every app
+   * A to Z, then Popular and Recent; the right edge resizes it. In Quick settings, the device's Bluetooth tile
+   * (LiteLink only) turns it on and off, and its chevron opens its page in Settings.
+   */
   function drawPop() {
     const pops = $('#pops', root);
     if (!pops) return;
@@ -1284,12 +1445,12 @@
       open.classList.add('closing');
       const done = () => { if (!UI.pop && open.isConnected) pops.innerHTML = ''; };
       open.addEventListener('animationend', done, { once: true });
-      setTimeout(done, 320); // fallback when animations are off
+      setTimeout(done, 320);
       return;
     }
     if (UI.pop === 'vol') {
       const a = UI.anchor || { right: window.innerWidth - 200, bottom: 34 };
-      const below = a.bottom < window.innerHeight / 2; // from the top bar it drops down; from the taskbar's tray it rises
+      const below = a.bottom < window.innerHeight / 2;
       const left = Math.max(8, Math.min(window.innerWidth - 268, (a.left || 0) - 110));
       pops.innerHTML = '<div class="pop volpop' + (below ? ' from-top' : '') + '" style="' + (below ? 'top:' + (a.bottom + 8) : 'bottom:' + (window.innerHeight - a.top + 8)) + 'px;left:' + left + 'px" role="dialog" aria-label="Volume">' +
         '<div class="qlabel">Volume</div>' + volumeRow() + '<small class="vol-hint">' +
@@ -1297,7 +1458,6 @@
       return;
     }
     if (UI.pop === 'net') {
-      // the device's network, read only: joining and switching networks stay in LiteLink
       const a = UI.anchor || { right: window.innerWidth - 200, bottom: 34 };
       const below = a.bottom < window.innerHeight / 2;
       const left = Math.max(8, Math.min(window.innerWidth - 288, (a.left || 0) - 130));
@@ -1315,7 +1475,6 @@
       const classic = isClassicLauncher();
       const search = '<label class="ls-search">' + ICON('search', 16) + '<input type="text" placeholder="Search apps and files" aria-label="Search apps and files" value="' + esc(UI.lsQuery) + '"></label>';
       if (classic) {
-        // Windows 10 style: a rail, every app A to Z, then Popular and Recent; the right edge resizes it
         pops.innerHTML = '<div class="pop launcher classic" style="' + popPosition('launcher') + ';width:' + launcherWidth() + 'px" role="dialog" aria-label="Launcher">' +
           '<nav class="lc-rail" aria-label="Places">' +
             '<button class="ibtn" data-act="lc-account" title="' + esc(u.name) + '" aria-label="Your account">' + avatar(u, 28) + '</button><span class="lc-sp"></span>' +
@@ -1356,7 +1515,6 @@
         qTile('q-taskbar', s.taskbar === 'classic', 'qs-taskbar', 'Classic taskbar') +
         qTile('q-glass', s.transparency !== false, 'qs-glass', 'Transparency') +
         qTile('q-a11y', s.textSize && s.textSize !== 'default', 'qs-access', 'Accessibility', 'Larger text', 'q-a11y-more') +
-        // the device's Bluetooth (LiteLink only): on/off, the chevron opens its page in Settings
         (devHas('bluetooth') && DEV.bt && DEV.bt.present ? qTile('q-bt', DEV.bt.powered, 'qs-bluetooth', 'Bluetooth', 'Bluetooth', 'q-bt-more') : '') +
         '</div>' +
         '<div class="qsliders">' + sliderRow('brightness') + sliderRow('volume') + '</div>' +
@@ -1368,15 +1526,27 @@
     }
   }
 
-  // ------------------------------------------------------------------ top bar: app menus
-  // ================================================================== snap groups (tiling)
-  // Windows snapped to the halves and quarters of the screen form one group, laid out by a small tree: two columns
-  // split by a vertical edge (T.x), and each column holds one window or two stacked ones split at its own ratio (r).
-  // The edges between tiles are shared: dragging one resizes the windows on both sides. The group minimises and comes
-  // forward together, a minimised one keeps its place, and when a window leaves, the window it shared a column with
-  // takes its space.
-  // With the floating bars, the group takes the whole screen and the bars slide away, the same as a maximised window.
-  const TILE_GAP = 0; // tiles touch: a gap would let a press through to the window behind, and the edge handles sit inside each window
+  /*
+  |--------------------------------------------------------------------------
+  | Top bar: app menus
+  |--------------------------------------------------------------------------
+  */
+
+  /*
+  |--------------------------------------------------------------------------
+  | Snap groups (tiling)
+  |--------------------------------------------------------------------------
+  |
+  | Windows snapped to the halves and quarters of the screen form one group, laid out by a small tree: two columns
+  | split by a vertical edge (T.x), and each column holds one window or two stacked ones split at its own ratio (r).
+  | The edges between tiles are shared: dragging one resizes the windows on both sides. The group minimises and comes
+  | forward together, a minimised one keeps its place, and when a window leaves, the window it shared a column with
+  | takes its space.
+  | With the floating bars, the group takes the whole screen and the bars slide away, the same as a maximised window.
+  |
+  */
+  /** Tiles touch: a gap would let a press through to the window behind, and the edge handles sit inside each window. */
+  const TILE_GAP = 0;
   const TILE_MIN_W = 360;
   const TILE_MIN_H = 200;
   const newCol = () => ({ one: null, top: null, bot: null, r: 0.5 });
@@ -1430,7 +1600,10 @@
     syncTiles();
   }
 
-  /** Snap a window into a zone ('l', 'r', 'tl', 'tr', 'bl', 'br') or maximise it ('max'). */
+  /**
+   * Snap a window into a zone ('l', 'r', 'tl', 'tr', 'bl', 'br') or maximise it ('max'). Into a half, anything in
+   * that column floats again; into a quarter, the half already there moves to the other quarter.
+   */
   function snapWin(w, zone, opts) {
     hideSnapAssist();
     if (zone === 'max') { untile(w); if (!w.max) toggleMax(w); return; }
@@ -1440,10 +1613,10 @@
     untile(w);
     const [side, slot] = ZONES[zone];
     const c = T[side];
-    if (slot === 'one') { c.one = null; c.top = null; c.bot = null; } // anything in that column floats again
+    if (slot === 'one') { c.one = null; c.top = null; c.bot = null; }
     else {
       const other = slot === 'top' ? 'bot' : 'top';
-      if (c.one) { c[other] = c.one; c.one = null; } // the half already there moves to the other quarter
+      if (c.one) { c[other] = c.one; c.one = null; }
     }
     c[slot] = w.id;
     syncTiles();
@@ -1467,7 +1640,15 @@
     return null;
   }
 
-  // Snap Assist: after a snap, an empty part of the group offers the other open windows to fill it.
+  /*
+  |--------------------------------------------------------------------------
+  | Snap Assist
+  |--------------------------------------------------------------------------
+  |
+  | After a snap, an empty part of the group offers the other open windows to fill it. A press anywhere else
+  | dismisses it.
+  |
+  */
   let assistEl = null;
   function emptyZone() {
     if (!tiledWins().length) return null;
@@ -1503,7 +1684,6 @@
     const first = $('.sa-item', assistEl);
     if (first) first.focus({ preventScroll: true });
   }
-  // a press anywhere else dismisses it
   document.addEventListener('pointerdown', (e) => { if (assistEl && !assistEl.contains(e.target)) hideSnapAssist(); }, true);
 
   /**
@@ -1561,7 +1741,13 @@
     { label: 'About ' + (S.system.instanceName || 'LiteOS'), icon: 'info', action: () => openApp('settings', { section: 'about' }) },
   ] });
 
-  /** Menus for a window: the app's own (set through the SDK) merged with standard window menus. */
+  /**
+   * Menus for a window: the app's own (set through the SDK) merged with standard window menus.
+   *
+   * The app's own commands run in the app's frame, but this menu bar belongs to the desktop, which has focus while
+   * it's open. Browsers refuse a document that doesn't have focus things like the clipboard API ("Document is not
+   * focused"), so give the app's frame focus back before running one of its commands (Edit › Paste, Copy…).
+   */
   function windowMenus(w) {
     const std = {
       File: [{ label: 'New window', icon: 'plus', disabled: !!w.app.single, action: () => openApp(w.app.id) }, 'sep', { label: 'Close window', icon: 'x', action: () => closeWin(w) }],
@@ -1576,9 +1762,6 @@
         ] },
       ],
     };
-    // The app's own commands run in the app's frame, but this menu bar belongs to the desktop, which has focus while
-    // it's open. Browsers refuse a document that doesn't have focus things like the clipboard API ("Document is not
-    // focused"), so give the app's frame focus back before running one of its commands (Edit › Paste, Copy…).
     const inApp = (items) => (items || []).map((it) => {
       if (!it || typeof it !== 'object') return it;
       const out = Object.assign({}, it);
@@ -1618,18 +1801,32 @@
     showMenu(m.items, { x: r.left, y: r.bottom + 4 }, () => { btn.classList.remove('open'); UI.topMenu = null; });
   }
 
-  // ------------------------------------------------------------------ volume (applies to audio/video inside LiteOS apps)
-  /** Quick settings toggle (Windows 11 style): a rectangular button, label underneath; `more` adds a chevron half. */
+  /*
+  |--------------------------------------------------------------------------
+  | Volume
+  |--------------------------------------------------------------------------
+  |
+  | Applies to audio/video inside LiteOS apps.
+  |
+  */
+
+  /**
+   * Quick settings toggle (Windows 11 style): a rectangular button, label underneath; `more` adds a chevron half.
+   * The icon is from the tiles' own glyph family (icons.js qs-*), drawn as glyphs: never swapped for a picture from
+   * the icon set.
+   */
   function qTile(act, on, icon, label, title, more) {
     const t = title || label;
     const main = '<button class="qtile' + (on ? ' on' : '') + (more ? ' split' : '') + '" data-act="' + act + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" aria-label="' + esc(t) + '" title="' + esc(t) + '">' +
-      // the tiles' own glyph family (icons.js qs-*), drawn as glyphs: never swapped for a picture from the icon set
       '<span class="qmain">' + window.LOS_icon(icon, 18) + '</span>' +
       (more ? '<span class="qchev" data-act="' + more + '" role="button" aria-label="' + esc(label) + ' settings">' + ICON('forward', 14) + '</span>' : '') + '</button>';
     return '<div class="qt">' + main + '<span class="ql">' + esc(label) + '</span></div>';
   }
 
-  /** Slider row for Quick settings / the volume popover. kind: 'volume' | 'brightness'. */
+  /**
+   * Slider row for Quick settings / the volume popover. kind: 'volume' | 'brightness'. On a LiteLink device the
+   * volume slider is the device's volume; LiteOS's own app volume stays in Settings › Sound.
+   */
   function sliderRow(kind) {
     const s = set();
     if (kind === 'brightness') {
@@ -1637,7 +1834,6 @@
       return '<div class="qvol"><span class="qico" title="Brightness">' + ICON('sun', 18) + '</span>' +
         '<input class="qrange" data-k="brightness" type="range" min="20" max="100" value="' + v + '" aria-label="Brightness" style="--v:' + Math.round((v - 20) / 0.8) + '%"><span class="qpct" data-k="brightness">' + v + '%</span></div>';
     }
-    // on a LiteLink device the slider is the device's volume; LiteOS's own app volume stays in Settings › Sound
     const da = devAudio();
     const muted = da ? da.muted : s.muted;
     const v = muted ? 0 : da ? da.volume : (s.volume == null ? 80 : s.volume);
@@ -1679,11 +1875,14 @@
     return new Date(ts * 1000).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  // The launcher follows the bar: the classic taskbar gets the Windows 10 style launcher, the dock the modern one.
+  /** The launcher follows the bar: the classic taskbar gets the Windows 10 style launcher, the dock the modern one. */
   const isClassicLauncher = () => set().taskbar === 'classic';
   const launcherWidth = () => Math.max(480, Math.min(set().launcherWidth || 820, window.innerWidth - 16));
   const byName = (x, y) => x.name.localeCompare(y.name, undefined, { sensitivity: 'base' });
-  // Popular (modern): the 16 apps opened most; until there's a history, the pinned apps lead, then the rest in order
+  /**
+   * Popular (modern): the 16 apps opened most; until there's a history, the pinned apps lead, then the rest in
+   * order.
+   */
   function popularApps() {
     const use = set().appUsage || {};
     const pins = set().pinned || [];
@@ -1691,7 +1890,7 @@
     const pin = (id) => { const i = pins.indexOf(id); return i < 0 ? 999 : i; };
     return [...all].sort((x, y) => (use[y.id] || 0) - (use[x.id] || 0) || pin(x.id) - pin(y.id) || all.indexOf(x) - all.indexOf(y)).slice(0, 16);
   }
-  // apps under their first letter: [['A', [apps]], ...]
+  /** Apps under their first letter: [['A', [apps]], ...]. */
   function byLetter() {
     const groups = [];
     [...window.LOS_APPS].sort(byName).forEach((a) => {
@@ -1702,13 +1901,20 @@
     return groups;
   }
 
+  /**
+   * renderLauncherBody
+   *
+   * A found file shows where it is ("My drive/Desktop/samples"). All apps puts the letters on a four-column grid, so
+   * every row lines up: a letter with one or two apps takes one column, with three or more two columns (four apps
+   * across at most, more wrap inside it); cells are a Popular cell's width.
+   */
   function renderLauncherBody() {
     const body = $('#pops .ls-body', root);
     if (!body) return;
     const classic = isClassicLauncher();
     const qv = UI.lsQuery.trim().toLowerCase();
     const fileBtn = (f) => '<button class="ls-file" data-file="' + esc(f.path) + '" data-type="' + f.type + '">' + fileTile(f, 34, 9) +
-      '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc('My drive' + (parent(f.path) === '/' ? '' : parent(f.path))) + '</small></span></button>'; // "My drive/Desktop/samples"
+      '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc('My drive' + (parent(f.path) === '/' ? '' : parent(f.path))) + '</small></span></button>';
     const recentBtn = (f) => '<button class="ls-file" data-file="' + esc(f.path) + '" data-type="' + f.type + '" data-recent="1" title="' + esc('My drive' + f.path) + '">' + fileTile(f, 34, 9) +
       '<span class="meta"><b>' + esc(f.name) + '</b><small>' + esc(agoText(f.opened || f.mtime)) + '</small></span></button>';
     const cell = (a) => '<button class="ls-app" data-app="' + a.id + '">' + appTile(a, 40) + '<span>' + esc(a.name) + '</span></button>';
@@ -1728,8 +1934,6 @@
     }
     if (UI.lsView === 'all') {
       body.innerHTML = '<div class="ls-head">All apps<button class="link" data-act="ls-back">' + ICON('back', 14) + 'Back</button></div>' +
-        // letters on a four-column grid, so every row lines up: a letter with one or two apps takes one column, with three
-        // or more two columns (four apps across at most, more wrap inside it); cells are a Popular cell's width
         '<div class="ls-az">' + byLetter().map(([l, apps]) => {
           const n = Math.min(apps.length, 4);
           return '<div class="ls-grp" style="grid-column:span ' + (n > 2 ? 2 : 1) + '"><div class="ls-letter">' + esc(l) + '</div>' +
@@ -1743,8 +1947,13 @@
       (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 6).map(recentBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
   }
 
-  // ------------------------------------------------------------------ the classic launcher's right side
-  // Popular as in the modern launcher (the 10 apps opened most, two rows of five), then Recent with Show all.
+  /*
+  |--------------------------------------------------------------------------
+  | The classic launcher's right side
+  |--------------------------------------------------------------------------
+  */
+
+  /** Popular as in the modern launcher (the 10 apps opened most, two rows of five), then Recent with Show all. */
   function renderClassicSide(cell, recentBtn) {
     const area = $('#pops .lc-side', root);
     if (!area) return;
@@ -1753,7 +1962,7 @@
       (UI.recent.length ? '<div class="ls-files">' + UI.recent.slice(0, 8).map(recentBtn).join('') + '</div>' : '<div class="ls-empty">Files you open will show up here.</div>');
   }
 
-  // the classic launcher's right edge widens or narrows it; the width is kept
+  /** The classic launcher's right edge widens or narrows it; the width is kept. */
   function wireClassicLauncher(pop) {
     if (!pop) return;
     const grip = $('.lc-size', pop);
@@ -1778,7 +1987,11 @@
     });
   }
 
-  // ================================================================== windows
+  /*
+  |--------------------------------------------------------------------------
+  | Windows
+  |--------------------------------------------------------------------------
+  */
   function hostState() { return { user: S.user, settings: set(), system: S.system }; }
 
   function clampRect(r) {
@@ -1801,6 +2014,16 @@
     wins.forEach((w) => { if (!w.max) clampRect(w.rect); applyRect(w); });
   }
 
+  /**
+   * openApp
+   *
+   * A single-window app that is already open comes forward instead; one that takes new arguments itself
+   * (OS.win.onArgs: Screenshot keeps unsaved markup) isn't reloaded. A new window is centred, each new window a step
+   * down and right of the last, but always wholly inside the work area. The app's chrome: 'custom' means it draws its
+   * own title bar (e.g. Browser tabs) and the shell keeps only the controls; material: 'mica' is a frosted window over
+   * the wallpaper while Transparency effects is on (os.css). A window brought back after a reload (opts.sleep) starts
+   * its app when it's first shown.
+   */
   function openApp(appId, args, opts) {
     const app = window.LOS_app(appId);
     if (!app) { notify('That app isn’t installed.', { type: 'error', title: 'App not found' }); return null; }
@@ -1811,7 +2034,10 @@
     if (app.single) {
       const existing = [...wins.values()].find((x) => x.app.id === appId);
       if (existing) {
-        if (Object.keys(args).length) {
+        if (Object.keys(args).length && typeof existing.onArgs === 'function') {
+          existing.args = args;
+          try { existing.onArgs(Object.assign({}, args)); } catch (err) { console.error(err); }
+        } else if (Object.keys(args).length) {
           existing.args = args;
           existing.asleep = false;
           existing.el.classList.remove('asleep');
@@ -1827,7 +2053,6 @@
     const count = wins.size;
     const w = Math.min(app.size[0], a.w - 40);
     const h = Math.min(app.size[1], a.h - 24);
-    // centred, each new window a step down and right of the last, but always wholly inside the work area
     const fit = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
     const rect = clampRect({
       x: Math.round(fit(a.x + (a.w - w) / 2 + (count % 6) * 28 - 70, a.x + 8, a.x + a.w - w - 8)),
@@ -1835,11 +2060,12 @@
       w, h,
     });
     const el = document.createElement('section');
-    // chrome: 'custom' — the app draws its own title bar (e.g. Browser tabs); the shell keeps only the controls.
-    // material: 'mica' — a frosted window over the wallpaper while Transparency effects is on (os.css).
     el.className = 'win' + (app.chrome === 'custom' ? ' win-custom' : '') + (app.material === 'mica' ? ' win-mica' : '');
     el.dataset.id = id;
     el.setAttribute('aria-label', app.name);
+    const minSize = app.minSize || [360, 240];
+    el.style.minWidth = minSize[0] + 'px';
+    el.style.minHeight = minSize[1] + 'px';
     el.innerHTML = '<div class="win-bar">' + appTile(app, 20, 6, 12) + '<span class="title"></span>' +
       '<button class="ibtn ctl" data-w="min" aria-label="Minimise">' + ICON('window.minimize', 14) + '</button>' +
       '<button class="ibtn ctl" data-w="max" aria-label="Maximise">' + ICON('window.maximize', 13) + '</button>' +
@@ -1853,7 +2079,7 @@
     wins.set(id, win);
     $('.windows', root).appendChild(el);
     win.iframe.addEventListener('load', () => winPaged(win));
-    if (opts.sleep) { win.asleep = true; el.classList.add('asleep'); } // brought back after a reload: its app starts when it's first shown
+    if (opts.sleep) { win.asleep = true; el.classList.add('asleep'); }
     else wakeWin(win, true);
     setTitle(win, opts.title || app.name);
     applyRect(win);
@@ -1862,15 +2088,23 @@
     return win;
   }
 
-  // Loading cover: the app's icon over the window body until its page has loaded (the frame's load event fires once
-  // the SDK's ready() callbacks have run). The icon runs the brand's "Shimmer" loader (motion 02): it sits dimmed while a
-  // band of light sweeps across a second copy of it, so any app icon works without editing the icon itself.
-  // An app whose manifest sets window.reportsReady keeps the cover up after its page loads, until it calls
-  // OS.win.loaded() (when what it opened is on screen); meanwhile OS.win.loading(text, progress) shows a line of text
-  // and a progress bar under the icon. Each message gives it another 15 s, so a slow but busy app stays covered and
-  // one that has stopped answering is uncovered anyway. One that has said nothing at all a few seconds after its page
-  // loaded (it failed while starting, say) is uncovered then rather than after the full wait.
+  /*
+  |--------------------------------------------------------------------------
+  | Loading cover
+  |--------------------------------------------------------------------------
+  |
+  | The app's icon over the window body until its page has loaded (the frame's load event fires once the SDK's
+  | ready() callbacks have run). The icon runs the brand's "Shimmer" loader (motion 02): it sits dimmed while a band
+  | of light sweeps across a second copy of it, so any app icon works without editing the icon itself.
+  | An app whose manifest sets window.reportsReady keeps the cover up after its page loads, until it calls
+  | OS.win.loaded() (when what it opened is on screen); meanwhile OS.win.loading(text, progress) shows a line of text
+  | and a progress bar under the icon. Each message gives it another 15 s, so a slow but busy app stays covered and
+  | one that has stopped answering is uncovered anyway. One that has said nothing at all a few seconds after its page
+  | loaded (it failed while starting, say) is uncovered then rather than after the full wait.
+  |
+  */
   const LOAD_WAIT = 15000, QUIET_WAIT = 3000;
+  /** Cover the window while its page loads; never leave a window covered (LOAD_WAIT). */
   function winLoading(w) {
     forgetPage(w);
     const c = $('.win-load', w.el);
@@ -1883,15 +2117,18 @@
     tasksChanged();
     winLoadText(w, '', null);
     clearTimeout(w.loadTimer);
-    w.loadTimer = setTimeout(() => winLoaded(w), LOAD_WAIT); // never leave a window covered
+    w.loadTimer = setTimeout(() => winLoaded(w), LOAD_WAIT);
   }
-  /** The frame's page has loaded: uncovered now, unless the app says when it's ready. */
+  /**
+   * The frame's page has loaded: uncovered now, unless the app says when it's ready. A new frame first "loads" a blank
+   * page (some browsers report that after the listener is attached): not the app yet. An app that is reporting keeps
+   * the wait from its last message.
+   */
   function winPaged(w) {
     if (!w.covered) return;
-    // a new frame first "loads" a blank page (some browsers report that after the listener is attached): not the app yet
     try { if (w.iframe.contentWindow.location.href === 'about:blank') return; } catch (e) { /* another origin: it's the app */ }
     if (!w.app.reports) { winLoaded(w); return; }
-    if (w.heard) return; // it's reporting: the wait from its last message stands
+    if (w.heard) return;
     clearTimeout(w.loadTimer);
     w.loadTimer = setTimeout(() => winLoaded(w), QUIET_WAIT);
   }
@@ -1902,10 +2139,13 @@
     const c = $('.win-load', w.el);
     if (c) requestAnimationFrame(() => c.classList.add('done'));
   }
+  /**
+   * The cover's line of text and progress bar. The line is a live region: rewritten only when it changes, so screen
+   * readers don't repeat it on every update.
+   */
   function winLoadText(w, text, progress) {
     const c = $('.win-load', w.el);
     if (!c) return;
-    // the line is a live region: rewritten only when it changes, so screen readers don't repeat it on every update
     const line = $('.ld-text', c);
     if (line.textContent !== (text || '')) line.textContent = text || '';
     const bar = $('.ld-bar', c);
@@ -1941,21 +2181,26 @@
     tasksChanged();
   }
 
+  /**
+   * focus
+   *
+   * Picking another window dismisses Snap Assist, and a snapped window comes forward with the rest of its group. The
+   * window left behind is copied while it shows. The front window also gets the keyboard: an app that cancels
+   * pointerdown (a canvas editor) would otherwise leave focus in the window behind, and a later click there would go
+   * unnoticed (see raiseFramed).
+   */
   function focus(w) {
     if (!w) return;
     if (w.asleep && !w.min && !deskRestoring) wakeWin(w);
     if (focusedId === w.id && !w.min && w.el.style.zIndex == zTop) return;
-    if (assistEl && !w.tile) hideSnapAssist(); // picking another window dismisses Snap Assist
-    // a snapped window comes forward with the rest of its group
+    if (assistEl && !w.tile) hideSnapAssist();
     if (w.tile) tiledWins().forEach((x) => { if (x !== w && !x.min) x.el.style.zIndex = String(++zTop); });
-    if (focusedId && focusedId !== w.id) snapLater(wins.get(focusedId)); // the window left behind: copy it while it shows
+    if (focusedId && focusedId !== w.id) snapLater(wins.get(focusedId));
     w.el.style.zIndex = String(++zTop);
     if (w.blocker) w.blocker.box.style.zIndex = String(++zTop);
     w.lastFocus = Date.now();
     focusedId = w.id;
     wins.forEach((x) => x.el.classList.toggle('focused', x === w));
-    // The front window also gets the keyboard: an app that cancels pointerdown (a canvas editor) would otherwise leave
-    // focus in the window behind, and a later click there would go unnoticed (see raiseFramed).
     if (document.activeElement !== w.iframe) { try { w.iframe.contentWindow.focus(); } catch (e) { /* ignore */ } }
     renderBars();
   }
@@ -1966,12 +2211,14 @@
     if (best) focus(best); else { focusedId = null; wins.forEach((x) => x.el.classList.remove('focused')); renderBars(); }
   }
 
+  /**
+   * Minimise a window. A snapped window keeps its place in the group while minimised, and comes back to it. A
+   * minimised window's card shows it as it was: if its copy is old, it is copied first, invisible but still laid out
+   * (a fraction of a second), and only then taken off the screen.
+   */
   function minimize(w) {
     hideSnapAssist();
-    // a snapped window keeps its place in the group while minimised, and comes back to it
     w.min = true;
-    // a minimised window's card shows it as it was: if its copy is old, it is copied first, invisible but still laid
-    // out (a fraction of a second), and only then taken off the screen
     if (Date.now() - (w.snapAt || 0) > SNAP_GAP && !w.snapNo && !appPreview(w) && snappable(w)) {
       w.el.classList.add('minimizing');
       const done = () => { w.el.classList.remove('minimizing'); if (w.min) w.el.classList.add('min'); };
@@ -1987,8 +2234,9 @@
     focus(w);
   }
 
+  /** Maximise or restore a window; maximising takes it out of the group. */
   function toggleMax(w) {
-    if (!w.max && w.tile) untile(w); // maximising takes it out of the group
+    if (!w.max && w.tile) untile(w);
     if (w.max) { w.max = false; w.el.classList.remove('max'); }
     else { w.max = true; w.el.classList.add('max'); }
     $('[data-w=max]', w.el).innerHTML = ICON(w.max ? 'window.restore' : 'window.maximize', 13);
@@ -1997,6 +2245,11 @@
     updateImmersive();
   }
 
+  /**
+   * Close a window, asking first if it has unsaved changes. It leaves its snap group after leaving the list, so the
+   * closing window stays where it is while it fades; an open Snap Assist is drawn again, as the closed window may have
+   * been one of its choices.
+   */
   async function closeWin(w, force) {
     if (w.dirty && !force) {
       focus(w);
@@ -2011,8 +2264,8 @@
     if (qi >= 0) snapQ.splice(qi, 1);
     wins.delete(w.id);
     forgetPage(w);
-    if (w.tile) untile(w); // after leaving the list, so the closing window stays where it is while it fades
-    if (assistEl) showSnapAssist(); // the closed window may have been one of its choices
+    if (w.tile) untile(w);
+    if (assistEl) showSnapAssist();
     setTimeout(() => w.el.remove(), 120);
     if (focusedId === w.id) focusTopmost(); else renderBars();
     return true;
@@ -2060,8 +2313,8 @@
     const start = Object.assign({}, w.rect);
     const sx = e.clientX;
     const sy = e.clientY;
-    const minW = 360;
-    const minH = 240;
+    const minW = (w.app.minSize || [360, 240])[0];
+    const minH = (w.app.minSize || [360, 240])[1];
     const a = workArea();
     root.classList.add('dragging');
     if (w.tile) { tileResize(w, handle, dir); return; }
@@ -2085,7 +2338,10 @@
     handle.addEventListener('pointerup', up);
   }
 
-  /** Resizing a snapped window moves the edges it shares with the rest of the group (its outer edges have no handles). */
+  /**
+   * Resizing a snapped window moves the edges it shares with the rest of the group (its outer edges have no
+   * handles).
+   */
   function tileResize(w, handle, dir) {
     const [side, slot] = ZONES[w.tile];
     const ta = tileArea();
@@ -2108,12 +2364,15 @@
     handle.addEventListener('pointercancel', up);
   }
 
+  /**
+   * A click on an app in the dock or taskbar: open it, bring it forward, or, when it is already in front, cycle
+   * through this app's windows, or minimise if there is only one.
+   */
   function appClicked(appId) {
     const list = [...wins.values()].filter((w) => w.app.id === appId);
     if (!list.length) { openApp(appId); return; }
     const f = wins.get(focusedId);
     if (f && f.app.id === appId && !f.min) {
-      // Cycle through this app's windows, or minimise if there is only one.
       if (list.length > 1) {
         const sorted = list.sort((x, y) => +x.el.style.zIndex - +y.el.style.zIndex);
         restore(sorted[0]);
@@ -2124,25 +2383,36 @@
     restore(top);
   }
 
-  // ------------------------------------------------------------------ the desktop across a reload
-  // A reload (F5 on the desktop, the browser's button, an accident) keeps the session but would lose every window.
-  // Just before the page goes, the shell writes down what is open: each window's app, what it was opened with, its
-  // place and size, maximised / snapped / minimised, the stacking order and the focus, plus whatever small state the
-  // app hands over (OS.win.keepState). It goes in sessionStorage: this tab only, gone when the tab closes, a couple
-  // of KB, written once at unload so it costs nothing while you work. Only references are kept, never file contents.
-  // After the reload the boot screen rebuilds the windows behind it. Every one reopens through the normal path, so the
-  // server checks each file again. The windows you can see start at once (the top few); the rest come back asleep
-  // (their frame and icon) and start when first shown, so a dozen windows don't all load together. The record belongs
-  // to the user who wrote it: another user signing in on this tab doesn't get it, and signing out clears it.
+  /*
+  |--------------------------------------------------------------------------
+  | The desktop across a reload
+  |--------------------------------------------------------------------------
+  |
+  | A reload (F5 on the desktop, the browser's button, an accident) keeps the session but would lose every window.
+  | Just before the page goes, the shell writes down what is open: each window's app, what it was opened with, its
+  | place and size, maximised / snapped / minimised, the stacking order and the focus, plus whatever small state the
+  | app hands over (OS.win.keepState). It goes in sessionStorage: this tab only, gone when the tab closes, a couple
+  | of KB, written once at unload so it costs nothing while you work. Only references are kept, never file contents.
+  | After the reload the boot screen rebuilds the windows behind it. Every one reopens through the normal path, so
+  | the server checks each file again. The windows you can see start at once (the top few); the rest come back asleep
+  | (their frame and icon) and start when first shown, so a dozen windows don't all load together. The record
+  | belongs to the user who wrote it: another user signing in on this tab doesn't get it, and signing out clears it.
+  |
+  */
   const DESK_KEY = 'los_desk';
   const DESK_MAX_WINS = 20;
-  const DESK_EAGER = 3;         // windows that start straight away after a reload; the rest wait to be shown
-  const KEEP_MAX = 32 * 1024;   // an app's own state, as JSON
+  /** Windows that start straight away after a reload; the rest wait to be shown. */
+  const DESK_EAGER = 3;
+  /** The most an app's own state may take, as JSON. */
+  const KEEP_MAX = 32 * 1024;
   let deskRestoring = false;
   let deskOff = false;
-  /** The state an app hands over through OS.win.keepState(fn), if it is small enough. */
+  /**
+   * The state an app hands over through OS.win.keepState(fn), if it is small enough. A window never started since
+   * the reload keeps what it had then.
+   */
   function keepOf(w) {
-    if (w.asleep) return w.keep || null; // never started since the reload: what it had then
+    if (w.asleep) return w.keep || null;
     try {
       const fn = w.iframe.contentWindow.LiteOS && w.iframe.contentWindow.LiteOS.win._keep;
       if (!fn) return null;
@@ -2150,6 +2420,10 @@
       return json && json.length <= KEEP_MAX ? JSON.parse(json) : null;
     } catch (e) { return null; }
   }
+  /**
+   * Write down what is open. It runs at unload (every frame is still alive, so apps can hand over their state) and
+   * when the tab goes to the background (a browser may discard a background tab and reload it later).
+   */
   function saveDesk() {
     if (deskOff || !S.user || !$('.windows', root)) return;
     const list = [...wins.values()].sort((a, b) => +a.el.style.zIndex - +b.el.style.zIndex).slice(-DESK_MAX_WINS);
@@ -2162,11 +2436,16 @@
     try { if (rec.wins.length) sessionStorage.setItem(DESK_KEY, JSON.stringify(rec)); else sessionStorage.removeItem(DESK_KEY); } catch (e) { /* storage full or blocked */ }
   }
   function forgetDesk() { deskOff = true; try { sessionStorage.removeItem(DESK_KEY); } catch (e) { /* blocked */ } }
-  // at unload (every frame is still alive, so apps can hand over their state) and when the tab goes to the background
-  // (a browser may discard a background tab and reload it later)
   window.addEventListener('beforeunload', saveDesk);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveDesk(); });
 
+  /**
+   * restoreDesk
+   *
+   * Rebuild the windows written down before a reload. The top few windows that aren't minimised start now; the rest
+   * start when first shown. A single-window app listed twice is only opened once. Then the snap layout: its edges,
+   * then each window back in its zone.
+   */
   function restoreDesk() {
     let rec = null;
     try { rec = JSON.parse(sessionStorage.getItem(DESK_KEY) || 'null'); } catch (e) { rec = null; }
@@ -2175,7 +2454,6 @@
     const cleanArgs = (a) => Object.fromEntries(Object.entries(a && typeof a === 'object' ? a : {})
       .filter(([k, v]) => k !== 'win' && typeof v === 'string' && k.length < 40 && v.length < 2048).slice(0, 20));
     const list = rec.wins.slice(-DESK_MAX_WINS);
-    // the top few windows that aren't minimised start now; the rest start when first shown
     const eager = new Set(list.map((s, i) => (s && !s.min ? i : -1)).filter((i) => i >= 0).slice(-DESK_EAGER));
     const made = [];
     deskRestoring = true;
@@ -2183,12 +2461,12 @@
       list.forEach((s, i) => {
         if (!s || !window.LOS_app(s.app)) return;
         const w = openApp(s.app, cleanArgs(s.args), { sleep: !eager.has(i), keep: s.keep && typeof s.keep === 'object' ? s.keep : null, title: typeof s.title === 'string' ? s.title.slice(0, 200) : '' });
-        if (!w || made.some(([x]) => x === w)) return; // a single-window app listed twice
-        if (s.rect) w.rect = clampRect({ x: num(s.rect.x, w.rect.x), y: num(s.rect.y, w.rect.y), w: Math.max(360, num(s.rect.w, w.rect.w)), h: Math.max(240, num(s.rect.h, w.rect.h)) });
+        if (!w || made.some(([x]) => x === w)) return;
+        const mn = w.app.minSize || [360, 240];
+        if (s.rect) w.rect = clampRect({ x: num(s.rect.x, w.rect.x), y: num(s.rect.y, w.rect.y), w: Math.max(mn[0], num(s.rect.w, w.rect.w)), h: Math.max(mn[1], num(s.rect.h, w.rect.h)) });
         if (s.max && !w.max) toggleMax(w); else applyRect(w);
         made.push([w, s, i]);
       });
-      // the snap layout: its edges, then each window back in its zone
       if (rec.tiles) {
         const r = (v) => Math.max(0.15, Math.min(0.85, num(v, 0.5)));
         T.x = r(rec.tiles.x); T.l.r = r(rec.tiles.l); T.r.r = r(rec.tiles.r);
@@ -2201,21 +2479,37 @@
     if (f && !f[0].min) focus(f[0]); else focusTopmost();
   }
 
-  // ------------------------------------------------------------------ window previews
-  // Resting the pointer on a running app in the dock or taskbar shows a card for each of its windows: its icon, title,
-  // shape and a close button. A card doesn't draw a copy of the window, which would mean rendering every app twice;
-  // hovering a card "peeks" at the real window instead (shown where it is, even when minimised, with the others
-  // faded out). Nothing runs until the pointer rests on a button, and the cards are removed once it leaves.
+  /*
+  |--------------------------------------------------------------------------
+  | Window previews
+  |--------------------------------------------------------------------------
+  |
+  | Resting the pointer on a running app in the dock or taskbar shows a card for each of its windows: its icon,
+  | title, shape and a close button. A card doesn't draw a copy of the window, which would mean rendering every app
+  | twice; hovering a card "peeks" at the real window instead (shown where it is, even when minimised, with the
+  | others faded out). Nothing runs until the pointer rests on a button, and the cards are removed once it leaves.
+  |
+  */
   const PV = { el: null, app: null, showT: 0, hideT: 0, peek: null };
 
-  // The pictures on the cards. An app that draws on a canvas (Board, a playing video in Media) hands over what it
-  // shows through LiteOS.win.preview(fn), copied small on each hover (a few ms). Other windows get a snapshot taken
-  // when they are minimised or lose focus: in idle time, one at a time, at most once every few seconds a window,
-  // kept as a small JPEG (some 10 KB). A window holding another site's page (the Browser) or a very large page
-  // can't be copied cheaply, so its card keeps the icon.
-  const SNAP_W = 384;          // the card's picture at twice its size, for sharp screens
-  const SNAP_GAP = 4000;       // a window is copied at most this often (ms)
-  const SNAP_MAX_NODES = 5000; // bigger pages keep the icon
+  /*
+  |--------------------------------------------------------------------------
+  | The pictures on the cards
+  |--------------------------------------------------------------------------
+  |
+  | An app that draws on a canvas (Board, a playing video in Media) hands over what it shows through
+  | LiteOS.win.preview(fn), copied small on each hover (a few ms). Other windows get a snapshot taken when they are
+  | minimised or lose focus: in idle time, one at a time, at most once every few seconds a window, kept as a small
+  | JPEG (some 10 KB). A window holding another site's page (the Browser) or a very large page can't be copied
+  | cheaply, so its card keeps the icon.
+  |
+  */
+  /** The card's picture at twice its size, for sharp screens. */
+  const SNAP_W = 384;
+  /** A window is copied at most this often (ms). */
+  const SNAP_GAP = 4000;
+  /** Bigger pages keep the icon. */
+  const SNAP_MAX_NODES = 5000;
   const snapQ = [];
   let snapBusy = false;
   const idle = window.requestIdleCallback ? (f) => window.requestIdleCallback(f, { timeout: 2000 }) : (f) => setTimeout(f, 200);
@@ -2234,15 +2528,18 @@
       return c;
     } catch (e) { return null; }
   }
-  /** Whether a window's page can be copied: our own page, loaded, with no frames of other sites, not too large. */
+  /**
+   * Whether a window's page can be copied: our own page (not another origin), loaded (not still opening, or not
+   * started yet), with no frames of other sites, not too large.
+   */
   function snappable(w) {
-    if (w.covered || w.asleep) return null; // still opening, or not started yet
+    if (w.covered || w.asleep) return null;
     try {
       const doc = w.iframe.contentDocument;
       if (!doc || !doc.body || doc.querySelector('iframe, frame, embed, object')) return null;
       if (doc.getElementsByTagName('*').length > SNAP_MAX_NODES) return null;
       return doc;
-    } catch (e) { return null; } // another origin
+    } catch (e) { return null; }
   }
   function snapLater(w) {
     if (!w || w.snapNo || Date.now() - Math.max(w.snapAt || 0, w.snapTry || 0) < SNAP_GAP || snapQ.includes(w)) return;
@@ -2257,6 +2554,10 @@
       try { if (wins.has(w.id) && !w.min) await snapshot(w); } finally { snapBusy = false; pumpSnaps(); }
     });
   }
+  /**
+   * Copy a window's page for its card. What each copy costs is measured for the browser's performance tools; if the
+   * cards are open, the new copy shows at once. A page that can't be copied keeps the icon on its card.
+   */
   async function snapshot(w) {
     w.snapTry = Date.now();
     const doc = snappable(w);
@@ -2272,16 +2573,30 @@
       w.snapAt = Date.now();
       w.snapMs = Math.round(performance.now() - t0);
       w.snapKb = Math.round(blob.size / 1024);
-      // what each copy costs, for the browser's performance tools
       try { performance.measure('liteos:window-snapshot', { start: t0, detail: { app: w.app.id, kb: w.snapKb } }); } catch (e) { /* older browsers */ }
-      if (PV.el && PV.app === w.app.id) previewShow(w.app.id); // the cards are open: show it
-    } catch (e) { w.snapNo = true; } // this page can't be copied: its card keeps the icon
+      if (PV.el && PV.app === w.app.id) previewShow(w.app.id);
+    } catch (e) { w.snapNo = true; }
   }
-  // A page drawn as a picture: its HTML and its own stylesheets go into an SVG image, which the browser lays out and
-  // paints by itself. Nothing is worked out element by element; pictures the page shows are read once and kept for
-  // the next time (an SVG image can't fetch anything), and canvases are copied small.
-  const snapImgs = new Map(); // address -> data: URL
-  const snapCss = new WeakMap(); // page -> its styles as text
+
+  /*
+  |--------------------------------------------------------------------------
+  | A page drawn as a picture
+  |--------------------------------------------------------------------------
+  |
+  | Its HTML and its own stylesheets go into an SVG image, which the browser lays out and paints by itself. Nothing
+  | is worked out element by element; pictures the page shows are read once and kept for the next time (an SVG image
+  | can't fetch anything), and canvases are copied small.
+  |
+  */
+  /** Address -> data: URL. */
+  const snapImgs = new Map();
+  /** Page -> its styles as text. */
+  const snapCss = new WeakMap();
+  /**
+   * A page's styles as text, skipping another site's stylesheet. Inside the image the page isn't the root, so :root
+   * rules (the theme's colours) go to its <html>; a frozen picture shows things where they end up, not where an
+   * animation starts.
+   */
   function pageCss(doc) {
     const n = doc.styleSheets.length;
     const known = snapCss.get(doc);
@@ -2289,12 +2604,10 @@
     const out = [];
     const walk = (sheet) => {
       let rules;
-      try { rules = sheet.cssRules; } catch (e) { return; } // another site's stylesheet
+      try { rules = sheet.cssRules; } catch (e) { return; }
       for (const r of rules) { if (r.styleSheet) walk(r.styleSheet); else out.push(r.cssText); }
     };
     [...doc.styleSheets].forEach(walk);
-    // inside the image the page isn't the root, so :root rules (the theme's colours) go to its <html>; a frozen
-    // picture shows things where they end up, not where an animation starts
     const text = out.join('\n').replace(/:root\b/g, 'html') +
       '\n*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }';
     snapCss.set(doc, { n, text });
@@ -2312,6 +2625,10 @@
     snapImgs.set(src, url);
     return url;
   }
+  /**
+   * Draw a page onto a small canvas through an SVG image. The clone doesn't carry over typed values, ticks and
+   * canvas pictures, so those are copied into it first.
+   */
   async function drawPage(doc) {
     const de = doc.documentElement;
     const width = de.clientWidth;
@@ -2319,7 +2636,6 @@
     if (!width || !height) return null;
     const clone = de.cloneNode(true);
     clone.querySelectorAll('script, style, link, iframe, video, audio, noscript').forEach((n) => n.remove());
-    // what the clone doesn't carry over: typed values, ticks, and canvas pictures
     const live = doc.querySelectorAll('input, textarea, select, canvas');
     const copy = clone.querySelectorAll('input, textarea, select, canvas');
     live.forEach((el, i) => {
@@ -2359,7 +2675,7 @@
     const xml = new XMLSerializer().serializeToString(clone);
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '"><foreignObject x="0" y="0" width="100%" height="100%">' + xml + '</foreignObject></svg>';
     {
-      // a data: address, not a blob: one: Chrome won't let a canvas be read after drawing a blob: SVG with HTML in it
+      /* a data: address, not a blob: one: Chrome won't let a canvas be read after drawing a blob: SVG with HTML */
       const img = new Image();
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
       await img.decode();
@@ -2375,6 +2691,13 @@
   }
   function dropSnap(w) { if (w.snapUrl) URL.revokeObjectURL(w.snapUrl); w.snapUrl = null; }
   const pvList = (appId) => [...wins.values()].filter((w) => w.app.id === appId);
+  /**
+   * previewShow
+   *
+   * Show the cards for an app's windows, above its button and kept on screen. Each card has the window's shape. A
+   * middle click closes the window, as on the Windows taskbar. A window never copied yet (the one in use) gets its
+   * first snapshot now, in idle time.
+   */
   function previewShow(appId) {
     clearTimeout(PV.showT);
     const btn = $('#bars [data-app="' + appId + '"]', root);
@@ -2397,7 +2720,6 @@
         previewHide();
         if (w) { if (w.min) restore(w); else focus(w); }
       });
-      // a middle click closes the window, as on the Windows taskbar
       PV.el.addEventListener('auxclick', (e) => { const c = e.button === 1 && e.target.closest('[data-pv]'); if (c) previewClose(wins.get(c.dataset.pv)); });
       root.appendChild(PV.el);
     }
@@ -2405,7 +2727,7 @@
     root.classList.add('pv-showing');
     PV.el.innerHTML = list.map((w) => {
       const r = w.el.getBoundingClientRect();
-      const ratio = w.min || !r.width ? 1.6 : Math.max(1, Math.min(2.2, r.width / r.height)); // the card has the window's shape
+      const ratio = w.min || !r.width ? 1.6 : Math.max(1, Math.min(2.2, r.width / r.height));
       return '<div class="pv-card' + (w.id === focusedId && !w.min ? ' on' : '') + '" data-pv="' + w.id + '" role="option" aria-label="' + esc(w.title || w.app.name) + '">' +
         '<div class="pv-head"><img src="' + w.app.img + '" alt="" draggable="false"><span>' + esc(w.title || w.app.name) + '</span>' +
         '<button class="pv-x" data-pvx="' + w.id + '" aria-label="Close window" title="Close">' + ICON('window.close', 11) + '</button></div>' +
@@ -2417,10 +2739,8 @@
       const c = appPreview(w);
       const body = c && $('[data-pvb="' + w.id + '"]', PV.el);
       if (body) { body.classList.add('pic'); c.className = 'shot'; const old = $('img', body); if (old) old.replaceWith(c); else body.prepend(c); }
-      // a window never copied yet (the one in use) gets its first snapshot now, in idle time
       else if (!c && !w.snapUrl && !w.min) snapLater(w);
     });
-    // above the button, kept on screen
     const b = btn.getBoundingClientRect();
     const rr = root.getBoundingClientRect();
     const pw = PV.el.offsetWidth;
@@ -2435,11 +2755,12 @@
     if (PV.el) { PV.el.remove(); PV.el = null; }
     PV.app = null;
   }
+  /** Close a window from its card. One with unsaved changes puts the cards away: its question comes up over it. */
   async function previewClose(w) {
     if (!w) return;
     const appId = w.app.id;
     peekWin(null);
-    if (w.dirty) previewHide(); // its question comes up over the window
+    if (w.dirty) previewHide();
     const closed = await closeWin(w);
     if (closed && PV.el && PV.app === appId) { if (pvList(appId).length) previewShow(appId); else previewHide(); }
   }
@@ -2450,13 +2771,16 @@
     root.classList.toggle('win-peek', !!PV.peek);
     if (PV.peek) PV.peek.el.classList.add('peeked');
   }
+  /**
+   * The cards come up after a short rest on an app's button; moving along the bar while they show switches straight
+   * away. Pressing the button itself (open, cycle, its menu) puts the cards away.
+   */
   root.addEventListener('mouseover', (e) => {
     const b = e.target.closest && e.target.closest('#bars [data-app]');
     if (!b) return;
     clearTimeout(PV.hideT);
     if (PV.el && PV.app === b.dataset.app) return;
     clearTimeout(PV.showT);
-    // a short rest before the first cards; moving along the bar while they show switches straight away
     PV.showT = setTimeout(() => previewShow(b.dataset.app), PV.el ? 0 : 450);
   });
   root.addEventListener('mouseout', (e) => {
@@ -2465,18 +2789,25 @@
     clearTimeout(PV.showT);
     if (PV.el) previewLeave();
   });
-  // pressing the button itself (open, cycle, its menu) puts the cards away
   root.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('#bars [data-app]')) previewHide(); }, true);
 
-  // Jump list for a dock / taskbar app: quick places, recent items, tasks, then window controls.
+  /*
+  |--------------------------------------------------------------------------
+  | Jump lists
+  |--------------------------------------------------------------------------
+  |
+  | Jump list for a dock / taskbar app: quick places, recent items, tasks, then window controls.
+  |
+  */
   let recentCache = { at: 0, list: [] };
+  /** Recent files, kept for a few seconds; offline, the old list is kept. */
   async function recentFiles() {
     if (Date.now() - recentCache.at < 8000) return recentCache.list;
     try { recentCache = { at: Date.now(), list: await api('fs.recent') }; } catch (e) { /* offline: keep old */ }
     return recentCache.list;
   }
 
-  // the drive's folders, with their icons from the system icon set
+  /** The drive's folders, with their icons from the system icon set. */
   const PLACE_ITEMS = [['Home', '/', 'place.home'], ['Desktop', '/Desktop', 'place.desktop'], ['Documents', '/Documents', 'place.documents'],
     ['Downloads', '/Downloads', 'place.downloads'], ['Pictures', '/Pictures', 'place.pictures'], ['Music', '/Music', 'place.music'], ['Videos', '/Videos', 'place.videos']];
 
@@ -2484,6 +2815,9 @@
     return { label: entry.name, img: window.LOS_sysIcon(window.LOS_fileRole(entry)), title: entry.path, action: () => openApp(appId, args || { path: entry.path }) };
   }
 
+  /**
+   * An app's jump list. Archives keeps its own list of the archives opened (its state file), newest first.
+   */
   async function appMenu(appId, anchor) {
     const app = window.LOS_app(appId);
     if (!app) return;
@@ -2507,7 +2841,6 @@
       const notes = recent.filter((f) => f.path.startsWith('/Notes/')).slice(0, 6);
       section('Recent notes', notes.map((f) => ({ label: f.name.replace(/\.(md|txt)$/i, ''), icon: 'note', color: '#C98F05', title: f.path, action: () => openApp('notes', { path: f.path }) })));
     } else if (appId === 'archives') {
-      // Archives keeps its own list of the archives opened (its state file), newest first
       let opened = [];
       try { opened = (JSON.parse((await api('fs.read', undefined, { path: '/.apps/archives/state.json', track: '0' })).content).recent || []).slice(0, 6); } catch (e) { opened = []; }
       section('Recent', opened.map((p) => fileItem({ name: baseName(p), path: p, type: 'file' }, 'archives')));
@@ -2549,14 +2882,19 @@
   }
 
 
-  // ================================================================== menus, toasts, dialogs
-  // the menus themselves (submenus, keyboard, the current-choice dot) live in menu.js, shared with the apps
+  /*
+  |--------------------------------------------------------------------------
+  | Menus, toasts, dialogs
+  |--------------------------------------------------------------------------
+  */
+
+  /** The menus themselves (submenus, keyboard, the current-choice dot) live in menu.js, shared with the apps. */
   function showMenu(items, at, onClose, cls) {
     window.LOS_menu.open(items, at, { onClose, cls, parent: root, onError: (e) => notify(e.message, { type: 'error', title: 'Action failed' }) });
   }
   function hideMenu() { window.LOS_menu.close(); }
 
-  // Short notification chime (Web Audio; no sound files needed).
+  /** Short notification chime (Web Audio; no sound files needed). */
   let audioCtx = null;
   function chime(type) {
     try {
@@ -2577,11 +2915,17 @@
 
   /**
    * Notification toast: header (app icon + name + close), optional image on the left,
-   * optional bold title and the message. opts: { type, title, image, imageShape: 'round', win, app,
-   * actions: [{ label, action }] } (buttons along the bottom, like a native toast's; each closes it),
+   * optional bold title and the message. opts: { type, title, image, imageShape: 'round', preview (a large picture
+   * above the text, e.g. a screenshot: a blob: or data: image URL), onPreview (clicking the picture; closes it),
+   * win, app, actions: [{ label, action }] } (buttons along the bottom, like a native toast's; each closes it),
    * urgent: true (an alarm or a timer: shown even with Do not disturb on, and kept until a button closes it),
-   * onClose (called once when it goes).
+   * onClose (told once however it closes: a button, ×, timing out; e.g. to stop an alarm's sound).
    * Returns a function that closes it.
+   *
+   * An image may be a path on the user's drive; a broken one hides the image area. Every notification has a title and
+   * a description, like a native toast. No status icons. A preview fills the top edge to edge, above the app's name,
+   * as a native toast's hero image. One with buttons (or an error) stays longer, for time to reach a button. With more
+   * than four, the oldest goes (never an alarm still ringing).
    */
   function notify(message, opts) {
     opts = opts || {};
@@ -2593,15 +2937,16 @@
     const srcName = app ? app.name : (S.system.instanceName || 'LiteOS');
     const srcIcon = app ? app.img : 'assets/img/kite-blue.svg';
     let img = opts.image ? String(opts.image) : '';
-    if (img.startsWith('/')) img = rawUrl(img); // a path on the user's drive
+    if (img.startsWith('/')) img = rawUrl(img);
     if (img && !/^(https?:|data:image\/|blob:|assets\/)/i.test(img)) img = '';
-    // Every notification has a title and a description, like a native toast. No status icons.
     const title = opts.title || ({ success: 'Done', error: 'Something went wrong' })[type] || 'Notification';
     message = message == null ? '' : String(message);
     const el = document.createElement('div');
     el.className = 'toast ' + type;
     el.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    el.innerHTML = '<div class="nt-head"><img src="' + esc(srcIcon) + '" alt=""><span>' + esc(srcName) + '</span>' +
+    const preview = opts.preview && /^(blob:|data:image\/)/i.test(String(opts.preview)) ? String(opts.preview) : '';
+    el.innerHTML = (preview ? '<button type="button" class="nt-preview"' + (typeof opts.onPreview === 'function' ? '' : ' disabled') + ' aria-label="Open"><img src="' + esc(preview) + '" alt=""></button>' : '') +
+      '<div class="nt-head"><img src="' + esc(srcIcon) + '" alt=""><span>' + esc(srcName) + '</span>' +
       '<button class="nt-x nt-more" aria-label="More options" title="More options">' + ICON('more', 14) + '</button>' +
       '<button class="nt-x nt-close" aria-label="Dismiss" title="Dismiss">' + ICON('window.close', 13) + '</button></div>' +
       '<div class="nt-body">' + (img ? '<img class="nt-img' + (opts.imageShape === 'round' ? ' round' : '') + '" src="' + esc(img) + '" alt="">' : '') +
@@ -2620,17 +2965,18 @@
       });
       el.appendChild(row);
     }
+    const pv = el.querySelector('.nt-preview');
+    if (pv && typeof opts.onPreview === 'function') pv.addEventListener('click', () => { const f = opts.onPreview; close(); try { f(); } catch (err) { console.error(err); } });
     const imgEl = el.querySelector('.nt-img');
-    if (imgEl) imgEl.addEventListener('error', () => imgEl.remove()); // broken image: hide the image area
+    if (imgEl) imgEl.addEventListener('error', () => imgEl.remove());
     box.appendChild(el);
     let timer = null;
     const close = () => {
       clearTimeout(timer); el.classList.add('out'); setTimeout(() => el.remove(), 220);
-      // onClose: told once however it closes (a button, ×, timing out), e.g. to stop an alarm's sound
       if (typeof opts.onClose === 'function') { const f = opts.onClose; opts.onClose = null; try { f(); } catch (err) { console.error(err); } }
     };
     const secs = Math.max(5, +(set().notifyTimeout || 5));
-    const arm = () => { if (opts.urgent) return; timer = setTimeout(close, (type === 'error' || actions.length ? Math.max(10, secs) : secs) * 1000); }; // time to reach a button
+    const arm = () => { if (opts.urgent) return; timer = setTimeout(close, (type === 'error' || actions.length ? Math.max(10, secs) : secs) * 1000); };
     if (set().notifySound && !opts.urgent) chime(type);
     if (set().flashOnNotify) { const f = document.createElement('div'); f.className = 'a11y-flash'; document.body.appendChild(f); setTimeout(() => f.remove(), 600); }
     el.addEventListener('mouseenter', () => clearTimeout(timer));
@@ -2647,7 +2993,6 @@
     });
     arm();
     if (opts.urgent) el.dataset.urgent = '';
-    // more than four: the oldest goes (never an alarm still ringing)
     const all = box.querySelectorAll('.toast:not(.out):not([data-urgent])');
     if (all.length > 4) all[0].remove();
     return close;
@@ -2657,7 +3002,8 @@
   /**
    * System dialog (see docs/ui-dialogs.md). A native <dialog> opened with showModal(): the browser traps focus and
    * makes the rest of the shell inert. Escape cancels (resolves null), focus returns to where it was afterwards.
-   * `build(box, done)` fills it with .dlg-title / .dlg-body / .dlg-actions.
+   * `build(box, done)` fills it with .dlg-title / .dlg-body / .dlg-actions. Escape reaches only the topmost dialog
+   * (it holds focus), so a confirm over the file picker closes just the confirm.
    */
   function modal(build, cls) {
     return new Promise((resolve) => {
@@ -2674,7 +3020,6 @@
         if (prevFocus && prevFocus.focus) try { prevFocus.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
         resolve(v);
       };
-      // Escape reaches only the topmost dialog (it holds focus), so a confirm over the file picker closes just the confirm.
       box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } });
       box.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
       build(box, done);
@@ -2694,15 +3039,25 @@
       (b.type ? ' type="' + b.type + '"' : ' type="button"') + (b.v != null ? ' data-v="' + b.v + '"' : '') + (b.focus ? ' autofocus' : '') + '>' + esc(b.label) + '</button>').join('') + '</div>';
   }
 
-  // ------------------------------------------------------------------ message boxes
-  // Alert, confirm and prompt look and behave like a desktop's message box: a small window of its own with the app's
-  // name in a title bar (drag it by that bar), led by an icon for the kind of message (error, warning…) or the app's
-  // own, and the buttons in a footer. Asked for by an app, it belongs to that app's window: only that window is blocked (no dimming of the
-  // screen; the rest of the desktop stays usable), it sits over it, and a click on the blocked window brings it back
-  // with a flash and a sound. Asked for by the shell itself, it blocks the whole desktop as before.
+  /*
+  |--------------------------------------------------------------------------
+  | Message boxes
+  |--------------------------------------------------------------------------
+  |
+  | Alert, confirm and prompt look and behave like a desktop's message box: a small window of its own with the
+  | app's name in a title bar (drag it by that bar), led by an icon for the kind of message (error, warning…) or
+  | the app's own, and the buttons in a footer. Asked for by an app, it belongs to that app's window: only that
+  | window is blocked (no dimming of the screen; the rest of the desktop stays usable), it sits over it, and a click
+  | on the blocked window brings it back with a flash and a sound. Asked for by the shell itself, it blocks the
+  | whole desktop as before.
+  |
+  */
   const MSG_ICON = { error: 'status.error', warning: 'status.warning', info: 'status.info', question: 'status.question' };
   let msgAudio = null;
-  /** A short system sound: a low tone for errors and warnings, a soft one otherwise (and when a blocked window is clicked). */
+  /**
+   * A short system sound: a low tone for errors and warnings, a soft one otherwise (and when a blocked window is
+   * clicked).
+   */
   function msgSound(kind) {
     if (S.settings && S.settings.muted) return;
     try {
@@ -2730,15 +3085,16 @@
    * A message box. o: { kind ('error'|'warning'|'info'|'question'), title, message, bodyHtml, buttons
    * ([{ label, v, cls, focus }]), cancel (the value Escape and the close button give) }; winId: the app window asking.
    * build(box, done) may wire more (a prompt's field). -> the value of the button pressed.
+   *
+   * If the window that asked was closed meanwhile, its message goes with it. The title bar has the kind of message's
+   * icon (an error, a warning…) before the program's name, else the app's icon.
    */
   function msgBox(o, winId, build) {
     const owner = winId && wins.get(winId);
-    // the window that asked was closed meanwhile: its message goes with it
     if (winId && !owner) return Promise.resolve(o.cancel);
     const app = owner ? owner.app : null;
     const kind = MSG_ICON[o.kind] ? o.kind : null;
     const html =
-      // the title bar: the kind of message's icon (an error, a warning…) before the program's name, else the app's icon
       '<div class="msg-head">' + (kind ? '<img src="' + esc(window.LOS_sysIcon(MSG_ICON[kind])) + '" alt="" width="16" height="16">' : app ? '<img src="' + esc(app.img) + '" alt="" width="16" height="16">' : '') +
         '<span class="msg-cap">' + esc(app ? app.name : 'LiteOS') + '</span>' +
         '<button class="ibtn msg-close" type="button" data-msg-close aria-label="Close">' + ICON('window.close', 14) + '</button></div>' +
@@ -2760,14 +3116,17 @@
     return ownedBox(owner, wire, o.cancel);
   }
 
-  /** A message box that blocks one window: shown over it, its own z-order just above it, draggable by its title bar. */
+  /**
+   * A message box that blocks one window: shown over the middle of it (kept on screen), its own z-order just above
+   * it, draggable by its title bar. A sheet over the blocked window takes every click and points back to the box.
+   * Keys stay in the box: Escape gives the cancel value, Tab goes round its controls.
+   */
   function ownedBox(w, wire, cancelValue) {
     return new Promise((resolve) => {
       if (w.min) restore(w);
       focus(w);
       const box = document.createElement('dialog');
       box.className = 'dlg msgbox owned';
-      // the blocked window: a sheet over it takes every click and points back to the box
       const sheet = document.createElement('div');
       sheet.className = 'win-blocked';
       w.el.appendChild(sheet);
@@ -2793,7 +3152,6 @@
       box.setAttribute('role', 'alertdialog');
       box.setAttribute('aria-modal', 'true');
       box.show();
-      // over the middle of its window, kept on screen
       const r = w.el.getBoundingClientRect();
       const b = box.getBoundingClientRect();
       const left = Math.max(8, Math.min(window.innerWidth - b.width - 8, r.left + (r.width - b.width) / 2));
@@ -2813,7 +3171,6 @@
       };
       sheet.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); flash(); });
       w.blocker.flash = flash;
-      // keys stay in the box: Escape gives the cancel value, Tab goes round its controls
       box.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(cancelValue); return; }
         if (e.key !== 'Tab') return;
@@ -2825,7 +3182,6 @@
         list[next].focus();
       });
       box.addEventListener('pointerdown', () => { box.style.zIndex = String(++zTop); });
-      // drag by the title bar
       const head = $('.msg-head', box);
       head.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || e.target.closest('button')) return;
@@ -2883,43 +3239,64 @@
     }, winId).then(() => true);
   }
 
-  // ================================================================== printing (LiteLink)
-  // On a LiteLink device that allows printing, apps print a PDF through LiteOS's own dialog (host.print, OS.print in
-  // the SDK): the device's printers, the options each one has, then LiteLink sends it. The device's queue covers the
-  // whole LiteLink session, which several LiteOS users can share one after another, so LiteOS remembers each user's
-  // own documents by the job ids it got back, and a user only ever sees and cancels those. Without LiteLink printing,
-  // print resolves to false and the app prints the way it always did (window.print()).
+  /*
+  |--------------------------------------------------------------------------
+  | Printing (LiteLink)
+  |--------------------------------------------------------------------------
+  |
+  | On a LiteLink device that allows printing, apps print a PDF through LiteOS's own dialog (host.print, OS.print
+  | in the SDK): the device's printers, the options each one has, then LiteLink sends it. The device's queue covers
+  | the whole LiteLink session, which several LiteOS users can share one after another, so LiteOS remembers each
+  | user's own documents by the job ids it got back, and a user only ever sees and cancels those. Without LiteLink
+  | printing, print resolves to false and the app prints the way it always did (window.print()).
+  |
+  */
   const canPrint = () => devHas('print');
   const jobsKey = () => 'los.print.' + (S.user ? S.user.username : '');
   function myJobs() { try { const l = JSON.parse(localStorage.getItem(jobsKey()) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
   function saveJobs(list) { try { localStorage.setItem(jobsKey(), JSON.stringify(list.slice(-50))); } catch (e) { /* storage blocked */ } }
   const forgetJob = (id) => saveJobs(myJobs().filter((x) => x.job !== id));
-  /** This user's documents still waiting or printing: [{ job, printer, title, state, message }]. */
+  /**
+   * This user's documents still waiting or printing: [{ job, printer, title, state, message }], with the printer's
+   * name as chosen. Those that finished while away are forgotten.
+   */
   async function printJobs() {
     if (!canPrint()) return [];
     const open = await DEV.ll.print.jobs();
     const mine = myJobs();
-    saveJobs(mine.filter((m) => open.some((o) => o.job === m.job))); // finished while away: forgotten
+    saveJobs(mine.filter((m) => open.some((o) => o.job === m.job)));
     return open.filter((o) => mine.some((m) => m.job === o.job)).map((o) => {
       const m = mine.find((x) => x.job === o.job) || {};
-      return Object.assign({}, o, { title: m.title || o.title, printer: m.printer || o.printer }); // the printer's name, as chosen
+      return Object.assign({}, o, { title: m.title || o.title, printer: m.printer || o.printer });
     });
   }
   async function cancelPrintJob(job) {
     if (!canPrint() || !myJobs().some((m) => m.job === job)) throw new Error('That document isn’t one of yours.');
     await DEV.ll.print.cancelJob(job);
   }
-  // what happens to this user's documents after they're sent (the bridge's print-job events, started in startDevice)
+  /**
+   * What happens to this user's documents after they're sent (the bridge's print-job events, started in
+   * startDevice). Another user's, or one not LiteOS's, is left alone.
+   */
   function printJobEvent(ev) {
     const mine = ev && myJobs().find((m) => m.job === ev.job);
-    if (!mine) return; // another user's, or not LiteOS's
+    if (!mine) return;
     if (ev.state === 'stopped') notify('“' + mine.title + '” is waiting: ' + (ev.message || 'the printer stopped') + '.', { type: 'error', title: mine.printer });
     if (ev.state === 'done') { forgetJob(ev.job); notify('“' + mine.title + '” has printed.', { type: 'success', title: mine.printer }); }
     if (ev.state === 'cancelled') forgetJob(ev.job);
   }
 
   const isBlob = (x) => Object.prototype.toString.call(x) === '[object Blob]' || Object.prototype.toString.call(x) === '[object File]';
-  /** LiteOS's print dialog. -> { job, printer } once the printer's queue has it, null if cancelled, false without printing. */
+  /**
+   * printDialog
+   *
+   * LiteOS's print dialog. -> { job, printer } once the printer's queue has it, null if cancelled, false without
+   * printing. Copies and pages can start as the app's own print page had them (o.copies, o.pages). In the printer
+   * list, a printer that can take documents now gets a faint green dot after its name (only there: the box shows
+   * just the chosen printer's name); nothing else is said about it. A combo box's list shows printers with the
+   * printer icon, the current choice shown by its background (no dot). Escape while sending closes the dialog, and
+   * the half-sent PDF goes.
+   */
   async function printDialog(pdf, o, winId) {
     if (DEV.readyP) await DEV.readyP;
     if (!canPrint()) return false;
@@ -2933,12 +3310,9 @@
       let printers = null;
       let err = '';
       let sending = null;
-      // copies and pages can start as the app's own print page had them (o.copies, o.pages)
       const v = { p: null, copies: Math.min(99, Math.max(1, Math.round(+o.copies) || 1)), pages: typeof o.pages === 'string' ? o.pages : '', sides: 'one', color: true, media: '', orient: '' };
       const pick = (p) => { v.p = p; v.sides = 'one'; v.color = !!p.color; v.media = p.mediaDefault || (p.media || [])[0] || ''; };
       const row = (label, ctl) => '<label class="pdlg-row"><span>' + esc(label) + '</span>' + ctl + '</label>';
-      // in the printer list, a printer that can take documents now gets a faint green dot after its name (only there:
-      // the box shows just the chosen printer's name); nothing else is said about it
       const takes = (p) => p && p.state !== 'stopped';
       const dot = '<i class="pdlg-dot" aria-hidden="true"></i>';
       const combo = (key, text) => '<button class="input pdlg-combo" type="button" data-pick="' + key + '" aria-haspopup="menu">' +
@@ -2977,7 +3351,6 @@
         const key = btn.dataset.pick;
         const cur = { printer: p, sides: v.sides, color: v.color, media: v.media, orient: v.orient }[key];
         const r = btn.getBoundingClientRect();
-        // a combo box's list: printers with the printer icon, the current choice shown by its background (no dot)
         window.LOS_menu.open(lists[key].map(([val, label]) => Object.assign({ label, action: () => {
           if (key === 'printer') pick(val); else v[key] = val;
           draw();
@@ -3026,7 +3399,7 @@
         else if (t.dataset.b === 'cancel') { if (sending) sending.cancel(); sending = null; done(null); }
       });
       box.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && sending) { sending.cancel(); sending = null; } // the dialog closes; the half-sent PDF goes
+        if (e.key === 'Escape' && sending) { sending.cancel(); sending = null; }
         if (e.key === 'Enter' && e.target.matches('input') && printers && printers.length && !sending) { e.preventDefault(); send(); }
       }, true);
       draw();
@@ -3035,11 +3408,20 @@
     }, 'dlg-wide pdlg');
   }
 
-  // USB drives of a LiteLink thin client (usb.js), shown in the picker's Places below the folders: none off a
-  // LiteLink device or with USB drives off for the connection, so the picker is then as it always was
+  /*
+  |--------------------------------------------------------------------------
+  | File picker
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * USB drives of a LiteLink thin client (usb.js), shown in the picker's Places below the folders: none off a
+   * LiteLink device or with USB drives off for the connection, so the picker is then as it always was.
+   */
   const USB = window.LOS_usb || null;
   const isUsbPath = (p) => !!(USB && USB.isUsb(p));
-  const pickerDrives = new Set(); // open pickers' redraws, called when a drive is plugged in, pulled out or ejected
+  /** Open pickers' redraws, called when a drive is plugged in, pulled out or ejected. */
+  const pickerDrives = new Set();
   if (USB) USB.onChange(() => pickerDrives.forEach((fn) => fn()));
 
   /** Short date and time for the picker's Date modified column. */
@@ -3061,6 +3443,10 @@
    * back / forward / up, the address with its crumbs, refresh and search, a "New folder" command, the places and a
    * details list, then "File name" and the file type, with the main button and Cancel.
    * mode: 'open' | 'save' | 'folder'. Resolves to a path or null.
+   *
+   * The kinds in the type box are a save's formats ({types: [{label, ext}]}, or the one ext), or the kinds an open
+   * accepts. Home (the Quick access folders) and This PC (the drives) are pages of the pane, not folders: nothing is
+   * saved there. The folder above a drive's top folder is This PC, as in Explorer.
    */
   function fileDialog(mode, o, winId) {
     o = o || {};
@@ -3068,7 +3454,6 @@
     const caller = winId && wins.get(winId) ? wins.get(winId).app : null;
     const title = o.title || (mode === 'save' ? 'Save as' : mode === 'folder' ? 'Select folder' : 'Open');
     const okLabel = mode === 'save' ? 'Save' : mode === 'folder' ? 'Select folder' : 'Open';
-    // the kinds in the type box: a save's formats ({types: [{label, ext}]}, or the one ext), or the kinds an open accepts
     const extOf = (x) => String(x || '').toLowerCase().replace(/^\./, '');
     const types = mode === 'save'
       ? (Array.isArray(o.types) && o.types.length
@@ -3115,18 +3500,18 @@
       const nameInput = $('.fdlg-name', box);
       const search = $('.fdlg-search input', box);
       const accepts = (e) => e.type === 'dir' || !accept.length || accept.includes((e.ext || '').toLowerCase());
-      // Home (the Quick access folders) and This PC (the drives) are pages of the pane, not folders: nothing is saved there
       const isVirtual = (p) => p === 'home:' || p === 'device:';
       const folderName = (p) => (p === 'home:' ? 'Home' : p === 'device:' ? 'This PC'
         : isUsbPath(p) ? USB.parse(p).path === '/' ? USB.driveName(USB.parse(p).id) : baseName(USB.parse(p).path) : p === '/' ? 'My drive' : baseName(p));
-      // the folder above: a drive's top folder is under This PC, as in Explorer
       const upOf = (p) => (isVirtual(p) ? null : isUsbPath(p) ? USB.parent(p) || 'device:' : p === '/' ? 'device:' : parent(p));
       const joinHere = (dir, name) => (isUsbPath(dir) ? USB.join(dir, name) : join(dir, name));
       const stickReadOnly = () => isUsbPath(cwd) && !USB.writable;
       const readOnlyHere = () => isVirtual(cwd) || stickReadOnly();
 
-      // The navigation pane, the same as Files': Home, the folders pinned to Quick access, then This PC as a tree (its
-      // drives and their folders). Only This PC starts open: My drive stays collapsed until its arrow is clicked.
+      /*
+       * The navigation pane, the same as Files': Home, the folders pinned to Quick access, then This PC as a tree (its
+       * drives and their folders). Only This PC starts open: My drive stays collapsed until its arrow is clicked.
+       */
       const SPECIAL = Object.fromEntries(PLACE_ITEMS.slice(1).map((p) => [p[1], p[2]]));
       const folderRole = (p) => SPECIAL[p] || 'place.folder';
       const pinList = () => (Array.isArray(set().quickAccess) ? set().quickAccess : PLACE_ITEMS.slice(1).map((p) => p[1]));
@@ -3136,9 +3521,10 @@
         .concat(sticks.map((d) => ({ name: d.name, path: d.path, type: 'dir', drive: 'place.removable' })));
       const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
       const subfolders = (list) => (list || []).filter((e) => e.type === 'dir' && !e.name.startsWith('.')).sort(byName);
+      /** A folder's subfolders for the tree; one gone, or that can't be read, has nothing to open. */
       async function loadKids(p) {
         try { tree.kids.set(p, p === 'device:' ? driveEntries() : subfolders(isUsbPath(p) ? await USB.list(p) : await api('fs.list', undefined, { path: p }))); }
-        catch (e) { tree.kids.set(p, []); } // gone, or can't be read: nothing to open
+        catch (e) { tree.kids.set(p, []); }
       }
       function sideRow(path, label, role, o) {
         o = o || {};
@@ -3169,22 +3555,28 @@
         else { tree.open.add(p); if (!tree.kids.has(p)) await loadKids(p); }
         drawSide();
       }
-      // the USB drives under This PC, kept current while the picker is open
+      /**
+       * The USB drives under This PC, kept current while the picker is open (and no longer once it has closed). A
+       * drive that went away while one of its folders is open goes back to Documents.
+       */
       async function drawDrives() {
         if (USB) { try { sticks = await USB.drives(); } catch (e) { sticks = []; } }
-        if (!box.isConnected) { pickerDrives.delete(drawDrives); return; } // the picker has closed
+        if (!box.isConnected) { pickerDrives.delete(drawDrives); return; }
         tree.kids.set('device:', driveEntries());
         if (cwd === 'device:') { entries = driveEntries(); draw(); }
         drawSide();
-        // a drive that went away while one of its folders is open: back to Documents
         if (isUsbPath(cwd) && !sticks.some((d) => d.id === USB.parse(cwd).id)) load('/Documents');
       }
       pickerDrives.add(drawDrives);
       drawDrives();
 
-      // a folder that takes a moment to open: the pointer says it's working and a bar runs along the address bar
       let loadSeq = 0;
       let busyTimer = 0;
+      /**
+       * Open a folder. One that takes a moment to open: the pointer says it's working and a bar runs along the
+       * address bar. If another folder was asked for meanwhile, this one is dropped; once loaded, its branch in the
+       * tree is known.
+       */
       async function load(path, how) {
         const seq = ++loadSeq;
         clearTimeout(busyTimer);
@@ -3195,12 +3587,12 @@
             : path === 'device:' ? driveEntries()
               : isUsbPath(path) ? await USB.list(path) : await api('fs.list', undefined, { path });
           idle();
-          if (seq !== loadSeq) return; // another folder was asked for meanwhile
+          if (seq !== loadSeq) return;
           if (how === 'push' && path !== cwd) { back.push(cwd); fwd.length = 0; }
           cwd = path; entries = (r || []).filter((e) => !e.name.startsWith('.')); sel = null;
           query = ''; search.value = '';
           if (mode === 'folder') nameInput.value = isVirtual(cwd) ? '' : folderName(cwd);
-          if (!isVirtual(cwd)) tree.kids.set(cwd, subfolders(entries)); // its branch in the tree is known now
+          if (!isVirtual(cwd)) tree.kids.set(cwd, subfolders(entries));
           draw();
           drawSide();
         } catch (e) {
@@ -3209,11 +3601,15 @@
           if (path !== '/') load('/', how); else list.innerHTML = '<div class="fdlg-empty">' + esc(e.message) + '</div>';
         }
       }
+      /**
+       * Draw the address crumbs (on a USB drive: "This PC › KINGSTON › Reports") and the list. A stick the connection
+       * only lets LiteOS read gets no new folders, and nothing is saved there.
+       */
       function draw() {
         const pc = '<button type="button" data-crumb="device:">This PC</button><span class="sepc">›</span>';
         if (isVirtual(cwd)) {
           $('.crumbs', box).innerHTML = '<button type="button" data-crumb="' + cwd + '">' + folderName(cwd) + '</button>';
-        } else if (isUsbPath(cwd)) { // "This PC › KINGSTON › Reports"
+        } else if (isUsbPath(cwd)) {
           const u = USB.parse(cwd);
           const parts = u.path.split('/').filter(Boolean);
           $('.crumbs', box).innerHTML = pc + '<button type="button" data-crumb="' + esc(USB.make(u.id, '/')) + '">' + esc(USB.driveName(u.id)) + '</button>' +
@@ -3228,7 +3624,6 @@
         $('[data-b=back]', box).disabled = !back.length;
         $('[data-b=fwd]', box).disabled = !fwd.length;
         $('[data-b=up]', box).disabled = !upOf(cwd);
-        // a stick the connection only lets LiteOS read: no new folders, and nothing saved there
         $('.fdlg-ro', box).hidden = !stickReadOnly();
         $('[data-b=mkdir]', box).disabled = readOnlyHere();
         const q = query.trim().toLowerCase();
@@ -3243,18 +3638,23 @@
             '<span class="c sz">' + (e.type === 'dir' ? '' : esc(fmtSize(e.size))) + '</span></button>').join('')
           : '<div class="fdlg-empty">' + (q ? 'No items match your search.' : 'This folder is empty.') + '</div>';
       }
+      /**
+       * Select an item. It is marked in place, not redrawn: a redraw would swap the row under the pointer between
+       * the clicks of a double-click.
+       */
       function choose(en) {
         sel = en;
         if (mode === 'folder') nameInput.value = en.type === 'dir' ? en.name : folderName(cwd);
         else if (en.type === 'file') nameInput.value = en.name;
-        // marked in place, not redrawn: a redraw would swap the row under the pointer between the clicks of a double-click
         $$('[data-i]', list).forEach((r) => { const on = entries[+r.dataset.i] === en; r.classList.toggle('sel', on); r.setAttribute('aria-selected', on); });
       }
-      // a full path typed in the name box ("/Documents/x.png"): go to its folder and take the name from there
+      /**
+       * A full path typed in the name box ("/Documents/x.png"): go to its folder and take the name from there. The
+       * folder is checked first, so a wrong path leaves the dialog where it is (load() falls back to My drive).
+       */
       async function goToTyped(name) {
         const dir = parent(name) || '/';
         if (dir !== cwd) {
-          // checked first, so a wrong path leaves the dialog where it is (load() falls back to My drive)
           try { await api('fs.list', undefined, { path: dir }); } catch (e) { notify('“' + dir + '” couldn’t be found.', { type: 'error', title: 'Folder not found' }); return null; }
           await load(dir, 'push');
           if (cwd !== dir) return null;
@@ -3263,10 +3663,14 @@
         nameInput.value = base;
         return base;
       }
+      /**
+       * The main button. Home and This PC aren't folders: pick one of theirs. A name typed with one of the other
+       * formats' extensions saves in that format.
+       */
       async function ok() {
         if (mode === 'folder') {
           if (sel && sel.type === 'dir') return done(sel.path);
-          if (isVirtual(cwd)) return; // Home and This PC aren't folders: pick one of theirs
+          if (isVirtual(cwd)) return;
           return done(cwd);
         }
         let name = nameInput.value.trim();
@@ -3288,7 +3692,6 @@
         if (isVirtual(cwd)) { notify('Choose a folder to save in.', { type: 'error', title: 'Can’t save here' }); return; }
         if (readOnlyHere()) { notify('This USB drive can only be read. Choose a folder in My drive.', { type: 'error', title: 'Can’t save here' }); return; }
         if (/[\\/<>:"|?*]/.test(name)) { notify('File names can’t contain \\ / < > : " | ? *', { type: 'error', title: 'Invalid file name' }); return; }
-        // a name typed with one of the other formats' extensions saves in that format
         const typed = types.findIndex((ty) => name.toLowerCase().endsWith('.' + ty.ext));
         if (typed >= 0) { typeAt = typed; wantExt = types[typed].ext; }
         if (wantExt && !name.toLowerCase().endsWith('.' + wantExt.toLowerCase())) name += '.' + wantExt;
@@ -3300,9 +3703,10 @@
         }
         done(joinHere(cwd, name));
       }
+      /** The dialog's buttons. A branch's arrow opens it, without going there. */
       box.addEventListener('click', async (e) => {
         const tw = e.target.closest('[data-tw]');
-        if (tw) { toggleTree(tw.dataset.tw); return; } // a branch's arrow opens it, without going there
+        if (tw) { toggleTree(tw.dataset.tw); return; }
         const t = e.target.closest('button');
         if (!t || t.disabled) return;
         if (t.dataset.place) load(t.dataset.place, 'push');
@@ -3317,15 +3721,18 @@
         else if (t.dataset.b === 'ok') ok();
         else if (t.dataset.b === 'type') typeMenu(t);
       });
-      // the type box's list: the shell's own flyout, inside the dialog so it sits above it, at least as wide as the box;
-      // picking a save format changes the name's extension to match, as Windows does
+      /**
+       * The type box's list: the shell's own flyout, inside the dialog so it sits above it, at least as wide as the
+       * box, the current type shown by its background (a combo box's list has no dot). Picking a save format changes
+       * the name's extension to match, as Windows does: a name shown with one of the formats' extensions gets the new
+       * one; a name without one stays as it is.
+       */
       function typeMenu(btn) {
         if (!types.length) return;
         const r = btn.getBoundingClientRect();
         btn.setAttribute('aria-expanded', 'true');
         window.LOS_menu.open(types.map((ty, i) => ({ label: typeLabel(ty), action: () => {
           if (mode === 'save' && i !== typeAt) {
-            // a name shown with one of the formats' extensions gets the new one; a name without one stays as it is
             const v = nameInput.value.trim(), m = /\.[^.]*$/.exec(v);
             if (m && types.some((x) => '.' + x.ext === m[0].toLowerCase())) nameInput.value = v.slice(0, m.index) + '.' + ty.ext;
           }
@@ -3333,10 +3740,13 @@
           $('span', btn).textContent = typeLabel(ty);
         } })), { x: r.left, y: r.bottom + 2 }, { parent: box, cls: 'fdlg-typemenu', onClose: () => { btn.setAttribute('aria-expanded', 'false'); btn.focus({ preventScroll: true }); } });
         const m = $('.fdlg-typemenu', box);
-        // the current type shown by its background (a combo box's list has no dot)
         if (m) { m.style.minWidth = r.width + 'px'; const cur = m.querySelectorAll('.menu-item')[typeAt]; if (cur) cur.classList.add('is-current'); }
       }
-      // New folder, as in Explorer: made at once as "New folder" ("New folder (2)"…) with its name open for typing over
+      /**
+       * New folder, as in Explorer: made at once as "New folder" ("New folder (2)"…) with its name open for typing
+       * over. A stick's folders can't be renamed (LiteLink has no rename yet): the new one is just selected. The name
+       * box goes inside the dialog (a modal dialog makes everything outside it unreachable), over the row's name.
+       */
       async function mkdirHere() {
         if (readOnlyHere()) return;
         const usb = isUsbPath(cwd);
@@ -3350,7 +3760,6 @@
         }
         if (!path) return;
         await load(cwd);
-        // a stick's folders can't be renamed (LiteLink has no rename yet): the new one is just selected
         if (usb) { const made = entries.find((x) => x.path === path); if (made) choose(made); return; }
         const en = entries.find((x) => x.path === path);
         const row = en && $('[data-i="' + entries.indexOf(en) + '"]', list);
@@ -3363,7 +3772,6 @@
         inp.value = baseName(path);
         inp.spellcheck = false;
         inp.setAttribute('aria-label', 'Folder name');
-        // inside the dialog (a modal dialog makes everything outside it unreachable), over the row's name
         const br = box.getBoundingClientRect();
         Object.assign(inp.style, { left: r.left - br.left - 4 + 'px', top: r.top - br.top - 4 + 'px', width: Math.max(160, r.width + 40) + 'px' });
         box.appendChild(inp);
@@ -3410,11 +3818,21 @@
     }, 'fdlg');
   }
 
-  // ================================================================== lock & sign out
-  // Locking: the server locks the session (the API refuses until unlocked, a reload lands on the lock page), and the
-  // lock page itself is shown in a frame over the open windows, so nothing is closed. It posts 'liteos-unlocked'
-  // once the password was right (resources/views/auth/unlocked.blade.php).
-  // whether this account can lock (OS.user.can.lock): the guest has no password to unlock with, so it signs out instead
+  /*
+  |--------------------------------------------------------------------------
+  | Lock & sign out
+  |--------------------------------------------------------------------------
+  |
+  | Locking: the server locks the session (the API refuses until unlocked, a reload lands on the lock page), and
+  | the lock page itself is shown in a frame over the open windows, so nothing is closed. It posts
+  | 'liteos-unlocked' once the password was right (resources/views/auth/unlocked.blade.php).
+  |
+  */
+
+  /**
+   * Whether this account can lock (OS.user.can.lock): the guest has no password to unlock with, so it signs out
+   * instead.
+   */
   function canLock() { return !S.user || !S.user.can || !!S.user.can.lock; }
   async function lockScreen(alreadyLocked) {
     if (UI.lockShown) return;
@@ -3457,11 +3875,20 @@
     setTimeout(() => location.assign(next), 600);
   }
 
-  // ================================================================== global events
+  /*
+  |--------------------------------------------------------------------------
+  | Global events
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * Clicks on the shell's own buttons. Desktop icons open on double-click. All apps keeps the height of the
+   * launcher's first page; the list scrolls inside it.
+   */
   root.addEventListener('click', (e) => {
     const t = e.target.closest('.qchev') || e.target.closest('[data-act],[data-app],[data-file],[data-menu]');
     if (!t || !root.contains(t)) return;
-    if (t.closest('.dlg') || t.closest('.lock') || t.closest('.desk-icon')) return; // desktop icons open on double-click
+    if (t.closest('.dlg') || t.closest('.lock') || t.closest('.desk-icon')) return;
     if (t.dataset.app) {
       if (t.closest('.pop')) openApp(t.dataset.app); else appClicked(t.dataset.app);
       return;
@@ -3470,7 +3897,7 @@
     if (t.dataset.menu != null) { closePops(); openTopMenu(t); return; }
     switch (t.dataset.act) {
       case 'launcher': togglePop('launcher'); break;
-      case 'ls-all': { // the launcher keeps the height of its first page; the list scrolls inside it
+      case 'ls-all': {
         const pop = $('#pops .pop.launcher', root);
         if (pop) pop.style.height = pop.offsetHeight + 'px';
         UI.lsView = 'all'; renderLauncherBody();
@@ -3537,6 +3964,10 @@
     closePops();
   });
 
+  /**
+   * Right-clicks: a recent file, an app's jump list, the bar itself (empty space, the launcher button, the tray:
+   * System Monitor and the taskbar settings), a desktop icon or the desktop.
+   */
   root.addEventListener('contextmenu', (e) => {
     if (e.target.closest('input, textarea')) return;
     const recent = e.target.closest('#pops .ls-file[data-recent]');
@@ -3554,7 +3985,6 @@
     }
     const appBtn = e.target.closest('.dock [data-app], .taskbar [data-app]');
     if (appBtn) { e.preventDefault(); appMenu(appBtn.dataset.app, appBtn); return; }
-    // the bar itself (empty space, the launcher button, the tray): System Monitor and the taskbar settings
     if (e.target.closest('.taskbar, .dock')) {
       e.preventDefault();
       showMenu([
@@ -3574,7 +4004,10 @@
     if (!e.target.closest('.win-body')) e.preventDefault();
   });
 
-  // Volume slider: update live without re-rendering (so dragging isn't interrupted), save shortly after.
+  /**
+   * Volume slider: update live without re-rendering (so dragging isn't interrupted), save shortly after. On a
+   * LiteLink device it is the device's volume: LiteOS's own app volume isn't touched.
+   */
   root.addEventListener('input', (e) => {
     if (!e.target.classList || !e.target.classList.contains('qrange')) return;
     const v = +e.target.value;
@@ -3589,7 +4022,7 @@
     }
     $$('.qrange[data-k=volume]', root).forEach((r) => { if (r !== e.target) r.value = v; r.style.setProperty('--v', v + '%'); });
     $$('.qpct[data-k=volume]', root).forEach((x) => { x.textContent = v + '%'; });
-    if (devAudio()) { // the device's volume: LiteOS's own app volume isn't touched
+    if (devAudio()) {
       DEV.audio = Object.assign({}, DEV.audio, { volume: v, muted: false });
       setDeviceVolume({ volume: v, muted: false });
       return;
@@ -3601,21 +4034,26 @@
   });
   root.addEventListener('change', (e) => { if (e.target.classList && e.target.classList.contains('qrange')) renderBars(); });
 
+  /**
+   * The shell's keys. System Monitor opens with Ctrl+Shift+Esc, and Ctrl+Shift+` where the system keeps Esc for its
+   * own task manager (Windows).
+   */
   document.addEventListener('keydown', (e) => {
     if (switcherKey(e)) return;
     if (e.key === 'Escape') { hideMenu(); previewHide(); if (UI.pop) closePops(); }
     if (S.user && !UI.lockShown && e.altKey && e.code === 'Space') { e.preventDefault(); togglePop('launcher'); }
-    // Ctrl+Shift+Esc, and Ctrl+Shift+` where the system keeps Esc for its own task manager (Windows)
     if (e.ctrlKey && e.shiftKey && (e.key === 'Escape' || e.code === 'Backquote' || e.key === '`' || e.key === '~')) { e.preventDefault(); openMonitor(); }
   });
 
   document.addEventListener('keyup', (e) => { if (e.key === 'Alt') switcherCommit(); });
   window.addEventListener('blur', () => { if (SW.open) switcherClose(); });
-  // A click anywhere in a window's page (a web page inside the Browser too, or an app without the SDK) moves focus
-  // into that window's frame: bring it to the front. The browser only tells the frame that lost focus, so: the shell
-  // checks on its own blur and focusin, apps (the SDK) ask it to check when they lose focus, and a light check
-  // catches the rest (a web page losing focus to another). Only a change of focus raises a window.
   let lastFramed = null;
+  /**
+   * A click anywhere in a window's page (a web page inside the Browser too, or an app without the SDK) moves focus
+   * into that window's frame: bring it to the front. The browser only tells the frame that lost focus, so: the shell
+   * checks on its own blur and focusin, apps (the SDK) ask it to check when they lose focus, and a light check
+   * catches the rest (a web page losing focus to another). Only a change of focus raises a window.
+   */
   const raiseFramed = () => {
     const f = document.activeElement;
     if (f === lastFramed) return;
@@ -3629,42 +4067,54 @@
   setInterval(raiseFramed, 250);
   window.addEventListener('resize', debounce(relayout, 60));
 
-  // ================================================================== immersive maximised windows
-  // With the floating top bar and dock, a focused maximised window gets the whole screen: both bars
-  // slide away. They come back when the window is restored, loses focus, or the pointer touches
-  // the top or bottom edge of the screen.
+  /*
+  |--------------------------------------------------------------------------
+  | Immersive maximised windows
+  |--------------------------------------------------------------------------
+  |
+  | With the floating top bar and dock, a focused maximised window gets the whole screen: both bars slide away.
+  | They come back when the window is restored, loses focus, or the pointer touches the top or bottom edge of the
+  | screen.
+  |
+  */
+
+  /**
+   * Turn immersive mode on or off. The edge zones are thin strips above the windows layer, so they catch the
+   * pointer even over app content.
+   */
   function updateImmersive() {
     const f = wins.get(focusedId);
     const on = !!(S.user && fullMax() && f && !f.min && (f.max || f.tile));
     root.classList.toggle('immersive', on);
     if (!on) root.classList.remove('peek-top', 'peek-bottom');
     if (!$('.edge-zone.top', root)) {
-      // thin strips above the windows layer, so they catch the pointer even over app content
       root.insertAdjacentHTML('beforeend', '<div class="edge-zone top"></div><div class="edge-zone bottom"></div>');
       $('.edge-zone.top', root).addEventListener('mouseenter', () => { peekAt.top = Date.now(); root.classList.add('peek-top'); });
       $('.edge-zone.bottom', root).addEventListener('mouseenter', () => { peekAt.bottom = Date.now(); root.classList.add('peek-bottom'); });
     }
   }
-  // A revealed bar hides again as soon as the pointer is on anything else, an app included:
-  // entering an app's frame reaches the shell as one mouseover on the frame (after that the app
-  // keeps the events), so that single event has to be enough. While a bar slides in, the pointer
-  // briefly crosses whatever is under it, so the first moments after a reveal are ignored.
   const peekAt = { top: 0, bottom: 0 };
   const PEEK_GRACE = 450;
   let peekTimer = 0;
+  /**
+   * A revealed bar hides again as soon as the pointer is on anything else, an app included: entering an app's frame
+   * reaches the shell as one mouseover on the frame (after that the app keeps the events), so that single event has
+   * to be enough. While a bar slides in, the pointer briefly crosses whatever is under it, so the first moments after
+   * a reveal are ignored. It decides a moment later (lingering a second before hiding again), when a bar that was
+   * sliding in has reached its place, and by position, so the gap under the floating dock (over the app) still
+   * counts as the dock.
+   */
   root.addEventListener('mouseover', (e) => {
     if (!root.classList.contains('immersive') || UI.pop) return;
     const t = e.target;
     if (t.closest && t.closest('.menu, #pops, .switcher')) return;
     const y = e.clientY;
     clearTimeout(peekTimer);
-    // Decide a moment later, when a bar that was sliding in has reached its place.
     const decide = () => {
       if (!root.classList.contains('immersive') || UI.pop) return;
       const now = Date.now();
       const tb = $('#bars .topbar', root);
       const dk = $('#bars .dock-wrap .dock', root);
-      // by position, so the gap under the floating dock (over the app) still counts as the dock
       const inTop = !!(t.closest && t.closest('.topbar, .edge-zone.top')) || (tb && y < tb.getBoundingClientRect().bottom);
       const inDock = !!(t.closest && t.closest('.dock-wrap .dock, .edge-zone.bottom, .dock-hotzone')) || (dk && y >= dk.getBoundingClientRect().top);
       const waitTop = !inTop && now - peekAt.top < PEEK_GRACE;
@@ -3673,7 +4123,7 @@
       if (!inTop) root.classList.remove('peek-top');
       if (!inDock) root.classList.remove('peek-bottom');
     };
-    peekTimer = setTimeout(decide, 1000); // linger a second before hiding again
+    peekTimer = setTimeout(decide, 1000);
   });
   function blurWindows() {
     if (!focusedId) return;
@@ -3682,10 +4132,16 @@
     renderBars();
   }
 
-  // ================================================================== app switcher
-  // Alt+` (and Alt+Tab where the browser lets the page have it) shows the open windows, most
-  // recently used first. Keep Alt held and press again to move on (Shift goes back); let go of
-  // Alt to switch. Esc cancels. Apps forward these keys through the SDK.
+  /*
+  |--------------------------------------------------------------------------
+  | App switcher
+  |--------------------------------------------------------------------------
+  |
+  | Alt+` (and Alt+Tab where the browser lets the page have it) shows the open windows, most recently used first.
+  | Keep Alt held and press again to move on (Shift goes back); let go of Alt to switch. Esc cancels. Apps forward
+  | these keys through the SDK.
+  |
+  */
   const SW = { open: false, list: [], i: 0, el: null };
   function switcherKey(e) {
     if (!S.user || UI.lockShown) return false;
@@ -3695,13 +4151,14 @@
     switcherStep(e.shiftKey ? -1 : 1);
     return true;
   }
+  /** Open the switcher or move along it. When nothing visible is focused, it starts on the latest window. */
   function switcherStep(dir) {
     if (!SW.open) {
       SW.list = [...wins.values()].sort((a, b) => (b.lastFocus || 0) - (a.lastFocus || 0));
       if (!SW.list.length) return;
       SW.open = true;
       SW.i = SW.list.length > 1 ? (dir > 0 ? 1 : SW.list.length - 1) : 0;
-      if (SW.list[0] && SW.list[0].min) SW.i = 0; // nothing visible is focused: start on the latest window
+      if (SW.list[0] && SW.list[0].min) SW.i = 0;
       closePops(); hideMenu();
       switcherRender();
       return;
@@ -3739,21 +4196,32 @@
 
   function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
 
-  // ================================================================== tasks (OS.tasks in the SDK: System Monitor)
-  // The open windows as apps see them, and whether each one's page still answers. While something watches (System
-  // Monitor is open), every started window is asked every 2 seconds over postMessage and the SDK in it answers; a window
-  // that hasn't answered for 5 seconds is not responding. Every window shares the desktop's page, so one busy with a long
-  // piece of work holds the whole desktop up while it lasts; what this finds is a page that no longer answers at all (it
-  // broke off while starting, or its page isn't a working app any more).
+  /*
+  |--------------------------------------------------------------------------
+  | Tasks (OS.tasks in the SDK: System Monitor)
+  |--------------------------------------------------------------------------
+  |
+  | The open windows as apps see them, and whether each one's page still answers. While something watches (System
+  | Monitor is open), every started window is asked every 2 seconds over postMessage and the SDK in it answers; a
+  | window that hasn't answered for 5 seconds is not responding. Every window shares the desktop's page, so one busy
+  | with a long piece of work holds the whole desktop up while it lasts; what this finds is a page that no longer
+  | answers at all (it broke off while starting, or its page isn't a working app any more).
+  |
+  */
+
+  /**
+   * A window as apps see it. Its item is the file it was opened with, unless the app said otherwise; Files is
+   * opened with a folder, never a file. A higher z is nearer the front.
+   */
   function taskInfo(w) {
     const r = w.el.getBoundingClientRect();
     return {
       id: w.id, app: { id: w.app.id, name: w.app.name, img: w.app.img }, title: w.title, dirty: !!w.dirty,
       min: !!w.min, max: !!w.max, focused: w.id === focusedId && !w.min, asleep: !!w.asleep, starting: !!w.covered && !w.asleep,
       responding: w.responding !== false, opened: w.opened || 0,
-      // the file it was opened with, unless the app said otherwise; Files is opened with a folder, never a file
       item: w.item === false ? null : w.item || (w.app.id !== 'files' && w.args && typeof w.args.path === 'string' && w.args.path ? { kind: 'file', name: w.args.path } : null),
       rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+      z: +w.el.style.zIndex || 0,
     };
   }
   const taskList = () => [...wins.values()].map(taskInfo);
@@ -3765,23 +4233,25 @@
     if (window.LOS_CONFIG.guest) out.push({ id: 'guest-drive', name: 'Guest drive', detail: 'Keeps the guest’s files in this browser', since: TASKS.since });
     return out;
   }
+  /** Tell the watchers the windows changed (a listener whose window has closed is dropped). */
   function tasksChanged() {
     if (!TASKS.subs.size || TASKS.queued) return;
     TASKS.queued = setTimeout(() => {
       TASKS.queued = 0;
       const list = taskList();
       TASKS.subs.forEach((winId, fn) => {
-        if (winId && !wins.has(winId)) { TASKS.subs.delete(fn); return; } // its window has closed
+        if (winId && !wins.has(winId)) { TASKS.subs.delete(fn); return; }
         try { fn(list); } catch (e) { TASKS.subs.delete(fn); }
       });
       if (!TASKS.subs.size) stopPings();
     }, 60);
   }
+  /** Ask each started window whether it still answers (one not started, or still starting, has nothing to ask yet). */
   function pingWindows() {
     const now = Date.now();
     let changed = false;
     wins.forEach((w) => {
-      if (w.asleep || w.covered) return; // not started, or still starting: nothing to ask yet
+      if (w.asleep || w.covered) return;
       if (!w.pingAt) {
         w.pingAt = now;
         try { w.iframe.contentWindow.postMessage({ los: 'ping' }, location.origin); } catch (e) { /* its page is elsewhere */ }
@@ -3803,10 +4273,13 @@
       break;
     }
   });
-  // someone is using the desktop: any key, click, scroll or move on it, or in an app (the SDK passes those on)
+  /** Someone is using the desktop: any key, click, scroll or move on it, or in an app (the SDK passes those on). */
   const inputSeen = () => { TASKS.input = Date.now(); };
   ['pointerdown', 'keydown', 'wheel', 'pointermove'].forEach((t) => document.addEventListener(t, inputSeen, { capture: true, passive: true }));
-  /** Before the screen locks or the session ends (the server refuses then): the usage recorder hands in its last minute. */
+  /**
+   * Before the screen locks or the session ends (the server refuses then): the usage recorder hands in its last
+   * minute.
+   */
   async function beforeLeaving() {
     const all = [...TASKS.leave].map((fn) => Promise.resolve().then(fn).catch(() => {}));
     await Promise.race([Promise.all(all), new Promise((r) => setTimeout(r, 1500))]);
@@ -3820,6 +4293,7 @@
     if (window.LiteOSHost && window.LiteOSHost.perf && window.LiteOSHost.perf.forget) window.LiteOSHost.perf.forget(w.id);
     w.menus = [];
     w.item = null;
+    w.onArgs = null;
   }
 
   /** Ctrl+Shift+` or Ctrl+Shift+Esc, and the taskbar's menu. */
@@ -3829,7 +4303,11 @@
     openApp('monitor');
   }
 
-  // ================================================================== host API for apps
+  /*
+  |--------------------------------------------------------------------------
+  | Host API for apps
+  |--------------------------------------------------------------------------
+  */
   window.LiteOSHost = {
     api,
     get state() { return hostState(); },
@@ -3875,9 +4353,11 @@
         winLoading(w);
         w.iframe.src = w.app.entry + '?' + new URLSearchParams(Object.assign({}, w.args, { win: w.id }));
       },
-      // Custom title bars: the app reports pointer positions in screen coordinates while the user drags its own title
-      // area (its document keeps the pointer captured). They become shell positions from where the drag started,
-      // then the drag is the same as on a shell title bar, edge snapping included.
+      /**
+       * Custom title bars: the app reports pointer positions in screen coordinates while the user drags its own
+       * title area (its document keeps the pointer captured). They become shell positions from where the drag
+       * started, then the drag is the same as on a shell title bar, edge snapping included.
+       */
       dragStart(id, sx, sy, frac, fy) {
         const w = wins.get(id);
         if (!w) return;
@@ -3901,8 +4381,32 @@
         d.s.end();
       },
       toggleMax(id) { const w = wins.get(id); if (w) toggleMax(w); },
+      /**
+       * The app asks for another size (Screenshot's settings need more room): kept from its top left, inside the
+       * screen, never below its smallest. A maximised or snapped window stays as it is.
+       */
+      resize(id, width, height) {
+        const w = wins.get(id);
+        if (!w || w.max || w.tile) return;
+        const mn = w.app.minSize || [360, 240];
+        const a = workArea();
+        const r = Object.assign({}, w.rect, { w: Math.max(mn[0], Math.round(+width || w.rect.w)), h: Math.max(mn[1], Math.round(+height || w.rect.h)) });
+        r.w = Math.min(r.w, a.w);
+        r.h = Math.min(r.h, a.h);
+        if (r.y + r.h > a.y + a.h) r.y = Math.max(a.y, a.y + a.h - r.h);
+        if (r.x + r.w > a.x + a.w) r.x = Math.max(a.x, a.x + a.w - r.w);
+        w.rect = clampRect(r);
+        applyRect(w);
+      },
+      /** A single-window app opened again with arguments: fn(args) gets them instead of the page reloading. */
+      onArgs(id, fn) { const w = wins.get(id); if (w) w.onArgs = typeof fn === 'function' ? fn : null; },
+      /** Screenshot: its own window stays out of the picture while one is taken (it keeps its place). */
+      hide(id, on) { const w = wins.get(id); if (w) w.el.style.visibility = on ? 'hidden' : ''; },
       isMax(id) { const w = wins.get(id); return !!(w && w.max); },
-      /** What the window has open, for usage: { kind: 'file', name: path } or { kind: 'site', name: domain }, or null. */
+      /**
+       * What the window has open, for usage: { kind: 'file', name: path } or { kind: 'site', name: domain }, or
+       * null.
+       */
       setItem(id, item) {
         const w = wins.get(id);
         if (!w) return;

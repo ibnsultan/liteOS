@@ -3,12 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Support\UserSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
-// Each user's own desktop settings (/os/settings/*) and their own account (/os/account/*).
+/**
+ * SettingsTest
+ *
+ * Each user's own desktop settings (/os/settings/*) and their own account (/os/account/*).
+ */
 class SettingsTest extends TestCase
 {
     use RefreshDatabase;
@@ -125,5 +130,19 @@ class SettingsTest extends TestCase
 
         $this->postJson('/os/account/password', ['current' => 'password', 'new' => 'another1'])->assertOk();
         $this->assertTrue(Hash::check('another1', $this->amina->fresh()->password));
+    }
+
+    public function test_screenshot_settings_are_checked(): void
+    {
+        $clean = UserSettings::validate([
+            'shotCopy' => 0, 'shotSave' => 1, 'shotBorder' => true,
+            'shotFolder' => '/Pictures/Snips/', 'shotBorderColor' => '#ff0000', 'shotBorderWidth' => 4,
+        ]);
+        $this->assertSame(['shotCopy' => false, 'shotSave' => true, 'shotBorder' => true, 'shotFolder' => '/Pictures/Snips', 'shotBorderColor' => '#FF0000', 'shotBorderWidth' => 4], $clean);
+
+        $this->assertSame([], UserSettings::validate(['shotFolder' => '/a/../b', 'shotBorderColor' => 'red', 'shotBorderWidth' => 3]));
+        $this->assertSame([], UserSettings::validate(['shotFolder' => '/']));
+        $this->assertSame(['shotRecFolder' => '/Videos/Clips', 'shotRecMic' => true, 'shotRecSound' => false],
+            UserSettings::validate(['shotRecFolder' => '/Videos/Clips', 'shotRecMic' => 1, 'shotRecSound' => 0]));
     }
 }

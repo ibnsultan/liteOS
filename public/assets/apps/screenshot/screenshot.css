@@ -1,0 +1,105 @@
+/* LiteOS Screenshot: its own title bar, then New, picture or recording, what to capture and the delay, and under them
+   the key that starts one. */
+html, body { height: 100%; }
+body { margin: 0; background: var(--page); color: var(--text); overflow: hidden; }
+.ss { height: 100%; display: flex; flex-direction: column; min-height: 0; user-select: none; -webkit-user-select: none; }
+:root.in-shell:not([data-glass="off"]),
+:root.in-shell:not([data-glass="off"]) body,
+:root.in-shell:not([data-glass="off"]) .app { background: transparent; }
+
+/* title bar (chrome: custom): icon, name, then the window buttons */
+.ss-title { height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 14px; }
+.ss-title-icon { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; }
+.ss-title-icon img { display: block; }
+.ss-title-name { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.ss-title-controls { flex-shrink: 0; height: 100%; }
+
+/* every control's fill is see-through, so the frosted window shows through it as in the rest of the shell */
+:root { --ss-fill: rgba(16, 24, 40, 0.05); --ss-fill-2: rgba(16, 24, 40, 0.09); --ss-on: rgba(255, 255, 255, 0.6); --ss-bar: rgba(16, 24, 40, 0.42); }
+:root[data-theme="dark"] { --ss-fill: rgba(255, 255, 255, 0.06); --ss-fill-2: rgba(255, 255, 255, 0.1); --ss-on: rgba(255, 255, 255, 0.1); --ss-bar: rgba(255, 255, 255, 0.7); }
+
+.ss-bar { display: flex; align-items: center; gap: 12px; padding: 4px 12px 10px; flex-shrink: 0; border-bottom: 1px solid var(--ss-fill-2); }
+.ss-btn { height: 34px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border: none; border-radius: var(--radius-l); background: var(--ss-fill); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.ss-btn:hover { background: var(--ss-fill-2); }
+.ss-btn:active { background: var(--ss-fill); }
+.ss-btn:disabled { opacity: 0.5; cursor: default; }
+.ss-ib { height: 34px; min-width: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: none; border-radius: var(--radius-l); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.ss-ib:hover { background: var(--ss-fill); }
+.ss-ib:active, .ss-ib.open { background: var(--ss-fill-2); }
+.ss-ib:disabled { color: var(--muted); opacity: 0.6; cursor: default; background: transparent; } /* still readable, plainly not available */
+.ss-ib:focus-visible, .ss-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ss-kind { display: inline-flex; gap: 2px; padding: 2px; border-radius: calc(var(--radius-l) + 2px); background: var(--ss-fill); }
+.ss-kind .ss-ib { height: 30px; position: relative; }
+.ss-kind .ss-ib.on { background: var(--ss-on); }
+.ss-kind .ss-ib.on::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 14px; height: 3px; margin-left: -7px; border-radius: 2px; background: var(--ss-bar); }
+.ss-drop .ss-caret { color: var(--muted); display: inline-flex; }
+
+.ss-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 12px 16px; }
+.ss-hint { margin: 0; font-size: 14px; color: var(--text); text-align: center; }
+.ss-hint b { font-weight: 600; }
+.ss-hint.warn { color: var(--danger-ink); }
+
+/* the window's two views: the toolbar, or Settings */
+.ss-home { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ss-home[hidden], .ss-set[hidden] { display: none; }
+
+/* Settings: a back arrow and the title, then the rows by group */
+.ss-set { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ss-set-head { display: flex; align-items: center; gap: 12px; padding: 4px 16px 10px 10px; flex-shrink: 0; }
+.ss-set-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.ss-set-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
+.ss-group { margin: 14px 0 8px; font-size: 14px; font-weight: 600; }
+.ss-row { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 10px 16px; margin-bottom: 4px; border-radius: var(--radius-l); background: var(--ss-fill); }
+.ss-row.has-sub { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.ss-row-text { flex: 1 1 auto; min-width: 0; }
+.ss-row-title { font-size: 14px; }
+.ss-row-sub { margin-top: 2px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.ss-tog { width: 92px; display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; font-size: 14px; }
+.ss-more-slot { width: 32px; flex-shrink: 0; }
+/* what ends a row under another (Open folder, the thickness) starts in the switches' column */
+.ss-end { width: 140px; flex-shrink: 0; display: inline-flex; justify-content: flex-start; }
+.ss-more { width: 32px; height: 32px; min-width: 32px; padding: 0; color: var(--muted); }
+.ss-sub { display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 32px; margin: 1px 0 4px; border-radius: 0 0 var(--radius-l) var(--radius-l); background: var(--ss-fill); }
+.ss-sub[hidden] { display: none; }
+.ss-link { border: none; padding: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.ss-swatches { display: inline-flex; gap: 6px; }
+.ss-sw { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-strong); padding: 0; cursor: pointer; }
+.ss-sw.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ss-more[aria-expanded="true"] .ico { transform: rotate(180deg); }
+
+/* the editor (markup.js): its tools join the one toolbar, in the middle; Whiteboard, Save and Copy on the right.
+   A narrow window puts the tools in a bar along the bottom (app.js moves them). */
+.ss-body[hidden], .ss-ed[hidden], .ss-toolswrap[hidden], .ss-acts[hidden], .ss-cropbar[hidden], .ss-tools-main[hidden], .ss-bottom[hidden] { display: none; }
+.ss-left, .ss-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.ss-right { gap: 2px; margin-left: auto; }
+.ss-mid { flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; margin: 0 12px; }
+.ss-toolswrap, .ss-tools-main, .ss-acts, .ss-cropbar { display: inline-flex; align-items: center; gap: 2px; }
+.ss-cropbar { gap: 10px; }
+.ss-toolgroup { display: inline-flex; gap: 2px; }
+.ss-toolgroup .ss-ib { min-width: 36px; }
+.ss-toolgroup .ss-ib.on { background: var(--ss-on); box-shadow: inset 0 0 0 1px var(--ss-fill-2); }
+.ss-vsep { width: 1px; height: 20px; margin: 0 6px; background: var(--ss-fill-2); flex-shrink: 0; }
+.ss-board { gap: 8px; padding: 0 10px; font-size: 13px; }
+.ss-board img { display: block; }
+.ss-crop-size { font-size: 12px; color: var(--muted); min-width: 80px; text-align: right; }
+.ss-primary { background: var(--accent); color: var(--on-accent); }
+.ss-primary:hover { background: var(--accent-ink); }
+.ss-ed { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.ss-stage { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; padding: 16px; background: var(--ss-fill); }
+.ss-paper { position: relative; margin: auto; flex-shrink: 0; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); background: #fff; }
+.ss-paper canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#ov { cursor: crosshair; touch-action: none; }
+.ss-text-in { position: absolute; margin: 0; padding: 0 2px; border: 1px dashed rgba(127, 127, 127, 0.9); background: transparent; font-family: system-ui, "Segoe UI", sans-serif; outline: none; resize: none; overflow: hidden; white-space: pre; min-width: 40px; z-index: 2; }
+.ss-bottom { display: flex; justify-content: center; padding: 8px 12px; flex-shrink: 0; border-top: 1px solid var(--ss-fill-2); }
+
+/* compact (editing, under 1080px) and narrow: New shows only its +, Whiteboard only its icon; narrow also moves the tools to the bottom */
+.ss.compact .ss-new span, .ss.compact .ss-board span, .ss.narrow .ss-new span, .ss.narrow .ss-board span { display: none; }
+.ss.compact .ss-new, .ss.narrow .ss-new { padding: 0 10px; }
+.ss.narrow .ss-left { gap: 8px; }
+
+/* a tool's colours and size, under its button */
+.ss-fly { position: fixed; z-index: 50; width: 236px; padding: 12px; border-radius: var(--radius-l); background: var(--flyout); border: 1px solid var(--flyout-line); box-shadow: var(--flyout-shadow); }
+.ss-fly-colors { display: grid; grid-template-columns: repeat(6, 24px); gap: 12px; margin-bottom: 14px; }
+.ss-fly-size { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.ss-fly-size input { flex: 1; accent-color: var(--accent); }
+.ss-fly-size output { min-width: 20px; text-align: right; color: var(--text); }

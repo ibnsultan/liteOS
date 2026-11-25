@@ -1,0 +1,33 @@
+{
+  "id": "screenshot",
+  "name": "Screenshot",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Take a picture of the screen, a window or an area you drag.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "image",
+  "colors": [
+    "#5B93EA",
+    "#2F6FD6"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      500,
+      232
+    ],
+    "minSize": [
+      440,
+      200
+    ],
+    "chrome": "custom",
+    "material": "mica",
+    "single": true
+  },
+  "permissions": [
+    "capture"
+  ]
+}

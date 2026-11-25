@@ -125,6 +125,17 @@
     menu: 'M4 6h16 M4 12h16 M4 18h16',
     terminal: 'M4 5h16v14H4z M7 9l3 3-3 3 M12 15h5',
     calendar: 'M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4',
+    region: 'M4 8V5h3 M10 5h4 M17 5h3v3 M20 11v2 M20 16v3h-3 M14 19h-4 M7 19H4v-3 M4 13v-2',
+    window: 'M4 5h16v14H4z M4 9h16',
+    screen: 'M3 5h18v11H3z M8 20h8 M12 16v4',
+    crop: 'M7 3v14h14 M3 7h14v14',
+    record: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+    micOff: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z M5 11a7 7 0 0 0 14 0 M12 18v3 M4 4l16 16',
+    stop: 'M7 7h10v10H7z',
+    pixelate: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
+    camera: 'M4 8h3.5l1.5-2.5h6L16.5 8H20v11H4z M12 10.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+    camcorder: 'M3 7h12v10H3z M15 10.5L21 7v10l-6-3.5',
+    timerOff: 'M7.5 5.2A8 8 0 0 1 18.8 16.5 M16.6 18.8A8 8 0 0 1 5.2 7.4 M12 8v3 M10 2.5h4 M4 4l16 16',
     shuffle: 'M4 7h3c3 0 4 10 8 10h5 M4 17h3c1.5 0 2.5-2 3.5-4 M14 7h6 M17 4l3 3-3 3 M17 14l3 3-3 3',
     repeat: 'M4 12V9a3 3 0 0 1 3-3h12 M16 3l3 3-3 3 M20 12v3a3 3 0 0 1-3 3H5 M8 21l-3-3 3-3',
     heart: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
@@ -190,7 +201,7 @@
     const s = size || 16;
     return '<img class="ico sysico ' + esc(cls || '') + '" src="' + esc(url(role)) + '" width="' + s + '" height="' + s + '" alt="" draggable="false">';
   };
-  // when the theme changes, every icon from the set on the page follows: its file moves to the other theme's folder
+  /** When the theme changes, every icon from the set on the page follows: its file moves to the other theme's folder. */
   function refresh() {
     const c = cfg(), now = theme(), other = now === 'dark' ? 'light' : 'dark';
     const from = c.base + other + '/', to = c.base + now + '/';

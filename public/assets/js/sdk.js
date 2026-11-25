@@ -5,6 +5,10 @@
  * Apps run in an iframe inside a shell window. When the shell is present the SDK
  * forwards calls to it (window.parent.LiteOSHost); opened on its own, it falls
  * back to plain fetch + browser dialogs so apps can still be developed directly.
+ *
+ * An app page framed by anything but the desktop (the Browser app pointed at LiteOS, a page inside a page) would be
+ * LiteOS inside itself: it shows a line instead and starts nothing. A guest uses apps only in the desktop's windows:
+ * an app page opened on its own goes back to the desktop (the server refuses it too, AppsController).
  */
 (function () {
   'use strict';
@@ -13,9 +17,6 @@
   try {
     if (window.parent && window.parent !== window && window.parent.LiteOSHost) host = window.parent.LiteOSHost;
   } catch (e) { host = null; }
-  // An app page framed by anything but the desktop (the Browser app pointed at LiteOS, a page inside a page) would be
-  // LiteOS inside itself: it shows a line instead and starts nothing. A guest uses apps only in the desktop's windows:
-  // an app page opened on its own goes back to the desktop (the server refuses it too, AppsController).
   if (!host && window.parent !== window) {
     const stop = () => { document.body.innerHTML = '<p style="margin:0;padding:16px;font:13px/1.5 system-ui,sans-serif;color:#5a606b;text-align:center">LiteOS apps open only in LiteOS’s own windows.</p>'; };
     if (document.body) stop(); else document.addEventListener('DOMContentLoaded', stop);
@@ -31,9 +32,16 @@
   const BASE = window.LOS_BASE;
   const endpoint = (action) => window.LOS_endpoint(action);
 
-  // ------------------------------------------------------------------ api
-  // Opened on its own (no desktop around it), the app calls LiteOS directly: same routes and reply shape as the
-  // shell's api() in os.js, with the CSRF token printed into the page.
+  /*
+  |--------------------------------------------------------------------------
+  | API
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * Opened on its own (no desktop around it), the app calls LiteOS directly: same routes and reply shape as the
+   * shell's api() in os.js, with the CSRF token printed into the page.
+   */
   async function standaloneApi(action, data, query) {
     const isRead = data === undefined;
     let url = endpoint(action);
@@ -62,19 +70,23 @@
 
   const q = (action, query) => api(action, undefined, query);
 
-  // ------------------------------------------------------------------ utils
+  /*
+  |--------------------------------------------------------------------------
+  | Utils
+  |--------------------------------------------------------------------------
+  */
   const util = {
     basename: (p) => String(p).replace(/\/+$/, '').split('/').pop() || '/',
     dirname: (p) => { const s = String(p).replace(/\/+$/, ''); const i = s.lastIndexOf('/'); return i <= 0 ? '/' : s.slice(0, i); },
     join: (...parts) => ('/' + parts.join('/')).replace(/\/+/g, '/').replace(/(.)\/$/, '$1'),
     ext: (name) => (String(name).includes('.') ? String(name).split('.').pop().toLowerCase() : ''),
     stem: (name) => { const b = util.basename(name); const i = b.lastIndexOf('.'); return i > 0 ? b.slice(0, i) : b; },
+    /** 1023.99 MB would round to "1024 MB": it moves up a unit instead. */
     formatSize(bytes) {
       if (bytes == null) return '';
       const u = ['B', 'KB', 'MB', 'GB', 'TB'];
       let i = 0; let n = bytes;
       while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-      // 1023.99 MB would round to "1024 MB": move up a unit instead
       if (i > 0 && Math.round(n) >= 1024 && i < u.length - 1) { n /= 1024; i++; }
       return (i === 0 ? n : n.toFixed(n < 10 ? 1 : 0)) + ' ' + u[i];
     },
@@ -106,10 +118,20 @@
     },
   };
 
-  // ------------------------------------------------------------------ files
-  // A path on a USB stick of a LiteLink thin client ("usb:<drive>:/folder/name", from the Open / Save picker) is read
-  // and written on the stick itself through LiteLink (usb.js); everything else goes to the server as always. Rename,
-  // move, copy and delete have no USB version yet. Off a LiteLink device there are no usb: paths.
+  /*
+  |--------------------------------------------------------------------------
+  | Files
+  |--------------------------------------------------------------------------
+  |
+  | A path on a USB stick of a LiteLink thin client ("usb:<drive>:/folder/name", from the Open / Save picker) is read
+  | and written on the stick itself through LiteLink (usb.js); everything else goes to the server as always. Rename,
+  | move, copy and delete have no USB version yet. Off a LiteLink device there are no usb: paths.
+  |
+  | Apps that read a file's bytes with fetch(fs.rawUrl(path)) (the office apps, Code) get a USB stick's file the same
+  | way: on a LiteLink device only, a fetch of the raw URL of a usb: path is answered from the stick. Every other
+  | request goes on untouched. <img> / <video> can't be answered like this: they use fs.objectUrl().
+  |
+  */
   const USB = window.LOS_usb || null;
   const onUsb = (p) => !!(USB && USB.isUsb(p));
   const NO_USB_OP = () => Promise.reject(new Error('USB drives can’t do that yet.'));
@@ -157,14 +179,15 @@
     /**
      * A URL for <img>, <video>, <audio>: rawUrl() for a file on the drive, or a blob: URL of a file on a USB stick
      * (read whole, up to 64 MB). Freed when the window closes, or with revokeUrl().
+     *
+     * A guest's files are in this browser: without the guest drive's service worker only fetch() reaches them. Such a
+     * blob: URL runs as LiteOS itself (the server's copy is sandboxed; this one can't be), so only pictures, video and
+     * audio keep their type; a page, script or anything else is handed over as plain text.
      */
     objectUrl: async (path) => {
-      // a guest's files are in this browser: without the guest drive's service worker only fetch() reaches them
       if (window.LOS_CONFIG && window.LOS_CONFIG.guest && !onUsb(path) && !(navigator.serviceWorker && navigator.serviceWorker.controller)) {
         const res = await fetch(fs.rawUrl(path));
         if (!res.ok) throw new Error('“' + String(path).split('/').pop() + '” couldn’t be read.');
-        // a blob: URL runs as LiteOS itself (the server's copy is sandboxed; this one can't be), so only pictures,
-        // video and audio keep their type; a page, script or anything else is handed over as plain text
         const blob = await res.blob();
         const media = /^(image\/(?!svg)|video\/|audio\/)/.test(blob.type);
         const url = URL.createObjectURL(media ? blob : new Blob([blob], { type: 'text/plain' }));
@@ -192,9 +215,6 @@
     },
   };
 
-  // Apps that read a file's bytes with fetch(fs.rawUrl(path)) (the office apps, Code) get a USB stick's file the same
-  // way: on a LiteLink device only, a fetch of the raw URL of a usb: path is answered from the stick. Every other
-  // request goes on untouched. <img> / <video> can't be answered like this: they use fs.objectUrl().
   if (USB && typeof window.LiteLink === 'object' && window.LiteLink) {
     const nativeFetch = window.fetch.bind(window);
     const RAW = new URL(endpoint('fs.raw'), location.href);
@@ -211,7 +231,11 @@
     };
   }
 
-  // ------------------------------------------------------------------ window
+  /*
+  |--------------------------------------------------------------------------
+  | Window
+  |--------------------------------------------------------------------------
+  */
   const win = {
     id: winId,
     setTitle(title) { if (host && winId) host.win.setTitle(winId, title); else document.title = title; },
@@ -232,6 +256,10 @@
      */
     loading(text, progress) { if (host && winId && host.win.loading) host.win.loading(winId, text, progress); },
     loaded() { if (host && winId && host.win.loaded) host.win.loaded(winId); },
+    /** Ask for another window size in pixels (kept from its top left; a maximised or snapped window stays). */
+    resize(width, height) { if (host && winId && host.win.resize) host.win.resize(winId, width, height); },
+    /** A single-window app opened again with arguments (a file): fn(args) gets them instead of the page reloading. */
+    onArgs(fn) { if (host && winId && host.win.onArgs) host.win.onArgs(winId, fn); },
     /**
      * Menus shown in the top bar while this window is focused, merged with the
      * standard File / View / Window / Help menus:
@@ -265,12 +293,13 @@
     controlsWidth: host && winId ? 132 : 0,
     /**
      * Make `el` drag the window (custom title bars). `isHandle(target)` can restrict which
-     * targets start a drag, e.g. only empty space. Double-click maximises / restores.
+     * targets start a drag, e.g. only empty space. Double-click maximises / restores. A finger drags the window,
+     * rather than the browser scrolling the page.
      */
     dragRegion(el, isHandle) {
       if (!host || !winId || !host.win.dragStart) return;
       const ok = (t) => !isHandle || isHandle(t);
-      el.style.touchAction = 'none'; // a finger drags the window, rather than the browser scrolling the page
+      el.style.touchAction = 'none';
       el.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || !ok(e.target)) return;
         e.preventDefault();
@@ -291,9 +320,15 @@
     },
   };
 
-  // ------------------------------------------------------------------ system volume
-  // The master volume (top bar / Quick settings) scales every <audio>/<video> in the app.
-  // An element can carry data-app-volume="0..1" for its own level within that.
+  /*
+  |--------------------------------------------------------------------------
+  | System volume
+  |--------------------------------------------------------------------------
+  |
+  | The master volume (top bar / Quick settings) scales every <audio>/<video> in the app. An element can carry
+  | data-app-volume="0..1" for its own level within that.
+  |
+  */
   function masterVolume(s) { return !s || s.muted ? 0 : (s.volume == null ? 80 : s.volume) / 100; }
   function applyVolume(el) {
     const v = masterVolume(current.settings);
@@ -303,10 +338,16 @@
   document.addEventListener('play', (e) => { if (e.target && 'volume' in e.target) applyVolume(e.target); }, true);
   const applyAllVolumes = () => document.querySelectorAll('audio, video').forEach(applyVolume);
 
-  // ------------------------------------------------------------------ reload keys
-  // F5 and Ctrl+R inside an app reload that app (keeping what it hands to keepState), not the whole desktop. An app
-  // that uses the keys itself (Files refreshes the folder) cancels the event and keeps them. Ctrl+F5 and Ctrl+Shift+R
-  // still reload everything.
+  /*
+  |--------------------------------------------------------------------------
+  | Reload keys
+  |--------------------------------------------------------------------------
+  |
+  | F5 and Ctrl+R inside an app reload that app (keeping what it hands to keepState), not the whole desktop. An app that
+  | uses the keys itself (Files refreshes the folder) cancels the event and keeps them. Ctrl+F5 and Ctrl+Shift+R still
+  | reload everything.
+  |
+  */
   if (host && winId && host.win.reload) {
     window.addEventListener('keydown', (e) => {
       if (e.defaultPrevented || e.shiftKey || e.altKey) return;
@@ -318,8 +359,14 @@
     });
   }
 
-  // ------------------------------------------------------------------ app switcher keys
-  // Alt+` / Alt+Tab pressed inside an app go to the shell's window switcher.
+  /*
+  |--------------------------------------------------------------------------
+  | App switcher keys
+  |--------------------------------------------------------------------------
+  |
+  | Alt+` / Alt+Tab pressed inside an app go to the shell's window switcher.
+  |
+  */
   if (host && host.switcher) {
     document.addEventListener('keydown', (e) => {
       if ((e.altKey && (e.key === 'Tab' || e.code === 'Backquote')) || (e.key === 'Escape' && host.switcher.open)) {
@@ -329,26 +376,42 @@
     document.addEventListener('keyup', (e) => { if (e.key === 'Alt' && host.switcher.open) host.switcher.release(); }, true);
   }
 
-  // ------------------------------------------------------------------ tasks
-  // The desktop asks every window now and then whether its page still answers (System Monitor's Not responding):
-  // the answer goes back from here. Ctrl+Shift+` or Ctrl+Shift+Esc in an app opens System Monitor, as on the desktop.
+  /*
+  |--------------------------------------------------------------------------
+  | Tasks
+  |--------------------------------------------------------------------------
+  |
+  | The desktop asks every window now and then whether its page still answers (System Monitor's Not responding): the
+  | answer goes back from here. Ctrl+Shift+` or Ctrl+Shift+Esc in an app opens System Monitor, as on the desktop.
+  |
+  | Input in the app counts as someone using the desktop (usage tracking stops after 5 minutes without any). The bytes
+  | this window's page received (System Monitor › Performance › Network) are handed over every 2 seconds. Ctrl+Alt+S,
+  | PrtSc, Alt+PrtSc and Shift+PrtSc in an app take a screenshot, as on the desktop.
+  |
+  */
   if (host) {
     window.addEventListener('message', (e) => {
       if (e.source === window.parent && e.data && e.data.los === 'ping') window.parent.postMessage({ los: 'pong' }, location.origin);
     });
-    // input in the app counts as someone using the desktop (usage tracking stops after 5 minutes without any)
     if (host.tasks && host.tasks.input) {
       let told = 0;
       const seen = () => { const now = Date.now(); if (now - told > 5000) { told = now; host.tasks.input(); } };
       ['pointerdown', 'keydown', 'wheel', 'pointermove'].forEach((t) => document.addEventListener(t, seen, { capture: true, passive: true }));
     }
-    // bytes this window's page received (System Monitor › Performance › Network), handed over every 2 seconds
     if (host.perf && typeof PerformanceObserver === 'function') {
       let got = 0;
       try {
         new PerformanceObserver((list) => { list.getEntries().forEach((e) => { got += e.transferSize || 0; }); }).observe({ type: 'resource', buffered: true });
         setInterval(() => { if (got) { host.perf.received(got); got = 0; } }, 2000);
       } catch (e) { /* not in this browser */ }
+    }
+    if (host.capture) {
+      const prt = (e) => {
+        const snip = e.ctrlKey && e.altKey && !e.shiftKey && (e.code === 'KeyS' || e.code === 'KeyR' || /^[sr]$/i.test(String(e.key)));
+        if ((snip || e.key === 'PrintScreen' || e.code === 'PrintScreen') && host.capture.key({ type: e.type, key: e.key, code: e.code, ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey })) { e.preventDefault(); e.stopPropagation(); }
+      };
+      document.addEventListener('keydown', prt, true);
+      document.addEventListener('keyup', prt, true);
     }
     if (host.tasks && host.tasks.openMonitor) {
       document.addEventListener('keydown', (e) => {
@@ -371,6 +434,24 @@
     end: (id) => (host && host.tasks ? host.tasks.end(id) : Promise.resolve(false)),
   };
 
+  /** Screenshots of the LiteOS screen (the desktop does the capturing: capture.js). */
+  const capture = {
+    /** Whether this browser, on this address, can capture the screen (it needs HTTPS). */
+    supported: () => !!(host && host.capture && host.capture.supported()),
+    /**
+     * Take one. opts: { mode: 'region' | 'window' | 'screen' | 'active', delay: seconds }. This window is hidden
+     * while it is taken; it is saved in /Pictures/Screenshots and copied. -> { path, width, height, copied } | null
+     */
+    take: (opts) => (host && host.capture ? host.capture.take(opts || {}, winId) : Promise.resolve(null)),
+    /**
+     * Record the screen. opts: { mode: 'region' | 'window' | 'screen' }. The area and the sound are chosen on the
+     * desktop; this window is hidden until it stops. Asked again while one is under way, it stops it.
+     */
+    record: (opts) => (host && host.capture && host.capture.record ? host.capture.record(opts || {}, winId) : Promise.resolve(null)),
+    /** Whether a recording is under way. */
+    get recording() { return !!(host && host.capture && host.capture.recording); },
+  };
+
   /** How the desktop's page is doing (System Monitor › Performance): the whole desktop, never one app. */
   const perf = {
     /** The last 5 minutes, every 2 seconds, oldest first: [{ t, mem, busy, lag, longest, tasks, rx, tx, fps }] */
@@ -381,7 +462,11 @@
     watch: (fn) => (host && host.perf ? host.perf.watch(fn, winId) : () => {}),
   };
 
-  // ------------------------------------------------------------------ dialogs
+  /*
+  |--------------------------------------------------------------------------
+  | Dialogs
+  |--------------------------------------------------------------------------
+  */
   const dialog = {
     /** Pick a file. opts: { title, accept: ['ldoc'], startIn: '/Documents' } -> path | null */
     open(opts) {
@@ -417,7 +502,11 @@
     },
   };
 
-  // ------------------------------------------------------------------ settings / theme
+  /*
+  |--------------------------------------------------------------------------
+  | Settings / theme
+  |--------------------------------------------------------------------------
+  */
   let current = host ? host.state : { user: null, settings: {}, system: {} };
   const listeners = [];
 
@@ -460,31 +549,44 @@
     }, winId);
   }
 
-  // ------------------------------------------------------------------ popup menu helper
+  /*
+  |--------------------------------------------------------------------------
+  | Popup menu helper
+  |--------------------------------------------------------------------------
+  */
   /**
    * Show a context menu at a MouseEvent or {x, y}. items: [{ label, icon, key, danger, disabled, checked, action }],
-   * { label, icon, items: [...] } for a submenu, or 'sep' (see menu.js). Returns a function that closes it.
+   * { label, icon, items: [...] } for a submenu, or 'sep' (see menu.js). opts: { onClose } (told once the menu goes,
+   * e.g. to drop the pressed look of the button that opened it). Returns a function that closes it.
    */
-  function menu(items, at) { return window.LOS_menu.open(items, at); }
+  function menu(items, at, opts) { return window.LOS_menu.open(items, at, opts && typeof opts.onClose === 'function' ? { onClose: opts.onClose } : undefined); }
   function closeMenu() { window.LOS_menu.close(); }
 
-  // Clicking anywhere inside an app brings its window to the front and closes shell menus (launcher etc.).
-  // pointerdown too: an app that cancels pointerdown (a canvas editor) suppresses mousedown.
+
+  /**
+   * Clicking anywhere inside an app brings its window to the front and closes shell menus (launcher etc.). pointerdown
+   * too: an app that cancels pointerdown (a canvas editor) suppresses mousedown. A click in a frame inside the app (a
+   * web page in the Browser) never reaches this document, but it moves focus into that frame: this window blurs while
+   * its document still holds the focus. When focus leaves for another window, the shell isn't told: ask it to look.
+   */
   const raise = () => { if (host && host.focusWindow && winId) host.focusWindow(winId); };
   document.addEventListener('pointerdown', raise, true);
   document.addEventListener('mousedown', raise, true);
-  // A click in a frame inside the app (a web page in the Browser) never reaches this document, but it moves focus
-  // into that frame: this window blurs while its document still holds the focus.
-  // When focus leaves for another window, the shell isn't told: ask it to look.
   window.addEventListener('blur', () => setTimeout(() => {
     if (document.hasFocus()) raise();
     else if (host && host.focusChanged) host.focusChanged();
   }, 0));
 
-  // ------------------------------------------------------------------ the device (LiteLink)
-  // On a LiteLink thin client, LiteLink gives every LiteOS frame its own window.LiteLink: the device's USB drives,
-  // sound, network, power, Bluetooth, printers… (docs/litelink-integration.md). OS.device wraps this frame's one.
-  // Everywhere else api is null, ready gives null and has() is false, so device features stay off on an ordinary PC.
+  /*
+  |--------------------------------------------------------------------------
+  | The device (LiteLink)
+  |--------------------------------------------------------------------------
+  |
+  | On a LiteLink thin client, LiteLink gives every LiteOS frame its own window.LiteLink: the device's USB drives,
+  | sound, network, power, Bluetooth, printers… (docs/litelink-integration.md). OS.device wraps this frame's one.
+  | Everywhere else api is null, ready gives null and has() is false, so device features stay off on an ordinary PC.
+  |
+  */
   const LL = typeof window.LiteLink === 'object' && window.LiteLink && window.LiteLink.version >= 1 ? window.LiteLink : null;
   let devCaps = null;
   const devReady = LL ? Promise.resolve(LL.ready).then((c) => { devCaps = c || null; return devCaps; }, () => null) : Promise.resolve(null);
@@ -501,7 +603,11 @@
     has(area) { return !!(devCaps && devCaps[area]); },
   });
 
-  // ------------------------------------------------------------------ public API
+  /*
+  |--------------------------------------------------------------------------
+  | Public API
+  |--------------------------------------------------------------------------
+  */
   const LiteOS = {
     device,
     inShell: !!host,
@@ -514,6 +620,7 @@
     win,
     tasks,
     perf,
+    capture,
     dialog,
     menu,
     closeMenu,
@@ -550,7 +657,6 @@
     /** Save user settings (partial). */
     saveSettings(changes) { return host ? host.saveSettings(changes) : api('settings.save', { settings: changes }); },
     onSettings(fn) { listeners.push(fn); },
-    /** Run fn once the DOM is ready and the theme is applied. */
     /**
      * Print a PDF (Blob, ArrayBuffer or bytes) with LiteOS's print dialog: on a LiteLink device that allows printing,
      * it lists the device's printers and sends it. opts: { title, copies, pages ('1-3,5') } (copies and pages are where
@@ -565,6 +671,7 @@
     printJobs() { return host && host.print ? host.print.jobs() : Promise.resolve([]); },
     /** Cancel one of them. */
     cancelPrintJob(job) { return host && host.print ? host.print.cancel(job) : Promise.reject(new Error('Printing isn’t available here.')); },
+    /** Run fn once the DOM is ready and the theme is applied. */
     ready(fn) {
       const run = async () => {
         if (!host) {

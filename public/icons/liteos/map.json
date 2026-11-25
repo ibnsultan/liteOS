@@ -33,6 +33,7 @@
     "app.pdf": "apps/liteos-pdf",
     "app.archives": "apps/utilities-file-archiver",
     "app.monitor": "apps/utilities-system-monitor",
+    "app.screenshot": "apps/liteos-screenshot",
     "app.generic": "apps/applications-system",
 
     "shell.launcher": "apps/view-app-grid",

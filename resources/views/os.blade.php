@@ -34,5 +34,6 @@
 <script src="@versioned('assets/js/reminders.js')"></script>
 <script src="@versioned('assets/js/usage.js')"></script>
 <script src="@versioned('assets/js/perf.js')"></script>
+<script src="@versioned('assets/js/capture.js')"></script>
 </body>
 </html>

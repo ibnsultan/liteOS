@@ -303,6 +303,11 @@ img.appicon { display: block; object-fit: contain; -webkit-user-drag: none; user
 .nt-body { display: flex; gap: 14px; padding: 10px 18px 16px 16px; align-items: flex-start; }
 .nt-img { width: 52px; height: 52px; border-radius: var(--radius-l); object-fit: cover; flex-shrink: 0; background: var(--surface-3); }
 .nt-img.round { border-radius: 50%; }
+/* a large picture across the top (a screenshot just taken), edge to edge and cropped to fill, as a native toast's hero image */
+.nt-preview { display: block; width: 100%; height: 160px; margin: 0; padding: 0; border: none; border-radius: 0; overflow: hidden; background: var(--surface-3); cursor: pointer; }
+.nt-preview:disabled { cursor: default; }
+.nt-preview img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.nt-preview:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .nt-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .nt-text b { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; }
 .nt-text p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); word-break: break-word; }

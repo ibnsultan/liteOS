@@ -5,10 +5,14 @@ namespace App\Support;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
-// The apps LiteOS knows about, read from their manifest.json files (the package format in docs/app-platform.md).
-// Today these are the bundled apps under public/assets/apps/<id>/; installed store apps will be added here later.
-// The shell gets them through forClient(), printed into the desktop page, so the launcher, the dock, "Open with" and
-// settings validation all read the same list. A folder with a missing or broken manifest is skipped and logged.
+/**
+ * AppRegistry
+ *
+ * The apps LiteOS knows about, read from their manifest.json files (the package format in docs/app-platform.md).
+ * Today these are the bundled apps under public/assets/apps/<id>/; installed store apps will be added here later.
+ * The shell gets them through forClient(), printed into the desktop page, so the launcher, the dock, "Open with" and
+ * settings validation all read the same list. A folder with a missing or broken manifest is skipped and logged.
+ */
 class AppRegistry
 {
     /** @var array<string, array<string, mixed>>|null manifests by app id, in launcher order */
@@ -66,13 +70,14 @@ class AppRegistry
 
     /**
      * The apps as the shell's registry needs them (what the MVP's LOS_APPS held), printed into the desktop page and
-     * every app window, limited to what the signed-in account may open.
+     * every app window, limited to what the signed-in account may open. A signed-in account sees only the apps it may
+     * open (App\Support\Capabilities); /apps/<id> refuses the rest. "material" is the window's transparency and
+     * "reports" the application's loaded state.
      *
-     * @return list<array{id: string, name: string, icon: string, c: list<string>, img: string, role: ?string, entry: string, exts: list<string>, size: list<int>, chrome: string, material: string, single: bool, reports: bool, system: bool}>
+     * @return list<array{id: string, name: string, icon: string, c: list<string>, img: string, role: ?string, entry: string, exts: list<string>, size: list<int>, minSize: list<int>, chrome: string, material: string, single: bool, reports: bool, system: bool}>
      */
     public function forClient(?User $user = null): array
     {
-        // a signed-in account sees only the apps it may open (App\Support\Capabilities); /apps/<id> refuses the rest
         $apps = $user === null ? $this->all() : array_intersect_key($this->all(), array_flip(Capabilities::for($user)['apps']));
 
         return array_values(array_map(fn (array $app) => [
@@ -85,12 +90,10 @@ class AppRegistry
             'entry' => url('apps/'.$app['id']),
             'exts' => array_values($app['opens'] ?? []),
             'size' => $app['window']['size'] ?? [960, 640],
+            'minSize' => $app['window']['minSize'] ?? [360, 240],
             'chrome' => $app['window']['chrome'] ?? 'standard',
-            // "mica": a frosted window over the wallpaper while Transparency effects is on (the app paints its page
-            // transparent); anything else is a solid window
             'material' => ($app['window']['material'] ?? '') === 'mica' ? 'mica' : 'solid',
             'single' => (bool) ($app['window']['single'] ?? false),
-            // the app says when it's ready to be seen (OS.win.loaded): its window stays covered until then
             'reports' => (bool) ($app['window']['reportsReady'] ?? false),
             'system' => (bool) ($app['system'] ?? false),
         ], $apps));
@@ -121,8 +124,8 @@ class AppRegistry
     }
 
     /**
-     * Why a manifest can't be used, or null when it is fine. Bundled apps may use a short id (files, documents); store apps
-     * always have a reverse-domain id with a dot, so the two can never clash.
+     * Why a manifest can't be used, or null when it is fine. Bundled apps may use a short id (files, documents); store
+     * apps always have a reverse-domain id with a dot, so the two can never clash.
      *
      * @param  mixed  $manifest  the decoded manifest.json
      */
