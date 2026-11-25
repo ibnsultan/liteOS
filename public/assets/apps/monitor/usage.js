@@ -114,7 +114,7 @@ window.SMUsage = function (OS, host) {
     if (!d.tracking && st.who === 'me') {
       const admin = OS.user && OS.user.role === 'admin';
       out += '<div class="sm-off">' + ico('clock', 32) + '<b>Usage tracking is off</b><span>' +
-        (admin ? 'Turn it on to see how long you spend in apps, files and websites. Everyone is told while it is on.' : 'An administrator can turn it on in Settings.') + '</span>' +
+        (admin ? 'Turn it on to see how long you spend in apps, files and websites.' : 'An administrator can turn it on in Settings.') + '</span>' +
         (admin ? '<button type="button" class="btn" data-act="usage-settings">Open Settings</button>' : '') + '</div>';
       // what was recorded while it was on is still there to see
       if (!Object.keys(d.days || {}).length) return out;

@@ -167,7 +167,6 @@ LiteOS.ready((OS) => {
         row({ icon: 'place.folder', title: 'Most files in an archive', sub: 'Files and folders together', ctl: num('archive', 'archiveMaxEntries', 'Most files and folders in an archive', '', 1) }));
   }
   const h = (t) => '<h2 class="st-h">' + t + '</h2>';
-  const USAGE_NOTE = 'Your time in apps, files and websites is recorded. Administrators can see it.';
   /** Toggle with its On/Off label, as Windows shows it. */
   const sw = (on, attrs, label, dis) => '<span class="st-tog"><span>' + (on ? 'On' : 'Off') + '</span><button class="switch" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' + attrs + ' aria-label="' + esc(label) + '"' + (dis ? ' disabled' : '') + '></button></span>';
   /** A row with a toggle for one of the user's settings (invert: the toggle shows the opposite, "Animation effects"). */
@@ -275,7 +274,7 @@ LiteOS.ready((OS) => {
         row({ icon: 'settings.colour', title: 'Colour mode', ctl: sel(' data-set="theme" aria-label="Colour mode"', [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Automatic']], s.theme) }) +
         row({ title: 'Browse more backgrounds, colours and themes', go: 'personalisation' }));
       const device = can('settingsDevice');
-      return hero() + (OS.system.usageTracking && !isGuest() ? info(USAGE_NOTE, '<button class="btn" data-launch="monitor">Open System Monitor</button>') : '') +
+      return hero() +
         (device ? bridgeInfo(['network', 'bluetooth', 'system']) : '') +
         '<div class="st-home"><div class="st-col">' + recommended + devInfo + '</div><div class="st-col">' + (device ? btCard : '') + theme + '</div></div>';
     },
@@ -375,13 +374,12 @@ LiteOS.ready((OS) => {
       if (!x) return '<p class="hint">Loading…</p>';
       const keep = [[30, '30 days'], [90, '90 days'], [180, '180 days'], [365, 'A year']];
       return '<p class="st-note">Records how long each person spends in apps, files and websites, for System Monitor’s Usage view. People see only their own; administrators see everyone’s. Websites are kept by name only, never the page.</p>' +
-        rows(row({ icon: 'app.monitor', title: 'Usage tracking', sub: 'Off until you turn it on. Everyone is told while it is on.', ctl: sw(!!x.usageTracking, ' data-usage="usageTracking"', 'Usage tracking') }),
+        rows(row({ icon: 'app.monitor', title: 'Usage tracking', sub: 'Off until you turn it on', ctl: sw(!!x.usageTracking, ' data-usage="usageTracking"', 'Usage tracking') }),
           row({ icon: 'settings.time', title: 'Keep usage for', sub: 'Older days are deleted', ctl: sel(' data-sysset="usageKeepDays" aria-label="Keep usage for"', keep, x.usageKeepDays) }),
           row({ icon: 'settings.user', title: 'Guests', sub: 'The Guest account is never recorded' })) +
         h('What is recorded') +
         rows(row({ title: 'Apps and files', sub: 'Time each app and file is in front while someone is using the desktop. Idle time (5 minutes), a locked screen and signing out aren’t counted.' }),
-          row({ title: 'Websites', sub: 'The site’s name, such as github.com. Never the address of the page, what was typed or what was seen.' })) +
-        h('What everyone sees while it is on') + info(USAGE_NOTE);
+          row({ title: 'Websites', sub: 'The site’s name, such as github.com. Never the address of the page, what was typed or what was seen.' }));
     },
 
     'system/about'() {
@@ -1090,7 +1088,7 @@ LiteOS.ready((OS) => {
       data.system = Object.assign(data.system, await OS.api('system.save', { system: changes }));
       if ('usageTracking' in changes) {
         try { if (window.parent !== window && window.parent.LiteOSHost) window.parent.LiteOSHost.refreshSystem({ usageTracking: !!data.system.usageTracking }); } catch (e) { /* not in the desktop */ }
-        OS.notify(data.system.usageTracking ? 'Time in apps, files and websites is now recorded. Everyone is told.' : 'Nothing more is recorded. What was recorded is kept for ' + data.system.usageKeepDays + ' days.', { type: 'success', title: data.system.usageTracking ? 'Usage tracking on' : 'Usage tracking off' });
+        OS.notify(data.system.usageTracking ? 'Time in apps, files and websites is now recorded.' : 'Nothing more is recorded. What was recorded is kept for ' + data.system.usageKeepDays + ' days.', { type: 'success', title: data.system.usageTracking ? 'Usage tracking on' : 'Usage tracking off' });
       }
     } catch (e) { OS.notify(e.message, { type: 'error', title: 'Couldn’t change usage tracking' }); }
     render();
