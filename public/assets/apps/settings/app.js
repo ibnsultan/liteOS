@@ -74,7 +74,7 @@ LiteOS.ready((OS) => {
     ['apps/browser', 'Browser', 'app.browser', 'Home page'],
     ['accounts', 'Accounts', 'settings.accounts'],
     ['accounts/info', 'Your info', 'settings.user', 'Display name, account type'],
-    ['accounts/signin', 'Sign-in options', 'status.password', 'Password'],
+    ['accounts/signin', 'Sign-in options', 'settings.signin', 'Password'],
     ['accounts/users', 'Other users', 'settings.accounts', 'Add, edit or remove people who sign in here'],
     ['time', 'Time & language', 'settings.time'],
     ['time/datetime', 'Date & time', 'settings.time', 'Time zone, clock format'],
@@ -255,7 +255,7 @@ LiteOS.ready((OS) => {
         row({ icon: 'settings.wifi', title: 'Wi-Fi', go: 'network/wifi', off: offNet, ctl: net ? (wifiOn ? 'On' : 'Off') : '' }) +
         row({ icon: 'settings.ethernet', title: 'Ethernet', go: 'network/ethernet', off: offNet, ctl: net && net.kind === 'ethernet' ? 'Connected' : '' }) +
         row({ icon: 'settings.vpn', title: 'VPN', go: 'network/vpn', off: offNet, ctl: vpns.some((v) => v.active) ? 'Connected' : '' }) +
-        tog('nightLight', 'Night light', '', { icon: 'settings.display' }));
+        tog('nightLight', 'Night light', '', { icon: 'settings.night-light' }));
       const spec = (k, v, off) => '<div' + (off ? ' class="off" title="' + esc(off) + '"' : '') + '><b>' + k + '</b><span>' + v + '</span></div>';
       const offSys = why('system');
       const devInfo = card('Device info', '',
@@ -294,7 +294,7 @@ LiteOS.ready((OS) => {
       return (can('settingsDevice') ? bridgeInfo(['display']) : '') +
         h('Brightness & colour') +
         rows(row({ icon: 'settings.display', title: 'Brightness', sub: 'Dims the screen inside LiteOS', ctl: slider(' data-range="brightness"', 20, 100, s.brightness == null ? 100 : s.brightness, 'Brightness') }),
-          tog('nightLight', 'Night light', 'Use warmer colours to help block blue light', { icon: 'settings.colour' })) +
+          tog('nightLight', 'Night light', 'Use warmer colours to help block blue light', { icon: 'settings.night-light' })) +
         h('Scale & layout') +
         rows(choose('textSize', 'Text size', 'Size of text and controls in apps', [['default', 'Default'], ['large', 'Large'], ['larger', 'Larger']], { icon: 'settings.font' }),
           row({ icon: 'settings.display', title: 'Display resolution', sub: off ? '' : 'Adjust the resolution to fit your connected display', off, dev: true,
@@ -683,7 +683,7 @@ LiteOS.ready((OS) => {
 
     'accounts/signin'() {
       return h('Ways to sign in') +
-        rows(row({ icon: 'status.password', title: 'Password', sub: 'Used to sign in and to unlock the screen' + (can('changePassword') ? '' : ' · ' + MANAGED),
+        rows(row({ icon: 'settings.signin', title: 'Password', sub: 'Used to sign in and to unlock the screen' + (can('changePassword') ? '' : ' · ' + MANAGED),
           ctl: '<button class="btn" data-act="change-password"' + (can('changePassword') ? '' : ' disabled') + '>Change</button>' })) +
         (can('lock') ? h('Additional settings') +
         rows(row({ icon: 'shell.lock', title: 'Lock the screen now', sub: 'Your windows stay open behind the lock screen', ctl: '<button class="btn" data-act="lock">Lock</button>' })) : '');

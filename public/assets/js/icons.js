@@ -85,6 +85,10 @@
     contrast: 'M12 3a9 9 0 1 0 0 18z M12 3a9 9 0 0 1 0 18',
     volume: 'M4 9v6h4l5 4V5L8 9z M16.5 8.5a5 5 0 0 1 0 7',
     mute: 'M4 9v6h4l5 4V5L8 9z M17 9l5 6 M22 9l-5 6',
+    // the tray's network, drawn like volume beside it: Wi-Fi arcs, a wired screen, and Wi-Fi struck through when offline
+    netWifi: 'M2.5 9.2a13.5 13.5 0 0 1 19 0 M5.6 12.6a9 9 0 0 1 12.8 0 M8.7 16a4.6 4.6 0 0 1 6.6 0 M12 19.5h.01',
+    netWired: 'M4 4h16v11H4z M12 15v5 M7 20h10',
+    netOffline: 'M2.5 9.2a13.5 13.5 0 0 1 19 0 M5.6 12.6a9 9 0 0 1 12.8 0 M8.7 16a4.6 4.6 0 0 1 6.6 0 M12 19.5h.01 M4 3l16 18',
     play: 'M8 5v14l11-7z',
     pause: 'M6 5h4v14H6z M14 5h4v14h-4z',
     prev: 'M6 5h2v14H6z M20 5v14L9 12z',

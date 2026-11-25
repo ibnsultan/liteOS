@@ -203,11 +203,11 @@
     if (!devAudio()) return;
     DEV.ll.audio.set(changes).then((a) => { DEV.audio = a; }).catch((e) => notify(e.message, { type: 'error', title: 'Sound' }));
   }, 120);
-  /** The network icon: wired, Wi-Fi or offline (from the icon set's tray icons). */
+  /** The network icon: wired, Wi-Fi or offline, line glyphs in the text colour like the volume icon beside it (the
+   * icon set's tray files are a pale grey made for dark panels, lost on a light taskbar, and solid where the rest are lines). */
   function netIcon(size) {
     const n = DEV.net;
-    const role = !n || !n.connected ? 'tray.offline' : n.kind === 'wifi' ? 'tray.wifi-good' : 'tray.wired';
-    return window.LOS_sysIconImg(role, size || 16, { cls: 'ico' });
+    return window.LOS_icon(!n || !n.connected ? 'netOffline' : n.kind === 'wifi' ? 'netWifi' : 'netWired', size || 16);
   }
   function netLabel() {
     const n = DEV.net;
