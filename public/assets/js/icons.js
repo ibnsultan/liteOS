@@ -132,6 +132,8 @@
     record: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
     micOff: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z M5 11a7 7 0 0 0 14 0 M12 18v3 M4 4l16 16',
     stop: 'M7 7h10v10H7z',
+    chevUp: 'M6 15l6-6 6 6',
+    bellOff: 'M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7 M10 20a2 2 0 0 0 4 0 M4 4l16 16',
     pixelate: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
     camera: 'M4 8h3.5l1.5-2.5h6L16.5 8H20v11H4z M12 10.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
     camcorder: 'M3 7h12v10H3z M15 10.5L21 7v10l-6-3.5',

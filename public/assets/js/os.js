@@ -440,14 +440,24 @@
     }
     let right;
     if (o.desktop) {
-      right = netButton('tb-icon') + '<button class="tb-icon" data-act="volume" aria-label="Volume" title="Volume">' + ICON(volIconName(), 16) + '</button>' +
+      // the network and volume open Quick settings together; the date and time open the calendar, the bell the
+      // notifications; what is playing sits in the middle of the bar
+      right = trayGroup('tb-group') +
         '<button class="tb-icon" data-act="launcher" aria-label="Search" title="Search (Alt+Space)">' + ICON('search', 15) + '</button>' +
-        '<button class="status' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><span class="tb-date" data-clock="d"></span><span data-clock="t"></span></button>' +
+        '<button class="status' + (UI.pop === 'cal' ? ' open' : '') + '" data-act="cal" aria-label="Calendar"><span class="tb-date" data-clock="d"></span><span data-clock="t"></span></button>' +
+        '<button class="tb-icon tb-bell' + (UI.pop === 'notes' ? ' open' : '') + '" data-act="notes" aria-label="Notifications" title="Notifications">' + ICON(set().dnd ? 'bellOff' : 'bell', 15) + '<span class="tb-badge" data-badge hidden></span></button>' +
         '<button class="tb-icon" data-act="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
     } else {
       right = '<span class="status static"><span class="tb-date" data-clock="d"></span><span data-clock="t"></span></span><button class="tb-icon" data-l="power" aria-label="Power options" title="Power">' + ICON('power', 15) + '</button>';
     }
-    return '<div class="topbar glass">' + brand + left + '<span class="spacer"></span>' + right + '</div>';
+    const chip = o.desktop ? '<div class="tb-media" data-media-chip>' + mediaChip() + '</div>' : '';
+    return '<div class="topbar glass">' + brand + left + '<span class="spacer"></span>' + chip + right + '</div>';
+  }
+
+  /** The network and volume icons as one button that opens Quick settings (and what is playing). */
+  function trayGroup(cls) {
+    return '<button class="' + cls + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings" title="Quick settings">' +
+      (devHas('network') && DEV.net ? netIcon(16) : '') + ICON(volIconName(), 16) + '</button>';
   }
 
 
@@ -1292,8 +1302,8 @@
         '<div class="apps">' + apps.map((a) => '<button class="tb-btn' + (runningIds.has(a.id) ? ' running' : '') + (fApp === a.id ? ' focused' : '') + '" data-app="' + a.id + '"' + (runningIds.has(a.id) ? '' : ' title="' + esc(a.name) + '"') + ' aria-label="' + esc(a.name) + '">' +
           '<img class="tile appicon" src="' + a.img + '" alt="" draggable="false"><span class="bar"></span></button>').join('') + '</div>' +
         '<button class="tb-scroll next" data-act="tb-next" aria-label="More apps" tabindex="-1">' + ICON('forward', 14) + '</button></div>' +
-        '<div class="tray">' + netButton('tb-icon tray-ico') + '<button class="tb-icon tray-ico" data-act="volume" aria-label="Volume" title="Volume">' + ICON(volIconName(), 16) + '</button>' +
-        '<button class="clock' + (UI.pop === 'qs' ? ' open' : '') + '" data-act="qs" aria-label="Quick settings"><b data-clock="t"></b><span data-clock="ds"></span></button>' +
+        '<div class="tray">' + trayGroup('tb-group tray-grp') +
+        '<button class="clock' + (UI.pop === 'clock' ? ' open' : '') + '" data-act="clock" aria-label="Notifications and calendar"><b data-clock="t"></b><span data-clock="ds"></span><span class="tb-badge" data-badge hidden></span></button>' +
         '<button class="peek" data-act="peek" title="Show desktop" aria-label="Show desktop"></button></div></div>' +
         (s.autohide ? '<div class="dock-hotzone"></div>' : '');
     }
@@ -1301,6 +1311,8 @@
     const keepScroll = oldStrip ? oldStrip.scrollLeft : 0;
     bars.innerHTML = html;
     tickClock(bars);
+    noteBadge();
+    fitChip();
     tbStrip(keepScroll);
     updateImmersive();
     if (s.autohide) {
@@ -1371,6 +1383,9 @@
     if (UI.pop === 'launcher') {
       api('fs.recent').then((r) => { UI.recent = r; if (UI.pop === 'launcher' && !UI.lsQuery) renderLauncherBody(); }).catch(() => {});
     }
+    if (UI.pop === 'cal' || UI.pop === 'clock') { const t = new Date(); UI.calMonth = new Date(t.getFullYear(), t.getMonth(), 1); UI.calSel = t; loadCalEvents(); }
+    if (UI.pop === 'notes' || UI.pop === 'clock') { NOTES.forEach((n) => { n.read = true; }); noteBadge(); }
+    if (UI.pop === 'media') UI.mediaPage = 0;
     if (UI.pop === 'qs') {
       api('fs.usage').then((u) => { UI.usage = u; if (UI.pop === 'qs') renderPop(); }).catch(() => {});
       if (devHas('bluetooth')) DEV.ll.bluetooth.state().then((b) => { DEV.bt = b; if (UI.pop === 'qs') renderPop(); }).catch(() => {});
@@ -1387,7 +1402,7 @@
   /** Reflect which popover is open on the bar buttons without redrawing the bars. */
   function syncBarState() {
     $$('#bars [data-act=launcher]', root).forEach((b) => b.classList.toggle('open', UI.pop === 'launcher'));
-    $$('#bars [data-act=qs]', root).forEach((b) => b.classList.toggle('open', UI.pop === 'qs'));
+    ['qs', 'cal', 'notes', 'clock', 'media'].forEach((k) => $$('#bars [data-act=' + k + ']', root).forEach((b) => b.classList.toggle('open', UI.pop === k)));
     root.classList.toggle('pop-open', !!UI.pop);
     if (!UI.pop) { const bar = $('#bars .dock-wrap, #bars .taskbar', root); if (bar && set().autohide && !bar.matches(':hover')) bar.classList.add('hide'); }
   }
@@ -1400,6 +1415,7 @@
       if (floating) return 'left:0;right:0;margin:0 auto;bottom:' + dockH + 'px';
       return 'left:8px;bottom:58px';
     }
+    if (kind === 'media' && floating && s.topbar) return 'left:calc(50% - 170px);top:42px';
     if (floating) return s.topbar ? 'right:10px;top:42px' : 'right:10px;bottom:' + dockH + 'px';
     return 'right:10px;bottom:58px';
   }
@@ -1412,7 +1428,8 @@
   function renderPop() {
     const pops = $('#pops', root);
     const prev = UI.pop && UI.drawnPop === UI.pop && pops ? pops.querySelector('.pop:not(.closing)') : null;
-    const running = prev && prev.getAnimations ? prev.getAnimations().find((x) => x.playState === 'running') : null;
+    // a stack of cards animates each card, not the stack (os.css): look inside it too
+    const running = prev && prev.getAnimations ? prev.getAnimations({ subtree: true }).find((x) => x.playState === 'running') : null;
     const elapsed = running ? Number(running.currentTime) || 0 : null;
     const act = prev && document.activeElement && pops.contains(document.activeElement) ? document.activeElement.dataset.act : null;
     drawPop();
@@ -1420,7 +1437,7 @@
     if (!prev) return;
     const pop = pops.querySelector('.pop:not(.closing)');
     if (pop) {
-      if (elapsed != null) pop.style.animationDelay = -elapsed + 'ms';
+      if (elapsed != null) [pop].concat([...pop.querySelectorAll('.pcard')]).forEach((x) => { x.style.animationDelay = -elapsed + 'ms'; });
       else pop.classList.add('still');
     }
     const back = act && pops.querySelector('[data-act="' + act + '"]');
@@ -1442,6 +1459,9 @@
     if (!UI.pop) {
       const open = pops.querySelector('.pop:not(.closing)');
       if (!open) { pops.innerHTML = ''; return; }
+      // a popup redrawn in place is marked still (no second slide-in): it still slides away when it closes
+      open.classList.remove('still');
+      [open].concat([...open.querySelectorAll('.pcard')]).forEach((x) => { x.style.animationDelay = ''; });
       open.classList.add('closing');
       const done = () => { if (!UI.pop && open.isConnected) pops.innerHTML = ''; };
       open.addEventListener('animationend', done, { once: true });
@@ -1468,6 +1488,13 @@
         (n.connected ? row('Gateway', n.gateway) + row('DNS', n.dns) : '') +
         (n.vpn || []).filter((v) => v.active).map((v) => row('VPN', v.name)).join('') +
         '<button class="btn net-more" data-act="net-settings">Network settings</button></div>';
+      return;
+    }
+    if (UI.pop === 'notes' || UI.pop === 'cal' || UI.pop === 'clock' || UI.pop === 'media') {
+      const pos = popPosition(UI.pop);
+      const label = ({ notes: 'Notifications', cal: 'Calendar', clock: 'Notifications and calendar', media: 'What is playing' })[UI.pop];
+      const cards = UI.pop === 'notes' ? notesCard() : UI.pop === 'cal' ? calCard() : UI.pop === 'media' ? mediaCards() : notesCard() + calCard();
+      pops.innerHTML = '<div class="pop stack ' + UI.pop + '-pop' + (pos.includes('top:') ? ' from-top' : '') + '" style="' + pos + '" role="dialog" aria-label="' + label + '">' + cards + '</div>';
       return;
     }
     if (UI.pop === 'launcher') {
@@ -1507,7 +1534,8 @@
       const u = S.user;
       const usage = UI.usage;
       const pct = usage ? Math.min(100, Math.round((usage.used / usage.quota) * 100)) : 0;
-      pops.innerHTML = '<div class="pop qs w11' + (popPosition('qs').includes('top:') ? ' from-top' : '') + '" style="' + popPosition('qs') + '" role="dialog" aria-label="Quick settings">' +
+      pops.innerHTML = '<div class="pop stack qs-pop' + (popPosition('qs').includes('top:') ? ' from-top' : '') + '" style="' + popPosition('qs') + '" role="dialog" aria-label="Quick settings">' +
+        (s.taskbar === 'classic' ? mediaCards(true) : '') + '<div class="pcard qs w11">' + // the top bar has its own chip
         '<div class="qgrid">' +
         qTile('q-theme', effectiveTheme() === 'dark', 'qs-dark', 'Dark mode') +
         qTile('q-night', s.nightLight, 'qs-night', 'Night light') +
@@ -1522,8 +1550,192 @@
         '<span class="meter"><i style="width:' + pct + '%"></i></span></span>' +
         '<button class="ibtn" data-act="open-settings" title="Settings" aria-label="Settings">' + ICON('settings', 17) + '</button>' +
         (canLock() ? '<button class="ibtn" data-act="lock" title="Lock" aria-label="Lock">' + ICON('lock', 17) + '</button>' : '') +
-        '<button class="ibtn" data-act="power" title="Power" aria-label="Power options">' + ICON('power', 17) + '</button></div></div>';
+        '<button class="ibtn" data-act="power" title="Power" aria-label="Power options">' + ICON('power', 17) + '</button></div></div></div>';
     }
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Notifications kept, the calendar flyout, what is playing
+  |--------------------------------------------------------------------------
+  |
+  | Every notification is kept here (the newest first, up to 50) and listed under the clock, or the bell in the top
+  | bar, grouped by app; the count of those not seen yet shows on that button. The calendar flyout is the month with
+  | the chosen day's events, read from the calendars in /Calendar (the Calendar app's .ics files). What each window
+  | plays is told by the SDK (its media elements and media session): the newest shows in the middle of the top bar
+  | and on top of Quick settings, every one in the media flyout; one starting pauses the others.
+  |
+  */
+  const NOTES = [];
+  let noteSeq = 0;
+  function keepNote(n) {
+    n.id = ++noteSeq;
+    n.time = new Date();
+    n.read = UI.pop === 'notes' || UI.pop === 'clock';
+    NOTES.unshift(n);
+    if (NOTES.length > 50) NOTES.length = 50;
+    noteBadge();
+    if (UI.pop === 'notes' || UI.pop === 'clock') renderPop();
+  }
+  function noteBadge() {
+    const n = NOTES.filter((x) => !x.read).length;
+    $$('[data-badge]', root).forEach((b) => { b.textContent = n > 9 ? '9+' : String(n); b.hidden = !n; });
+  }
+  function notesCard() {
+    const groups = [];
+    NOTES.forEach((n) => { let g = groups.find((x) => x.key === (n.app || n.name)); if (!g) { g = { key: n.app || n.name, name: n.name, icon: n.icon, items: [] }; groups.push(g); } g.items.push(n); });
+    const body = groups.length ? groups.map((g) => '<div class="nc-group"><div class="nc-app"><img src="' + esc(g.icon) + '" alt="">' + esc(g.name) + '</div>' +
+      g.items.map((n) => '<div class="nc-item' + (n.type === 'error' ? ' err' : '') + '"><button class="nc-main" data-act="n-open" data-id="' + n.id + '"' + (n.open ? '' : ' disabled') + '>' +
+        '<small>' + esc(timeStr(n.time)) + '</small><b>' + esc(n.title) + '</b>' + (n.message ? '<span>' + esc(n.message) + '</span>' : '') + '</button>' +
+        '<button class="nc-x" data-act="n-x" data-id="' + n.id + '" aria-label="Dismiss" title="Dismiss">' + ICON('window.close', 12) + '</button></div>').join('') + '</div>').join('')
+      : '<p class="nc-empty">No new notifications</p>';
+    return '<div class="pcard notes-card"><div class="nc-head"><b>Notifications</b><span class="spacer"></span>' +
+      '<button class="ibtn" data-act="n-dnd" aria-pressed="' + !!set().dnd + '" title="' + (set().dnd ? 'Turn off Do not disturb' : 'Do not disturb') + '" aria-label="Do not disturb">' + ICON(set().dnd ? 'bellOff' : 'bell', 16) + '</button>' +
+      (NOTES.length ? '<button class="btn btn-sm" data-act="n-clear">Clear all</button>' : '') + '</div><div class="nc-list">' + body + '</div></div>';
+  }
+
+  const calLang = navigator.language || undefined;
+  const calFirstDay = (() => { try { const l = new Intl.Locale(calLang || 'en'); const w = (l.getWeekInfo && l.getWeekInfo()) || l.weekInfo; return w ? w.firstDay % 7 : 0; } catch (e) { return 0; } })();
+  const dayKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  async function loadCalEvents() {
+    const all = [];
+    try {
+      const list = await api('fs.list', undefined, { path: '/Calendar' });
+      for (const f of (list || []).filter((x) => x.type === 'file' && /\.ics$/i.test(x.name))) {
+        try {
+          const r = await api('fs.read', undefined, { path: f.path, track: '0' });
+          const cal = window.LOS_ics.parse(r.content);
+          cal.events.forEach((e) => { e.color = cal.color || '#2F6FD6'; all.push(e); });
+        } catch (e) { /* a file that can't be read is left out */ }
+      }
+    } catch (e) { /* no /Calendar yet */ }
+    UI.calEvents = all;
+    if (UI.pop === 'cal' || UI.pop === 'clock') renderPop();
+  }
+  function calCard() {
+    const today = new Date();
+    const m = UI.calMonth || new Date(today.getFullYear(), today.getMonth(), 1);
+    const sel = UI.calSel || today;
+    const evs = UI.calEvents || [];
+    const start = new Date(m.getFullYear(), m.getMonth(), 1 - ((m.getDay() - calFirstDay + 7) % 7));
+    const names = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((calFirstDay + i) % 7)).toLocaleDateString(calLang, { weekday: 'short' }).slice(0, 2));
+    let grid = names.map((n) => '<span class="cal-wd">' + esc(n) + '</span>').join('');
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const cls = (d.getMonth() !== m.getMonth() ? ' out' : '') + (dayKey(d) === dayKey(today) ? ' today' : '') + (dayKey(d) === dayKey(sel) ? ' sel' : '') + (window.LOS_ics && window.LOS_ics.onDay(evs, d).length ? ' has' : '');
+      grid += '<button class="cal-d' + cls + '" data-act="c-day" data-day="' + dayKey(d) + '" aria-label="' + esc(d.toLocaleDateString(calLang, { dateStyle: 'full' })) + '">' + d.getDate() + '</button>';
+    }
+    const hasApp = !!window.LOS_app('calendar');
+    const dayEvs = window.LOS_ics ? window.LOS_ics.onDay(evs, sel) : [];
+    const evRows = dayEvs.length ? dayEvs.map((e) => '<button class="cal-ev" data-act="c-ev" data-day="' + dayKey(sel) + '"' + (hasApp ? '' : ' disabled') + '><i style="background:' + esc(e.color) + '"></i><small>' +
+      (e.allDay ? 'All day' : esc(timeStr(e.start))) + '</small><span>' + esc(e.title || 'Untitled') + '</span></button>').join('')
+      : '<p class="cal-none">' + (UI.calEvents ? 'No events' : 'Loading\u2026') + '</p>';
+    return '<div class="pcard cal-card"><div class="cal-top"><b>' + esc(today.toLocaleDateString(calLang, { weekday: 'long', month: 'long', day: 'numeric' })) + '</b></div>' +
+      '<div class="cal-mon"><b>' + esc(m.toLocaleDateString(calLang, { month: 'long', year: 'numeric' })) + '</b><span class="spacer"></span>' +
+      '<button class="ibtn" data-act="c-prev" aria-label="Previous month" title="Previous month">' + ICON('chevUp', 14) + '</button><button class="ibtn" data-act="c-next" aria-label="Next month" title="Next month">' + ICON('down', 14) + '</button></div>' +
+      '<div class="cal-grid">' + grid + '</div>' +
+      '<div class="cal-evs"><div class="cal-evh">' + esc(dayKey(sel) === dayKey(today) ? 'Today' : sel.toLocaleDateString(calLang, { weekday: 'long', day: 'numeric', month: 'long' })) + '</div>' + evRows + '</div>' +
+      (hasApp ? '<div class="cal-foot"><button class="btn btn-sm" data-act="c-open">Open Calendar</button></div>' : '') + '</div>';
+  }
+
+  const MEDIA = new Map(); // window id -> what it plays
+  let mediaQueued = 0;
+  const mediaList = () => [...MEDIA.values()].filter((m) => wins.has(m.winId)).sort((a, b) => (b.playing - a.playing) || (b.at - a.at));
+  function mediaReport(winId, info, ctl) {
+    const old = MEDIA.get(winId);
+    if (!info) { if (old) { MEDIA.delete(winId); mediaChanged(); } return; }
+    const m = Object.assign(old || { winId, at: Date.now() }, info, { ctl });
+    if (info.playing && !(old && old.playing)) {
+      m.at = Date.now();
+      // one plays at a time: the others pause
+      MEDIA.forEach((o) => { if (o !== m && o.playing && o.ctl) { try { o.ctl.pause(); } catch (e) { /* its page has gone */ } } });
+    }
+    MEDIA.set(winId, m);
+    mediaChanged();
+  }
+  function mediaChanged() {
+    if (mediaQueued) return;
+    mediaQueued = requestAnimationFrame(() => {
+      mediaQueued = 0;
+      $$('[data-media-chip]', root).forEach((c) => { c.innerHTML = mediaChip(); });
+      fitChip();
+      if (UI.pop === 'media' && !mediaList().length) closePops();
+      else if ((UI.pop === 'qs' && set().taskbar === 'classic') || UI.pop === 'media') renderPop();
+    });
+  }
+  /**
+   * The chip stays centred on the bar, between the app's menus and the status: when there isn't room for it all, its
+   * title gets shorter, and with very little room only its buttons show.
+   */
+  function fitChip() {
+    const c = $('#bars .topbar .tb-media', root);
+    if (!c || !c.firstChild) return;
+    const bar = c.parentElement.getBoundingClientRect();
+    const cx = bar.left + bar.width / 2;
+    const lastLeft = [...c.parentElement.children].filter((x) => x !== c && !x.classList.contains('spacer') && x.getBoundingClientRect().right < cx + 4).pop();
+    const firstRight = [...c.parentElement.children].find((x) => x !== c && !x.classList.contains('spacer') && x.getBoundingClientRect().left > cx - 4);
+    const leftEnd = lastLeft ? lastLeft.getBoundingClientRect().right : bar.left;
+    const rightStart = firstRight ? firstRight.getBoundingClientRect().left : bar.right;
+    const room = Math.max(0, 2 * Math.min(cx - leftEnd - 12, rightStart - cx - 12));
+    c.style.maxWidth = room + 'px';
+    c.classList.toggle('tight', room < 140);
+    marquee(c);
+  }
+  /**
+   * A title longer than its room goes round like a ticker: it runs left all the way through (a second copy follows
+   * it, so it never shows an empty gap), stops at the start for 3 seconds, and goes again. Reduced motion keeps it
+   * still, cut short with an ellipsis.
+   */
+  function marquee(c) {
+    const btn = c.querySelector('.tbm-title');
+    const track = btn && btn.querySelector('.tbm-track');
+    if (!track) return;
+    const t = track.querySelector('.tbm-t');
+    track.getAnimations().forEach((a) => a.cancel());
+    track.querySelectorAll('.tbm-t ~ *').forEach((x) => x.remove());
+    btn.classList.remove('rolling');
+    if (set().reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const room = btn.clientWidth - 16;
+    const w = track.scrollWidth; // the whole title's width (the track clips it)
+    if (room <= 0 || w <= room) return;
+    const gap = 40;
+    const dist = w + gap;
+    track.insertAdjacentHTML('beforeend', '<span class="tbm-gap" style="width:' + gap + 'px"></span>' + t.outerHTML);
+    btn.classList.add('rolling');
+    const run = (dist / 32) * 1000; // 32 px a second
+    const hold = 3000;
+    track.animate([
+      { transform: 'translateX(0)', offset: 0 },
+      { transform: 'translateX(0)', offset: hold / (hold + run) },
+      { transform: 'translateX(-' + dist + 'px)', offset: 1 },
+    ], { duration: hold + run, iterations: Infinity, easing: 'linear' });
+  }
+  window.addEventListener('resize', () => fitChip());
+  const mediaTitle = (m) => { const w = wins.get(m.winId); return m.title || (w ? w.title.replace(/ \u2014 .*$/, '') : '') || 'Playing'; };
+  const mediaArt = (m, size) => { const w = wins.get(m.winId); const src = m.artwork || (w ? w.app.img : ''); return src ? '<img src="' + esc(src) + '" alt="" width="' + size + '" height="' + size + '" draggable="false">' : ''; };
+  function mediaChip() {
+    const list = mediaList();
+    const m = list[0];
+    if (!m) return '';
+    const b = (act, icon, label) => '<button class="tbm-b" data-act="' + act + '" data-win="' + m.winId + '" aria-label="' + label + '" title="' + label + '">' + ICON(icon, 14) + '</button>';
+    // play or pause first (no app icon), then the title, then previous and next
+    return b('m-toggle', m.playing ? 'pause' : 'play', m.playing ? 'Pause' : 'Play') + '<button class="tbm-title" data-act="media" title="' + esc(mediaTitle(m)) + '"><span class="tbm-track"><span class="tbm-t">' + esc(mediaTitle(m)) + '</span></span></button>' +
+      (m.canPrev ? b('m-prev', 'prev', 'Previous') : '') + (m.canNext ? b('m-next', 'next', 'Next') : '') +
+      (list.length > 1 ? '<button class="tbm-more" data-act="media" title="Everything playing">+' + (list.length - 1) + '</button>' : '');
+  }
+  /** What is playing as cards: in Quick settings (only when something is), or the media flyout. */
+  function mediaCards(inQs) {
+    const list = mediaList();
+    if (!list.length) return inQs ? '' : '<div class="pcard media-card"><p class="nc-empty">Nothing is playing</p></div>';
+    const i = Math.max(0, Math.min(list.length - 1, UI.mediaPage || 0));
+    const m = list[i];
+    const w = wins.get(m.winId);
+    const b = (act, icon, label, big) => '<button class="ibtn' + (big ? ' big' : '') + '" data-act="' + act + '" data-win="' + m.winId + '" aria-label="' + label + '" title="' + label + '">' + ICON(icon, big ? 20 : 16) + '</button>';
+    return '<div class="pcard media-card"><div class="mc-head"><img src="' + esc(w ? w.app.img : '') + '" alt="">' + esc(w ? w.app.name : '') +
+      (list.length > 1 ? '<span class="spacer"></span><small>' + (i + 1) + ' of ' + list.length + '</small><button class="ibtn" data-act="m-page" data-d="-1" aria-label="Previous">' + ICON('back', 14) + '</button><button class="ibtn" data-act="m-page" data-d="1" aria-label="Next">' + ICON('forward', 14) + '</button>' : '') + '</div>' +
+      '<button class="mc-body" data-act="m-show" data-win="' + m.winId + '" title="Go to it"><span class="mc-art">' + mediaArt(m, 48) + '</span><span class="mc-text"><b>' + esc(mediaTitle(m)) + '</b>' +
+      '<small>' + esc(m.artist || (w ? w.title.replace(/ \u2014 .*$/, '') : '')) + '</small></span></button>' +
+      '<div class="mc-ctl">' + (m.canPrev ? b('m-prev', 'prev', 'Previous') : '') + b('m-toggle', m.playing ? 'pause' : 'play', m.playing ? 'Pause' : 'Play', true) + (m.canNext ? b('m-next', 'next', 'Next') : '') + '</div></div>';
   }
 
   /*
@@ -2930,7 +3142,7 @@
   function notify(message, opts) {
     opts = opts || {};
     const type = opts.type || 'info';
-    if (S.settings && S.settings.dnd && type !== 'error' && !opts.urgent) return () => {};
+    const quiet = !!(S.settings && S.settings.dnd && type !== 'error' && !opts.urgent);
     const box = $('.toasts', root) || (() => { const t = document.createElement('div'); t.className = 'toasts'; root.appendChild(t); return t; })();
     const w = opts.win ? wins.get(opts.win) : null;
     const app = w ? w.app : (opts.app ? window.LOS_app(opts.app) : null);
@@ -2941,6 +3153,13 @@
     if (img && !/^(https?:|data:image\/|blob:|assets\/)/i.test(img)) img = '';
     const title = opts.title || ({ success: 'Done', error: 'Something went wrong' })[type] || 'Notification';
     message = message == null ? '' : String(message);
+    // every notification is kept in the history (under the clock, or the bell), shown or not
+    const firstAction = Array.isArray(opts.actions) ? opts.actions.find((a) => a && typeof a.action === 'function') : null;
+    keepNote({
+      app: app ? app.id : null, name: srcName, icon: srcIcon, title, message, type,
+      open: typeof opts.onPreview === 'function' ? opts.onPreview : firstAction ? firstAction.action : app ? () => openApp(app.id) : null,
+    });
+    if (quiet) return () => {};
     const el = document.createElement('div');
     el.className = 'toast ' + type;
     el.setAttribute('role', type === 'error' ? 'alert' : 'status');
@@ -3912,6 +4131,21 @@
       case 'lc-account': openApp('settings', { section: 'accounts' }); break;
       case 'launcher-search': if (UI.pop !== 'launcher') togglePop('launcher'); break;
       case 'qs': togglePop('qs'); break;
+      case 'cal': togglePop('cal'); break;
+      case 'notes': togglePop('notes'); break;
+      case 'clock': togglePop('clock'); break;
+      case 'media': if (UI.pop !== 'media') togglePop('media'); break;
+      case 'n-open': { const n = NOTES.find((x) => x.id === +t.dataset.id); closePops(); if (n && n.open) { try { n.open(); } catch (err) { console.error(err); } } break; }
+      case 'n-x': { const k = NOTES.findIndex((x) => x.id === +t.dataset.id); if (k >= 0) NOTES.splice(k, 1); noteBadge(); renderPop(); break; }
+      case 'n-clear': NOTES.length = 0; noteBadge(); renderPop(); break;
+      case 'n-dnd': saveSettings({ dnd: !set().dnd }); setTimeout(() => { renderBars(); renderPop(); }, 0); break;
+      case 'c-prev': case 'c-next': { const m = UI.calMonth || new Date(); UI.calMonth = new Date(m.getFullYear(), m.getMonth() + (t.dataset.act === 'c-next' ? 1 : -1), 1); renderPop(); break; }
+      case 'c-day': { const [y, mo, d] = t.dataset.day.split('-').map(Number); UI.calSel = new Date(y, mo - 1, d); if (mo - 1 !== UI.calMonth.getMonth()) UI.calMonth = new Date(y, mo - 1, 1); renderPop(); break; }
+      case 'c-ev': closePops(); openApp('calendar', { date: t.dataset.day }); break;
+      case 'c-open': closePops(); openApp('calendar', { date: dayKey(UI.calSel || new Date()) }); break;
+      case 'm-toggle': case 'm-next': case 'm-prev': { const m = MEDIA.get(t.dataset.win); if (m && m.ctl) { try { m.ctl[({ 'm-toggle': m.playing ? 'pause' : 'play', 'm-next': 'next', 'm-prev': 'prev' })[t.dataset.act]](); } catch (err) { console.error(err); } } break; }
+      case 'm-page': { const n = mediaList().length; UI.mediaPage = ((UI.mediaPage || 0) + +t.dataset.d + n) % n; renderPop(); break; }
+      case 'm-show': { const w = wins.get(t.dataset.win); closePops(); if (w) { if (w.min) restore(w); else focus(w); } break; }
       case 'trash': openApp('files', { path: 'trash:' }); break;
       case 'tb-prev': tbPage(-1); break;
       case 'tb-next': tbPage(1); break;
@@ -3960,7 +4194,7 @@
 
   root.addEventListener('mousedown', (e) => {
     if (!UI.pop) return;
-    if (e.target.closest('.pop') || e.target.closest('.menu') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume],[data-act=net]')) return;
+    if (e.target.closest('.pop') || e.target.closest('.menu') || e.target.closest('[data-act=launcher],[data-act=qs],[data-act=launcher-search],[data-act=volume],[data-act=net],[data-act=cal],[data-act=notes],[data-act=clock],[data-act=media]')) return;
     closePops();
   });
 
@@ -4294,6 +4528,7 @@
     w.menus = [];
     w.item = null;
     w.onArgs = null;
+    if (MEDIA.delete(w.id)) mediaChanged();
   }
 
   /** Ctrl+Shift+` or Ctrl+Shift+Esc, and the taskbar's menu. */
@@ -4422,6 +4657,8 @@
       prompt: (o, winId) => promptDialog(o || {}, winId),
       alert: (o, winId) => alertDialog(o || {}, winId),
     },
+    /** What a window plays (sdk.js reports it): info { playing, title, artist, artwork, canNext, canPrev } or null. */
+    media: { report: (winId, info, ctl) => mediaReport(winId, info, ctl), list: () => mediaList().map((m) => ({ winId: m.winId, title: mediaTitle(m), playing: !!m.playing })) },
     /** OS.tasks: the open windows, and switching to, closing and ending them. */
     tasks: {
       list: () => taskList(),

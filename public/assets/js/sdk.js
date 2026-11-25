@@ -340,6 +340,54 @@
 
   /*
   |--------------------------------------------------------------------------
+  | What is playing
+  |--------------------------------------------------------------------------
+  |
+  | The desktop shows what each window plays (the top bar's chip, Quick settings) and can play, pause and skip it.
+  | Nothing is asked of the app: its <audio> and <video> are watched (a muted one, such as a preview, isn't media),
+  | and what it gives the browser's media session is used as is: the title, artist and artwork, and its handlers for
+  | play, pause, previous and next. The desktop pauses the others when one starts (one plays at a time).
+  |
+  */
+  if (host && winId && host.media) {
+    const handlers = {};
+    const ms = navigator.mediaSession;
+    if (ms && ms.setActionHandler) {
+      const set = ms.setActionHandler.bind(ms);
+      ms.setActionHandler = (action, fn) => { handlers[action] = typeof fn === 'function' ? fn : null; try { set(action, fn); } catch (e) { /* not supported */ } setTimeout(tell, 0); };
+    }
+    let last = null; // the element that played last
+    const isMedia = (el) => el && (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') && !el.muted;
+    const ctl = {
+      play() { if (handlers.play) handlers.play(); else if (last) last.play().catch(() => {}); },
+      pause() { if (handlers.pause) handlers.pause(); else if (last) last.pause(); },
+      next() { if (handlers.nexttrack) handlers.nexttrack(); },
+      prev() { if (handlers.previoustrack) handlers.previoustrack(); },
+    };
+    function tell() {
+      if (!last || !last.isConnected || (last.ended && !handlers.nexttrack) || !last.currentSrc) { host.media.report(winId, null); return; }
+      const md = ms && ms.metadata;
+      const art = md && md.artwork && md.artwork.length ? md.artwork[md.artwork.length - 1].src : '';
+      host.media.report(winId, {
+        playing: !last.paused && !last.ended,
+        title: (md && md.title) || last.dataset.title || '',
+        artist: (md && md.artist) || '',
+        artwork: art,
+        position: last.currentTime || 0,
+        duration: isFinite(last.duration) ? last.duration : 0,
+        canNext: !!handlers.nexttrack, canPrev: !!handlers.previoustrack,
+      }, ctl);
+    }
+    ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata'].forEach((t) => document.addEventListener(t, (e) => {
+      if (!isMedia(e.target)) return;
+      if (t === 'play' || t === 'playing' || !last) last = e.target;
+      if (e.target === last) tell();
+    }, true));
+    window.addEventListener('pagehide', () => host.media.report(winId, null));
+  }
+
+  /*
+  |--------------------------------------------------------------------------
   | Reload keys
   |--------------------------------------------------------------------------
   |
