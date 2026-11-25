@@ -42,9 +42,10 @@ LiteOS.ready((OS) => {
     anchor: null,
     back: [],
     fwd: [],
-    view: pref('view', 'list'),
-    sort: pref('sort', 'name'),
-    dir: pref('dir', 'asc'),
+    // the open folder's view and sort (folderLook below): set on load, each folder keeps its own
+    view: 'grid',
+    sort: 'name',
+    dir: 'asc',
     details: pref('details', '0') === '1',          // the Details pane: closed until the user opens it
     query: '',
     usage: null,
@@ -53,6 +54,32 @@ LiteOS.ready((OS) => {
     tree: { open: new Set((() => { try { return JSON.parse(pref('tree', '["device:"]')); } catch (e) { return ['device:']; } })()), kids: new Map() },
     fold: new Set(pref('fold', '').split(',').filter(Boolean)), // Home sections the user folded away
   };
+
+  // Each folder keeps its own view and sort. A folder that was never set uses the nearest parent folder that was,
+  // and with none, medium icons sorted by name, A to Z. Home, This PC, Recent, Search and the Trash each have their
+  // own, with no parent. Kept per account (several people can share one browser).
+  const LOOK_DEFAULT = { view: 'grid', sort: 'name', dir: 'asc' };
+  const lookKey = () => 'folders.' + ((OS.user && (OS.user.id || OS.user.username)) || '');
+  let looks = (() => { try { return JSON.parse(pref(lookKey(), '{}')) || {}; } catch (e) { return {}; } })();
+  function lookParent(path) {
+    const u = /^(usb:[^:]+:)(\/.*)$/.exec(path);
+    const rest = u ? u[2] : path;
+    if (!rest.startsWith('/') || rest === '/') return null;
+    const up = rest.replace(/\/[^/]*\/?$/, '') || '/';
+    return (u ? u[1] : '') + up;
+  }
+  function folderLook(path) {
+    for (let p = path; p; p = lookParent(p)) if (looks[p]) return Object.assign({}, LOOK_DEFAULT, looks[p]);
+    return Object.assign({}, LOOK_DEFAULT);
+  }
+  function applyLook(path) { const l = folderLook(path); st.view = l.view; st.sort = l.sort; st.dir = l.dir; }
+  // a change is saved for the open folder alone: its subfolders follow it unless they have their own
+  function saveLook() {
+    try { looks = JSON.parse(pref(lookKey(), '{}')) || {}; } catch (e) { looks = {}; } // another window may have saved
+    looks[st.path] = { view: st.view, sort: st.sort, dir: st.dir };
+    savePref(lookKey(), JSON.stringify(looks));
+  }
+  applyLook(st.path);
 
   // Clipboard shared between Files windows (same origin parent).
   const clip = {
@@ -446,6 +473,7 @@ LiteOS.ready((OS) => {
       if (seq !== loadSeq) return; // another folder was asked for meanwhile
       if (opts.quiet && st.renaming && path === st.path) return; // a name is being typed: the rename reloads
       if (!opts.keepHistory && path !== st.path) { st.back.push(st.path); st.fwd = []; }
+      if (path !== st.path) { try { looks = JSON.parse(pref(lookKey(), '{}')) || {}; } catch (e) { /* keep */ } applyLook(path); }
       st.path = path;
       st.entries = entries;
       if (path.startsWith('/') || isUsb(path)) syncTree(path, entries);
@@ -495,15 +523,11 @@ LiteOS.ready((OS) => {
     renderSide();
     renderCrumbs();
     const m = mode();
-    const usbHere = m === 'usb' && usbParse(st.path);
-    const title = m === 'folder' ? (st.path === '/' ? 'My drive' : util.basename(st.path))
-      : usbHere ? (usbHere.path === '/' ? usbName(usbHere.id) : util.basename(usbHere.path))
-        : ({ home: 'Home', device: 'This PC', trash: 'Trash', recent: 'Recent', search: 'Search' })[m];
-    // no page heading: the window title and the path bar say where you are; a note shows only when there is one
+    // no page heading: the path bar says where you are (the window is just File Explorer); a note shows only when there is one
     const note = m === 'search' ? 'Results for “' + st.query + '”' : m === 'trash' ? 'Items here still use storage until you empty the Trash.' : '';
     $('#infobar').textContent = note;
     $('#infobar').hidden = !note;
-    OS.win.setTitle(title + ' — Files');
+    OS.win.setTitle('File Explorer');
     const content = $('#content');
     content.className = 'content' + (m === 'trash' ? ' trash-mode' : '') + (m === 'search' || m === 'recent' || m === 'home' ? ' search-mode' : '');
     const list = sorted(st.entries);
@@ -949,7 +973,7 @@ LiteOS.ready((OS) => {
   const curView = () => (mode() === 'trash' || !VIEWS.some(([v]) => v === st.view) ? 'list' : st.view);
   const viewLabel = () => VIEWS.find(([v]) => v === curView())[1];
   const SORTS = [['name', 'Name'], ['mtime', 'Date modified'], ['size', 'Size'], ['type', 'Type']];
-  function setView(v) { st.view = v; savePref('view', v); render(); }
+  function setView(v) { st.view = v; saveLook(); render(); }
   function toggleDetails() { st.details = !st.details; savePref('details', st.details ? '1' : '0'); render(); }
   function viewItems() {
     return [
@@ -978,7 +1002,7 @@ LiteOS.ready((OS) => {
   }
   const viewItem = () => ({ label: 'View', icon: 'grid', items: viewItems() });
   const sortItem = () => ({ label: 'Sort by', icon: 'filter', items: sortItems() });
-  function setDir(d) { st.dir = d; savePref('dir', d); render(); }
+  function setDir(d) { st.dir = d; saveLook(); render(); }
 
   function newMenu(at) {
     OS.menu([
@@ -993,7 +1017,7 @@ LiteOS.ready((OS) => {
   function setSort(k) {
     if (st.sort === k) st.dir = st.dir === 'asc' ? 'desc' : 'asc';
     else { st.sort = k; st.dir = k === 'mtime' || k === 'size' ? 'desc' : 'asc'; }
-    savePref('sort', st.sort); savePref('dir', st.dir);
+    saveLook();
     render();
   }
 

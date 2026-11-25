@@ -1,5 +1,5 @@
 {{-- Files: the app window's page (AppsController). Its scripts and styles are in public/assets/apps/files/. --}}
-<x-layout-window app="files" title="Files" :styles="['files.css']" :scripts="['app.js']">
+<x-layout-window app="files" title="File Explorer" :styles="['files.css']" :scripts="['app.js']">
 <div class="app" id="app">
   <div class="toolbar nav">
     <button class="icon-btn" data-c="back" aria-label="Back"></button>
