@@ -32,6 +32,7 @@ class UserSettings
         'deskIconSize' => ['small', 'medium', 'large'],
         'deskSort' => ['name', 'type', 'size', 'mtime'],
         'shotBorderWidth' => [1, 2, 4, 8],
+        'weekStart' => ['auto', 'monday', 'sunday', 'saturday'],
     ];
 
     /**
@@ -62,6 +63,7 @@ class UserSettings
      * - shotCopyEdits: markup in Screenshot is copied as it changes
      * - shotAskSave: asked on closing Screenshot with unsaved markup
      * - shotRec*: Screenshot's screen recordings: saved by themselves (and where), the microphone and the tab's sound
+     * - weekStart: the first day of the week (Calendar, the calendar flyout, Clock); auto = as the language has it
      *
      * @return array<string, mixed>
      */
@@ -119,6 +121,7 @@ class UserSettings
             'shotRecFolder' => '/Videos/Recordings',
             'shotRecMic' => false,
             'shotRecSound' => true,
+            'weekStart' => 'auto',
         ];
     }
 

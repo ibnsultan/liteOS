@@ -1,0 +1,31 @@
+{
+  "id": "calendar",
+  "name": "Calendar",
+  "version": "1.0.0",
+  "sdk": "^1.0",
+  "summary": "Your events by month, week and day, kept as calendars in your drive.",
+  "author": "LiteOS",
+  "category": "Utilities",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "glyph": "calendar",
+  "colors": [
+    "#5B93EA",
+    "#2F6FD6"
+  ],
+  "opens": [],
+  "window": {
+    "size": [
+      1040,
+      680
+    ],
+    "minSize": [
+      620,
+      420
+    ],
+    "chrome": "custom",
+    "material": "mica",
+    "single": true
+  },
+  "permissions": []
+}

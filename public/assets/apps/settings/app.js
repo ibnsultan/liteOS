@@ -728,7 +728,8 @@ LiteOS.ready((OS) => {
         rows(row({ icon: 'settings.time', title: 'Set the time automatically', off, dev: true, sub: t ? (t.synced ? 'Synchronised with a time server' : 'Not synchronised yet') : '', ctl: t ? '<span class="hint">' + (t.ntp ? 'On' : 'Off') + '</span>' : '' }),
           row({ icon: 'settings.language', title: 'Time zone', off, dev: true, sub: off ? '' : 'Changing it needs the LiteLink admin password',
             ctl: sel(' data-dev="zone" aria-label="Time zone"', list.map((z) => [z, z.replace(/_/g, ' ')]), cur, !!off || !t) }),
-          tog('clock24', 'Show time in 24-hour format', 'Show 13:00 instead of 1:00 PM', { icon: 'settings.time' }));
+          tog('clock24', 'Show time in 24-hour format', 'Show 13:00 instead of 1:00 PM', { icon: 'settings.time' }),
+          row({ icon: 'settings.time', title: 'First day of the week', sub: 'Calendar, the calendar flyout and Clock', ctl: sel(' data-set="weekStart" aria-label="First day of the week"', [['auto', 'As my language has it'], ['monday', 'Monday'], ['sunday', 'Sunday'], ['saturday', 'Saturday']], st().weekStart || 'auto') }));
     },
 
     'time/language'() {
@@ -849,7 +850,7 @@ LiteOS.ready((OS) => {
     ['Resolution', 'system/display'], ['Volume', 'system/sound'], ['Microphone', 'system/sound'], ['Do not disturb', 'system/notifications'],
     ['Lock', 'system/power'], ['Sign out', 'system/power'], ['Restart', 'system/power'], ['Shut down', 'system/power'], ['Trash', 'system/storage'],
     ['Usage tracking', 'system/usage'], ['Rename this computer', 'system/about'], ['Version', 'system/about'], ['Password', 'accounts/signin'], ['Display name', 'accounts/info'],
-    ['Add user', 'accounts/users'], ['Time zone', 'time/datetime'], ['24-hour clock', 'time/datetime'], ['Keyboard layout', 'time/typing'],
+    ['Add user', 'accounts/users'], ['Time zone', 'time/datetime'], ['24-hour clock', 'time/datetime'], ['First day of the week', 'time/datetime'], ['Keyboard layout', 'time/typing'],
     ['Pinned apps', 'personalisation/taskbar'], ['Auto-hide taskbar', 'personalisation/taskbar'], ['Home page', 'apps/browser'], ['Pointer size', 'accessibility/pointer'],
     ['High contrast', 'accessibility/contrast'], ['Greyscale', 'accessibility/filters'], ['Animations', 'accessibility/effects'], ['Pair a device', 'bluetooth/devices'],
     ['IP address', 'network/ethernet'], ['Eject USB drive', 'bluetooth/usb'],

@@ -119,7 +119,7 @@ LiteOS.ready((OS) => {
     return parts.join(' ');
   }
   // the week as the language starts it
-  const firstDay = (() => { try { const l = new Intl.Locale(lang || 'en'); const w = (l.getWeekInfo && l.getWeekInfo()) || l.weekInfo; return w ? w.firstDay % 7 : 1; } catch (e) { return 1; } })();
+  const firstDay = (() => { const w = OS.settings.weekStart; if (w === 'sunday') return 0; if (w === 'monday') return 1; if (w === 'saturday') return 6; try { const l = new Intl.Locale(lang || 'en'); const i = (l.getWeekInfo && l.getWeekInfo()) || l.weekInfo; return i ? i.firstDay % 7 : 1; } catch (e) { return 1; } })();
   const weekOrder = Array.from({ length: 7 }, (_, i) => (firstDay + i) % 7);
   const dayName = (d, style) => new Date(2024, 0, 7 + d).toLocaleDateString(lang, { weekday: style || 'short' });
 

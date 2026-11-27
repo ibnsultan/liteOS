@@ -34,6 +34,7 @@
     "app.archives": "apps/utilities-file-archiver",
     "app.monitor": "apps/liteos-system-monitor",
     "app.screenshot": "apps/liteos-screenshot",
+    "app.calendar": "apps/calendar",
     "app.generic": "apps/applications-system",
 
     "shell.launcher": "apps/view-app-grid",

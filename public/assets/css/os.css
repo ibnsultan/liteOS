@@ -530,7 +530,10 @@ img.sysico { object-fit: contain; }
 .nc-x:hover { background: var(--hover); color: var(--text); }
 .nc-empty { margin: 4px 6px 6px; color: var(--muted); font-size: 13px; text-align: center; padding: 18px 0; }
 
-.cal-top { padding: 12px 16px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.cal-top { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 16px; min-height: 44px; box-sizing: border-box; border-bottom: 1px solid var(--line); font-size: 13px; }
+.cal-top b { flex: 1; min-width: 0; }
+.cal-app { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cal-app img { display: block; }
 .cal-top b { font-weight: 500; }
 .cal-mon { display: flex; align-items: center; gap: 2px; padding: 10px 10px 4px 16px; }
 .cal-mon .ibtn { width: 28px; height: 28px; }

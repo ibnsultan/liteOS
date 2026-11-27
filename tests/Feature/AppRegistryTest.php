@@ -35,7 +35,7 @@ class AppRegistryTest extends TestCase
         $registry = app(AppRegistry::class);
 
         $this->assertSame(
-            ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'settings'],
+            ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'calendar', 'settings'],
             $registry->ids(),
         );
     }

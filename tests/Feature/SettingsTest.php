@@ -144,5 +144,7 @@ class SettingsTest extends TestCase
         $this->assertSame([], UserSettings::validate(['shotFolder' => '/']));
         $this->assertSame(['shotRecFolder' => '/Videos/Clips', 'shotRecMic' => true, 'shotRecSound' => false],
             UserSettings::validate(['shotRecFolder' => '/Videos/Clips', 'shotRecMic' => 1, 'shotRecSound' => 0]));
+        $this->assertSame(['weekStart' => 'monday'], UserSettings::validate(['weekStart' => 'monday']));
+        $this->assertSame([], UserSettings::validate(['weekStart' => 'friday']));
     }
 }

@@ -14,6 +14,12 @@
  *
  * Ringing is an urgent notification (shown through Do not disturb, kept until Snooze or Dismiss) with the alarm's
  * sound from sounds.js at the system volume, giving up after a minute.
+ *
+ * Calendar's reminders ring here too: the events of every calendar in /Calendar (read with LOS_ics, ics.js), each
+ * reminder at its minutes before the event (repeats included). Once a minute it works out the reminders due in the
+ * next quarter hour, and the tick rings those whose time has come (urgent, a short chime, Snooze for five minutes and
+ * Open, which shows the day in Calendar). Calendar tells it about changes over "liteos.calendar". Reminders that came
+ * due while LiteOS was closed (up to a day back) are told as one notification.
  */
 (function () {
   'use strict';
@@ -33,6 +39,11 @@
   let last = 0; // the last moment checked
   let started = false;
   const ringing = new Map(); // key → close()
+  /** Calendar: every calendar's events, the reminders due soon, and the time that list reaches. */
+  let calEvents = [];
+  let calQueue = [];
+  let calUntil = 0;
+  const CAL_AHEAD = 15 * 60000;
 
   const key = (k) => 'los.reminders.' + (user && user.id != null ? user.id : 'me') + '.' + k;
   const store = {
@@ -49,6 +60,22 @@
   }
   async function load() {
     [alarms, timers] = await Promise.all([read(ALARMS), read(TIMERS)]);
+    await loadCalendars();
+  }
+  async function loadCalendars() {
+    if (!window.LOS_ics) return;
+    const all = [];
+    try {
+      const list = await H.api('fs.list', undefined, { path: '/Calendar' });
+      for (const f of (list || []).filter((x) => x.type === 'file' && /\.ics$/i.test(x.name))) {
+        try {
+          const r = await H.api('fs.read', undefined, { path: f.path, track: '0' });
+          window.LOS_ics.parse(r.content).events.forEach((e) => all.push(e));
+        } catch (e) { /* a file that can't be read is left out */ }
+      }
+    } catch (e) { /* no /Calendar */ }
+    calEvents = all;
+    calUntil = 0; // worked out again on the next tick
   }
 
   // ------------------------------------------------------------------ when things ring
@@ -69,7 +96,8 @@
   }
 
   const volume = () => { const s = (H.state && H.state.settings) || {}; return s.muted ? 0 : (s.volume == null ? 80 : s.volume) / 100; };
-  const timeText = (t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  /** A time as the clock shows it (Settings' 24-hour time). */
+  const timeText = (t) => { const s = (H.state && H.state.settings) || {}; return new Date(t).toLocaleTimeString([], { hour: s.clock24 === false ? 'numeric' : '2-digit', minute: '2-digit', hour12: s.clock24 === false }); };
   const lengthText = (ms) => {
     const s = Math.round(ms / 1000);
     const h = Math.floor(s / 3600);
@@ -81,11 +109,12 @@
     return parts.join(' ');
   };
 
-  function ring(id, title, message, sound, actions) {
+  function ring(id, title, message, sound, actions, opts) {
     if (ringing.has(id)) return;
-    const stop = window.LOS_sounds ? window.LOS_sounds.play(sound || 'chimes', { volume: volume(), loop: true, maxSeconds: 60 }) : () => {};
+    const o = opts || {};
+    const stop = window.LOS_sounds ? window.LOS_sounds.play(sound || 'chimes', { volume: volume(), loop: o.loop !== false, maxSeconds: o.loop === false ? 6 : 60 }) : () => {};
     const close = H.notify(message, {
-      app: 'clock', title, urgent: true, actions,
+      app: o.app || 'clock', title, urgent: true, actions,
       onClose: () => { stop(); ringing.delete(id); },
     });
     ringing.set(id, close || (() => {}));
@@ -109,6 +138,65 @@
   }
 
   function timerKey(t) { return t.id + '@' + t.endsAt; }
+
+  /*
+   * Calendar reminders
+   */
+  const dayKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  /** "In 15 minutes, 09:00 to 10:00, Room 4" (or Now, Tomorrow, or a date for one days away). */
+  function eventText(o, now) {
+    const st = o.start.getTime();
+    const mins = Math.round((st - now) / 60000);
+    const when = o.allDay ? (dayKey(o.start) === dayKey(new Date(now)) ? 'Today' : o.start.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }))
+      : mins <= 0 ? 'Now' : mins < 60 ? 'In ' + mins + (mins === 1 ? ' minute' : ' minutes')
+        : mins < 1440 && dayKey(o.start) === dayKey(new Date(now)) ? 'Today' : o.start.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    const span = o.allDay ? 'all day' : timeText(st) + ' to ' + timeText(o.end.getTime());
+    return when + ', ' + span + (o.location ? ', ' + o.location : '');
+  }
+  function ringEvent(o, snoozed) {
+    const id = 'cal:' + o.uid + '|' + o.occ.getTime();
+    const now = Date.now();
+    ring(id, o.title || 'Event', eventText(o, now) + (snoozed ? ' (snoozed)' : ''), 'chimes', [
+      { label: 'Snooze 5 min', action: () => snoozeEvent(o) },
+      { label: 'Open', action: () => H.openApp('calendar', { date: dayKey(o.start) }) },
+    ], { app: 'calendar', loop: false });
+  }
+  function snoozeEvent(o) {
+    const list = store.get('calSnoozes', []).filter((x) => !(x.uid === o.uid && x.occ === o.occ.getTime()));
+    list.push({ uid: o.uid, occ: o.occ.getTime(), at: Date.now() + 5 * 60000, title: o.title, start: o.start.getTime(), end: o.end.getTime(), allDay: !!o.allDay, location: o.location || '' });
+    store.set('calSnoozes', list);
+  }
+  const snoozedEvent = (x) => ({ uid: x.uid, occ: new Date(x.occ), title: x.title, start: new Date(x.start), end: new Date(x.end), allDay: x.allDay, location: x.location });
+  /** The reminders due between two moments: rung, or (long past) gathered into one missed notification. */
+  function calTick(from, now) {
+    if (!window.LOS_ics) return;
+    if (now + 60000 > calUntil) {
+      calUntil = now + CAL_AHEAD;
+      calQueue = calEvents.length ? window.LOS_ics.dueAlarms(calEvents, from, calUntil) : [];
+    }
+    const missedOnes = [];
+    calQueue = calQueue.filter((d) => {
+      if (d.at > now) return true;
+      if (d.at <= from) return false;
+      if (now - d.at > LATE) missedOnes.push(d.occ); else ringEvent(d.occ, false);
+      return false;
+    });
+    const sn = store.get('calSnoozes', []);
+    const keep = sn.filter((x) => {
+      if (x.at > now) return true;
+      if (now - x.at > LATE) missedOnes.push(snoozedEvent(x)); else ringEvent(snoozedEvent(x), true);
+      return false;
+    });
+    if (keep.length !== sn.length) store.set('calSnoozes', keep);
+    if (missedOnes.length) {
+      const seen = new Set();
+      const list = missedOnes.filter((o) => { const k = o.uid + '|' + o.occ.getTime(); if (seen.has(k)) return false; seen.add(k); return true; });
+      H.notify(list.slice(0, 4).map((o) => (o.title || 'Event') + (o.allDay ? '' : ' (' + timeText(o.start.getTime()) + ')')).join(', ') + (list.length > 4 ? ' and ' + (list.length - 4) + ' more' : ''), {
+        app: 'calendar', title: list.length === 1 ? '1 missed reminder' : list.length + ' missed reminders',
+        actions: [{ label: 'Open Calendar', action: () => H.openApp('calendar', { date: dayKey(list[0].start) }) }],
+      });
+    }
+  }
 
   // ------------------------------------------------------------------ the tick
   function tick() {
@@ -146,6 +234,7 @@
       else ring('timer:' + t.id, name, lengthText(t.ms) + ' are up', 'beeps', [{ label: 'Dismiss' }]);
     });
     if (changed) store.set('rung', rung.slice(-100));
+    calTick(from, now);
     last = now;
     if (!tick.saved || now - tick.saved > 10000) { store.set('last', now); tick.saved = now; }
   }
@@ -171,6 +260,8 @@
         // Clock dismissed a timer or alarm that is ringing (its own Stop button)
         if (m.type === 'stop' && ringing.has(m.id)) ringing.get(m.id)();
       };
+      const cal = new BroadcastChannel('liteos.calendar');
+      cal.onmessage = (e) => { if ((e.data || {}).type === 'changed') loadCalendars(); };
     } catch (e) { /* no BroadcastChannel: the five-minute reload still picks changes up */ }
   }
 

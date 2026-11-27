@@ -59,7 +59,7 @@ return [
     |
     */
 
-    'local_apps' => ['files', 'documents', 'sheets', 'slides', 'notes', 'pdf', 'media', 'board', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'settings', 'browser'],
+    'local_apps' => ['files', 'documents', 'sheets', 'slides', 'notes', 'pdf', 'media', 'board', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'calendar', 'settings', 'browser'],
 
     /*
     |--------------------------------------------------------------------------
@@ -102,7 +102,7 @@ return [
     |
     */
 
-    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'settings'],
+    'app_order' => ['files', 'documents', 'sheets', 'slides', 'database', 'code', 'media', 'pdf', 'browser', 'board', 'notes', 'calculator', 'clock', 'archives', 'monitor', 'screenshot', 'calendar', 'settings'],
 
     /*
     |--------------------------------------------------------------------------

@@ -1595,7 +1595,8 @@
   }
 
   const calLang = navigator.language || undefined;
-  const calFirstDay = (() => { try { const l = new Intl.Locale(calLang || 'en'); const w = (l.getWeekInfo && l.getWeekInfo()) || l.weekInfo; return w ? w.firstDay % 7 : 0; } catch (e) { return 0; } })();
+  /** The first day of the week: Settings' choice, or as the language has it (LOS_ics). */
+  const calFirstDay0 = () => (window.LOS_ics ? window.LOS_ics.firstDay(set()) : 0);
   const dayKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   async function loadCalEvents() {
     const all = [];
@@ -1617,8 +1618,8 @@
     const m = UI.calMonth || new Date(today.getFullYear(), today.getMonth(), 1);
     const sel = UI.calSel || today;
     const evs = UI.calEvents || [];
-    const start = new Date(m.getFullYear(), m.getMonth(), 1 - ((m.getDay() - calFirstDay + 7) % 7));
-    const names = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((calFirstDay + i) % 7)).toLocaleDateString(calLang, { weekday: 'short' }).slice(0, 2));
+    const start = new Date(m.getFullYear(), m.getMonth(), 1 - ((m.getDay() - calFirstDay0() + 7) % 7));
+    const names = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((calFirstDay0() + i) % 7)).toLocaleDateString(calLang, { weekday: 'short' }).slice(0, 2));
     let grid = names.map((n) => '<span class="cal-wd">' + esc(n) + '</span>').join('');
     for (let i = 0; i < 42; i++) {
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
@@ -1630,12 +1631,13 @@
     const evRows = dayEvs.length ? dayEvs.map((e) => '<button class="cal-ev" data-act="c-ev" data-day="' + dayKey(sel) + '"' + (hasApp ? '' : ' disabled') + '><i style="background:' + esc(e.color) + '"></i><small>' +
       (e.allDay ? 'All day' : esc(timeStr(e.start))) + '</small><span>' + esc(e.title || 'Untitled') + '</span></button>').join('')
       : '<p class="cal-none">' + (UI.calEvents ? 'No events' : 'Loading\u2026') + '</p>';
-    return '<div class="pcard cal-card"><div class="cal-top"><b>' + esc(today.toLocaleDateString(calLang, { weekday: 'long', month: 'long', day: 'numeric' })) + '</b></div>' +
+    const calApp = hasApp ? window.LOS_app('calendar') : null;
+    return '<div class="pcard cal-card"><div class="cal-top"><b>' + esc(today.toLocaleDateString(calLang, { weekday: 'long', month: 'long', day: 'numeric' })) + '</b>' +
+      (calApp ? '<button class="ibtn cal-app" data-act="c-open" title="Open Calendar" aria-label="Open Calendar"><img src="' + esc(calApp.img) + '" alt="" width="20" height="20" draggable="false"></button>' : '') + '</div>' +
       '<div class="cal-mon"><b>' + esc(m.toLocaleDateString(calLang, { month: 'long', year: 'numeric' })) + '</b><span class="spacer"></span>' +
       '<button class="ibtn" data-act="c-prev" aria-label="Previous month" title="Previous month">' + ICON('chevUp', 14) + '</button><button class="ibtn" data-act="c-next" aria-label="Next month" title="Next month">' + ICON('down', 14) + '</button></div>' +
       '<div class="cal-grid">' + grid + '</div>' +
-      '<div class="cal-evs"><div class="cal-evh">' + esc(dayKey(sel) === dayKey(today) ? 'Today' : sel.toLocaleDateString(calLang, { weekday: 'long', day: 'numeric', month: 'long' })) + '</div>' + evRows + '</div>' +
-      (hasApp ? '<div class="cal-foot"><button class="btn btn-sm" data-act="c-open">Open Calendar</button></div>' : '') + '</div>';
+      '<div class="cal-evs"><div class="cal-evh">' + esc(dayKey(sel) === dayKey(today) ? 'Today' : sel.toLocaleDateString(calLang, { weekday: 'long', day: 'numeric', month: 'long' })) + '</div>' + evRows + '</div></div>';
   }
 
   const MEDIA = new Map(); // window id -> what it plays
@@ -4462,7 +4464,7 @@
   /** What LiteOS itself keeps running in the background of the desktop. */
   function taskServices() {
     const out = [];
-    if (S.user) out.push({ id: 'reminders', name: 'Reminders', detail: 'Rings Clock’s alarms and timers', since: TASKS.since });
+    if (S.user) out.push({ id: 'reminders', name: 'Reminders', detail: 'Rings Clock’s alarms and timers, and Calendar’s reminders', since: TASKS.since });
     if (DEV.ll) out.push({ id: 'litelink', name: 'LiteLink device', detail: 'This computer’s drives, sound, network and printers', since: TASKS.since });
     if (window.LOS_CONFIG.guest) out.push({ id: 'guest-drive', name: 'Guest drive', detail: 'Keeps the guest’s files in this browser', since: TASKS.since });
     return out;
